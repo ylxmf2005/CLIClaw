@@ -9,6 +9,7 @@ import { formatChannelAddress, formatAgentAddress } from "../../adapters/types.j
 import type { MessageRouter } from "../router/message-router.js";
 import type { HiBossDatabase } from "../db/database.js";
 import type { DaemonConfig } from "../daemon.js";
+import type { AgentExecutor } from "../../agent/executor.js";
 import { errorMessage, logEvent } from "../../shared/daemon-log.js";
 import { resolveUiLocale } from "../../shared/ui-locale.js";
 import { getUiText } from "../../shared/ui-text.js";
@@ -20,6 +21,12 @@ import {
   parseUserPermissionPolicy,
   resolveUserPermissionUserByToken,
 } from "../../shared/user-permissions.js";
+
+type ChannelBridgeInterruptExecutor = Pick<AgentExecutor, "abortCurrentRunForChannel">;
+
+interface ChannelBridgeOptions {
+  executor?: ChannelBridgeInterruptExecutor;
+}
 
 /**
  * Bridge between ChannelMessages and Envelopes.
@@ -38,19 +45,11 @@ export class ChannelBridge {
   constructor(
     private router: MessageRouter,
     private db: HiBossDatabase,
-    private config: DaemonConfig
+    private config: DaemonConfig,
+    private options: ChannelBridgeOptions = {},
   ) {
-    this.channelMessageBatcher = new ChannelMessageBatcher(async (input, batchSize) => {
-      try {
-        await this.router.routeEnvelope(input);
-      } catch (err) {
-        logEvent("error", "channel-batch-route-failed", {
-          from: input.from,
-          to: input.to,
-          "batch-size": batchSize,
-          error: errorMessage(err),
-        });
-      }
+    this.channelMessageBatcher = new ChannelMessageBatcher({
+      getInterruptWindowMs: () => this.db.getRuntimeTelegramInboundInterruptWindowSeconds() * 1000,
     });
   }
 
@@ -456,6 +455,25 @@ export class ChannelBridge {
       },
     };
 
-    this.channelMessageBatcher.enqueue(message, envelopeInput);
+    const dispatch = this.channelMessageBatcher.enqueue(message, envelopeInput);
+    if (dispatch.interruptNow) {
+      this.options.executor?.abortCurrentRunForChannel(
+        binding.agentName,
+        platform,
+        message.chat.id,
+        "channel:inbound-interrupt-now",
+      );
+    }
+    try {
+      await this.router.routeEnvelope(dispatch.input);
+    } catch (err) {
+      logEvent("error", "channel-batch-route-failed", {
+        from: dispatch.input.from,
+        to: dispatch.input.to,
+        "batch-size": dispatch.batchSize,
+        "interrupt-now": dispatch.interruptNow,
+        error: errorMessage(err),
+      });
+    }
   }
 }

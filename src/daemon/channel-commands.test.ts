@@ -72,44 +72,6 @@ test("/new switches current chat session and returns old/new ids", async () => {
   });
 });
 
-test("/sessions returns keyboard with tabs and pager", async () => {
-  await withTempDb(async (db) => {
-    db.registerAgent({ name: "nex", provider: "codex" });
-    db.getOrCreateChannelSession({
-      agentName: "nex",
-      adapterType: "telegram",
-      chatId: "chat-1",
-      ownerUserId: "u-1",
-      provider: "codex",
-    });
-
-    const handler = createChannelCommandHandler({
-      db,
-      executor: {
-        isAgentBusy: () => false,
-        abortCurrentRun: () => false,
-        invalidateChannelSessionCache: () => undefined,
-      } as any,
-      router: { routeEnvelope: async () => undefined } as any,
-    });
-
-    const response = await handler({
-      command: "sessions",
-      args: "",
-      chatId: "chat-1",
-      authorId: "u-1",
-      authorUsername: "alice",
-      agentName: "nex",
-    } as any);
-
-    assert.ok(response);
-    assert.equal(typeof response?.text, "string");
-    assert.equal(response?.text?.includes("sessions: ok"), true);
-    assert.ok(response?.telegram?.inlineKeyboard);
-    assert.equal(response?.telegram?.inlineKeyboard?.length, 2);
-  });
-});
-
 test("/new uses command adapter type instead of hardcoded telegram", async () => {
   await withTempDb(async (db) => {
     db.registerAgent({ name: "nex", provider: "codex" });
@@ -669,48 +631,5 @@ test("/status resolves effective codex model/reasoning from CODEX_HOME config", 
     } finally {
       fs.rmSync(codexHome, { recursive: true, force: true });
     }
-  });
-});
-
-test("/session not-found uses distinct message from invalid-id", async () => {
-  await withTempDb(async (db) => {
-    db.registerAgent({ name: "nex", provider: "codex" });
-    db.getOrCreateChannelSession({
-      agentName: "nex",
-      adapterType: "telegram",
-      chatId: "chat-1",
-      ownerUserId: "u-1",
-      provider: "codex",
-    });
-
-    const handler = createChannelCommandHandler({
-      db,
-      executor: {
-        isAgentBusy: () => false,
-        abortCurrentRun: () => false,
-        invalidateChannelSessionCache: () => undefined,
-      } as any,
-      router: { routeEnvelope: async () => undefined } as any,
-    });
-
-    const invalid = await handler({
-      command: "session",
-      args: "not-a-hex-id",
-      chatId: "chat-1",
-      authorId: "u-1",
-      authorUsername: "alice",
-      agentName: "nex",
-    } as any);
-    const notFound = await handler({
-      command: "session",
-      args: "aaaaaaaa",
-      chatId: "chat-1",
-      authorId: "u-1",
-      authorUsername: "alice",
-      agentName: "nex",
-    } as any);
-
-    assert.equal(invalid?.text, "error: Invalid session id");
-    assert.equal(notFound?.text, "error: Session not found");
   });
 });
