@@ -165,6 +165,10 @@ export class CronScheduler {
     return this.db.listCronSchedulesByAgent(agentName);
   }
 
+  listAllSchedules(): CronSchedule[] {
+    return this.db.listCronSchedules();
+  }
+
   getSchedule(agentName: string, id: string): CronSchedule {
     const schedule = this.db.getCronScheduleById(id);
     if (!schedule) {

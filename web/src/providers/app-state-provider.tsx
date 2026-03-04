@@ -441,12 +441,16 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           dispatch({ type: "AGENT_LOG_LINE", name: p.name, line: p.line });
           break;
         }
-        case "envelope.new":
-          dispatch({ type: "ADD_ENVELOPE", envelope: event.payload as Envelope });
+        case "envelope.new": {
+          const envPayload = event.payload as { envelope: Envelope };
+          dispatch({ type: "ADD_ENVELOPE", envelope: envPayload.envelope });
           break;
-        case "envelope.done":
-          dispatch({ type: "UPDATE_ENVELOPE", envelope: event.payload as Envelope });
+        }
+        case "envelope.done": {
+          // envelope.done only provides { id }, not a full envelope – skip update for now
+          // (The envelope list will refresh on next load)
           break;
+        }
         case "agent.pty.output": {
           const pty = event.payload as { name: string; data: string };
           dispatch({ type: "PTY_OUTPUT", agentName: pty.name, data: pty.data });

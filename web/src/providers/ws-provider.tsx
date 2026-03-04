@@ -32,16 +32,30 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const handlersRef = useRef<Set<EventHandler>>(new Set());
   const reconnectAttemptRef = useRef(0);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const disposedRef = useRef(false);
 
   const connect = useCallback(() => {
+    if (disposedRef.current) return;
+
     const token = getAuthToken();
     if (!token) return;
+
+    // Close any existing connection before creating a new one
+    if (wsRef.current) {
+      wsRef.current.onclose = null;
+      wsRef.current.onerror = null;
+      wsRef.current.onmessage = null;
+      wsRef.current.onopen = null;
+      wsRef.current.close();
+      wsRef.current = null;
+    }
 
     setStatus("connecting");
     const ws = new WebSocket(`${WS_BASE}?token=${encodeURIComponent(token)}`);
     wsRef.current = ws;
 
     ws.onopen = () => {
+      if (disposedRef.current) { ws.close(); return; }
       setStatus("connected");
       reconnectAttemptRef.current = 0;
     };
@@ -56,6 +70,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     };
 
     ws.onclose = () => {
+      if (disposedRef.current) return;
       setStatus("disconnected");
       wsRef.current = null;
       // Exponential backoff with jitter
@@ -73,10 +88,17 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    disposedRef.current = false;
     connect();
     return () => {
+      disposedRef.current = true;
       clearTimeout(reconnectTimerRef.current);
-      wsRef.current?.close();
+      if (wsRef.current) {
+        wsRef.current.onclose = null;
+        wsRef.current.onerror = null;
+        wsRef.current.close();
+        wsRef.current = null;
+      }
     };
   }, [connect]);
 
