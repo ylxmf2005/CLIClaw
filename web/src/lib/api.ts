@@ -2,8 +2,8 @@
 
 import type {
   Agent,
-  AgentSession,
   AgentStatus,
+  ChatConversation,
   CronSchedule,
   DaemonStatus,
   Envelope,
@@ -185,6 +185,7 @@ export async function listEnvelopes(params: {
   from?: string;
   status?: string;
   limit?: number;
+  chatId?: string;
   createdAfter?: string;
   createdBefore?: string;
 }): Promise<{ envelopes: Envelope[] }> {
@@ -199,6 +200,56 @@ export async function getThread(
   envelopeId: string
 ): Promise<{ envelopes: Envelope[]; totalCount: number }> {
   return apiFetch(`/api/envelopes/${encodeURIComponent(envelopeId)}/thread`);
+}
+
+// Conversations
+export async function getConversations(
+  agentName: string
+): Promise<{ conversations: ChatConversation[] }> {
+  return apiFetch(`/api/agents/${encodeURIComponent(agentName)}/conversations`);
+}
+
+// Relay
+export async function toggleRelay(
+  agentName: string,
+  chatId: string,
+  on: boolean
+): Promise<{ success: boolean; agentName: string; chatId: string; relayOn: boolean }> {
+  return apiFetch(
+    `/api/agents/${encodeURIComponent(agentName)}/chats/${encodeURIComponent(chatId)}/relay`,
+    { method: "POST", body: JSON.stringify({ relayOn: on }) }
+  );
+}
+
+export async function getRelayState(
+  agentName: string,
+  chatId: string
+): Promise<{ agentName: string; chatId: string; relayOn: boolean }> {
+  return apiFetch(
+    `/api/agents/${encodeURIComponent(agentName)}/chats/${encodeURIComponent(chatId)}/relay`
+  );
+}
+
+// File upload
+export async function uploadFile(
+  file: File
+): Promise<{ path: string }> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const headers: Record<string, string> = {};
+  if (authToken) {
+    headers["Authorization"] = `Bearer ${authToken}`;
+  }
+  const res = await fetch(`${API_BASE}/api/upload`, {
+    method: "POST",
+    headers,
+    body: formData,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new ApiError(res.status, body.error?.message || res.statusText, body);
+  }
+  return res.json();
 }
 
 // Teams
@@ -312,16 +363,4 @@ export async function deleteCronSchedule(
   return apiFetch(`/api/cron/${encodeURIComponent(id)}`, {
     method: "DELETE",
   });
-}
-
-// Sessions
-export async function listSessions(params?: {
-  agentName?: string;
-  limit?: number;
-}): Promise<{ sessions: AgentSession[] }> {
-  const query = new URLSearchParams();
-  if (params?.agentName) query.set("agentName", params.agentName);
-  if (params?.limit) query.set("limit", String(params.limit));
-  const qs = query.toString();
-  return apiFetch(`/api/sessions${qs ? `?${qs}` : ""}`);
 }

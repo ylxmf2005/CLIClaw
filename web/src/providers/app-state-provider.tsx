@@ -11,6 +11,7 @@ import type {
   Agent,
   AgentStatus,
   BottomTab,
+  ChatConversation,
   Envelope,
   Team,
   CronSchedule,
@@ -21,6 +22,7 @@ import type {
   WsEvent,
 } from "@/lib/types";
 import * as api from "@/lib/api";
+import { setBossTimezone } from "@/lib/utils";
 import { useWebSocket } from "./ws-provider";
 
 // ─── State Shape ─────────────────────────────────────────────
@@ -29,9 +31,13 @@ interface AppState {
   agentStatuses: Record<string, AgentStatus["status"]>;
   agentLogLines: Record<string, string>; // agentName -> last log line
   envelopes: Record<string, Envelope[]>; // "agent:name:chatId" -> envelopes
+  conversations: Record<string, ChatConversation[]>; // agentName -> conversations
+  relayStates: Record<string, boolean>; // "agentName:chatId" -> relay on/off
+  ptyOutput: Record<string, string[]>; // agentName -> pty output lines
   teams: Team[];
   cronSchedules: CronSchedule[];
   daemonStatus: DaemonStatus | null;
+  drafts: Record<string, string>; // address -> draft text (ephemeral)
   view: ViewMode;
   activeTab: BottomTab;
   selectedChat: ChatSelection | null;
@@ -45,9 +51,13 @@ const initialState: AppState = {
   agentStatuses: {},
   agentLogLines: {},
   envelopes: {},
+  conversations: {},
+  relayStates: {},
+  ptyOutput: {},
   teams: [],
   cronSchedules: [],
   daemonStatus: null,
+  drafts: {},
   view: "chat",
   activeTab: "chats",
   selectedChat: null,
@@ -73,7 +83,14 @@ type Action =
   | { type: "SELECT_TEAM"; selection: TeamSelection | null }
   | { type: "SET_SPLIT_PANE"; pane: AppState["splitPane"] }
   | { type: "SET_TAB"; tab: BottomTab }
-  | { type: "SET_LOADING"; loading: boolean };
+  | { type: "SET_LOADING"; loading: boolean }
+  | { type: "SET_DRAFT"; key: string; text: string }
+  | { type: "CLEAR_DRAFT"; key: string }
+  | { type: "SET_CONVERSATIONS"; agentName: string; conversations: ChatConversation[] }
+  | { type: "SET_RELAY_STATE"; key: string; relayOn: boolean }
+  | { type: "UPDATE_UNREAD"; agentName: string; chatId: string; delta: number }
+  | { type: "PTY_OUTPUT"; agentName: string; data: string }
+  | { type: "UPDATE_ENVELOPE"; envelope: Envelope };
 
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
@@ -111,15 +128,79 @@ function reducer(state: AppState, action: Action): AppState {
         envelopes: { ...state.envelopes, [action.key]: action.envelopes },
       };
     case "ADD_ENVELOPE": {
-      const key = action.envelope.to;
-      const existing = state.envelopes[key] || [];
-      return {
-        ...state,
-        envelopes: {
-          ...state.envelopes,
-          [key]: [...existing, action.envelope],
-        },
-      };
+      // Route envelope to both sender's and receiver's conversation views
+      const env = action.envelope;
+      const chatId = (env.metadata?.chatScope as string) || "default";
+      const fromAgent = env.from.startsWith("agent:") ? env.from.slice(6).split(":")[0] : null;
+      const toAgent = env.to.startsWith("agent:") ? env.to.slice(6).split(":")[0] : null;
+
+      const newEnvelopes = { ...state.envelopes };
+
+      // Add to receiver's conversation
+      if (toAgent) {
+        const recvKey = `agent:${toAgent}:${chatId}`;
+        const existing = newEnvelopes[recvKey] || [];
+        if (!existing.some((e) => e.id === env.id)) {
+          newEnvelopes[recvKey] = [...existing, env];
+        }
+      }
+
+      // Add to sender's conversation (for cross-agent visibility)
+      if (fromAgent && fromAgent !== toAgent) {
+        const sendKey = `agent:${fromAgent}:${chatId}`;
+        const existing = newEnvelopes[sendKey] || [];
+        if (!existing.some((e) => e.id === env.id)) {
+          newEnvelopes[sendKey] = [...existing, env];
+        }
+      }
+
+      // Also store under the raw to address for backward compat
+      const rawKey = env.to;
+      if (!newEnvelopes[rawKey]) {
+        newEnvelopes[rawKey] = [];
+      }
+      if (!newEnvelopes[rawKey].some((e) => e.id === env.id)) {
+        newEnvelopes[rawKey] = [...newEnvelopes[rawKey], env];
+      }
+
+      // Update conversation preview and unread counts
+      const newConversations = { ...state.conversations };
+      const agentsToUpdate = [toAgent, fromAgent].filter(Boolean) as string[];
+      for (const agentName of agentsToUpdate) {
+        const convos = [...(newConversations[agentName] || [])];
+        const idx = convos.findIndex((c) => c.chatId === chatId);
+        const isSelected =
+          state.selectedChat?.agentName === agentName &&
+          state.selectedChat?.chatId === chatId;
+
+        if (idx >= 0) {
+          convos[idx] = {
+            ...convos[idx],
+            lastMessage: env.content.text?.slice(0, 100),
+            lastMessageAt: env.createdAt,
+            messageCount: (convos[idx].messageCount ?? 0) + 1,
+            unreadCount: isSelected
+              ? convos[idx].unreadCount
+              : (convos[idx].unreadCount ?? 0) + 1,
+          };
+        } else {
+          // New conversation discovered via WS event
+          convos.push({
+            agentName,
+            chatId,
+            lastMessage: env.content.text?.slice(0, 100),
+            lastMessageAt: env.createdAt,
+            messageCount: 1,
+            unreadCount: isSelected ? 0 : 1,
+            createdAt: env.createdAt,
+          });
+        }
+        // Sort by most recent
+        convos.sort((a, b) => (b.lastMessageAt ?? b.createdAt) - (a.lastMessageAt ?? a.createdAt));
+        newConversations[agentName] = convos;
+      }
+
+      return { ...state, envelopes: newEnvelopes, conversations: newConversations };
     }
     case "SET_TEAMS":
       return { ...state, teams: action.teams };
@@ -129,13 +210,27 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, daemonStatus: action.status };
     case "SET_VIEW":
       return { ...state, view: action.view };
-    case "SELECT_CHAT":
+    case "SELECT_CHAT": {
+      // Reset unread count for the selected conversation
+      let updatedConversations = state.conversations;
+      if (action.selection) {
+        const { agentName, chatId } = action.selection;
+        const convos = state.conversations[agentName];
+        if (convos) {
+          const updated = convos.map((c) =>
+            c.chatId === chatId ? { ...c, unreadCount: 0 } : c
+          );
+          updatedConversations = { ...state.conversations, [agentName]: updated };
+        }
+      }
       return {
         ...state,
         view: "chat",
         selectedChat: action.selection,
         selectedTeam: null,
+        conversations: updatedConversations,
       };
+    }
     case "SELECT_TEAM":
       return {
         ...state,
@@ -149,6 +244,61 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, activeTab: action.tab };
     case "SET_LOADING":
       return { ...state, loading: action.loading };
+    case "SET_DRAFT":
+      return {
+        ...state,
+        drafts: { ...state.drafts, [action.key]: action.text },
+      };
+    case "CLEAR_DRAFT": {
+      const { [action.key]: _, ...rest } = state.drafts;
+      return { ...state, drafts: rest };
+    }
+    case "SET_CONVERSATIONS":
+      return {
+        ...state,
+        conversations: {
+          ...state.conversations,
+          [action.agentName]: action.conversations,
+        },
+      };
+    case "SET_RELAY_STATE":
+      return {
+        ...state,
+        relayStates: { ...state.relayStates, [action.key]: action.relayOn },
+      };
+    case "UPDATE_UNREAD": {
+      const convos = state.conversations[action.agentName] || [];
+      return {
+        ...state,
+        conversations: {
+          ...state.conversations,
+          [action.agentName]: convos.map((c) =>
+            c.chatId === action.chatId
+              ? { ...c, unreadCount: (c.unreadCount ?? 0) + action.delta }
+              : c
+          ),
+        },
+      };
+    }
+    case "PTY_OUTPUT": {
+      const existing = state.ptyOutput[action.agentName] || [];
+      return {
+        ...state,
+        ptyOutput: {
+          ...state.ptyOutput,
+          [action.agentName]: [...existing, action.data],
+        },
+      };
+    }
+    case "UPDATE_ENVELOPE": {
+      const updated: Record<string, Envelope[]> = {};
+      for (const [key, envs] of Object.entries(state.envelopes)) {
+        updated[key] = envs.map((e) =>
+          e.id === action.envelope.id ? { ...e, ...action.envelope } : e
+        );
+      }
+      return { ...state, envelopes: updated };
+    }
     default:
       return state;
   }
@@ -162,7 +312,8 @@ interface AppContextValue {
   refreshTeams: () => Promise<void>;
   refreshCron: () => Promise<void>;
   refreshDaemonStatus: () => Promise<void>;
-  loadEnvelopes: (address: string) => Promise<void>;
+  loadEnvelopes: (address: string, chatId?: string) => Promise<void>;
+  loadConversations: (agentName: string) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -217,14 +368,27 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const loadEnvelopes = useCallback(async (address: string) => {
+  const loadEnvelopes = useCallback(
+    async (address: string, chatId?: string) => {
+      try {
+        const { envelopes } = await api.listEnvelopes({
+          to: address,
+          chatId,
+          limit: 50,
+        });
+        const key = chatId ? `${address}:${chatId}` : address;
+        dispatch({ type: "SET_ENVELOPES", key, envelopes });
+      } catch {
+        // silent
+      }
+    },
+    []
+  );
+
+  const loadConversations = useCallback(async (agentName: string) => {
     try {
-      const { envelopes } = await api.listEnvelopes({
-        to: address,
-        status: "done",
-        limit: 50,
-      });
-      dispatch({ type: "SET_ENVELOPES", key: address, envelopes });
+      const { conversations } = await api.getConversations(agentName);
+      dispatch({ type: "SET_CONVERSATIONS", agentName, conversations });
     } catch {
       // silent
     }
@@ -239,6 +403,15 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         refreshCron(),
         refreshDaemonStatus(),
       ]);
+      // Set boss timezone for timestamp display
+      try {
+        const timeInfo = await api.getDaemonTime();
+        if (timeInfo.bossTimezone) {
+          setBossTimezone(timeInfo.bossTimezone);
+        }
+      } catch {
+        // Fall back to browser timezone
+      }
       dispatch({ type: "SET_LOADING", loading: false });
     }
     init();
@@ -270,6 +443,14 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         case "envelope.new":
           dispatch({ type: "ADD_ENVELOPE", envelope: event.payload as Envelope });
           break;
+        case "envelope.done":
+          dispatch({ type: "UPDATE_ENVELOPE", envelope: event.payload as Envelope });
+          break;
+        case "agent.pty.output": {
+          const pty = event.payload as { name: string; data: string };
+          dispatch({ type: "PTY_OUTPUT", agentName: pty.name, data: pty.data });
+          break;
+        }
         default:
           break;
       }
@@ -286,6 +467,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         refreshCron,
         refreshDaemonStatus,
         loadEnvelopes,
+        loadConversations,
       }}
     >
       {children}
