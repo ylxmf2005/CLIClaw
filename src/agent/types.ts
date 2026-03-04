@@ -22,6 +22,7 @@ export interface Agent {
   reasoningEffort?: 'none' | 'low' | 'medium' | 'high' | 'xhigh';
   permissionLevel?: AgentPermissionLevel;   // authorization level for CLI/RPC ops
   sessionPolicy?: SessionPolicyConfig;      // session refresh policy
+  relayMode?: 'default-on' | 'default-off'; // relay mode default for new chats
   createdAt: number;       // unix epoch ms (UTC)
   lastSeenAt?: number;     // unix epoch ms (UTC)
   metadata?: Record<string, unknown>;       // extensible metadata (for future use)

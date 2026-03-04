@@ -7,6 +7,7 @@ import {
   DEFAULT_SESSION_CONCURRENCY_GLOBAL,
   DEFAULT_SESSION_CONCURRENCY_PER_AGENT,
   DEFAULT_TELEGRAM_COMMAND_REPLY_AUTO_DELETE_SECONDS,
+  DEFAULT_TELEGRAM_INBOUND_INTERRUPT_WINDOW_SECONDS,
   DEFAULT_SETUP_PERMISSION_LEVEL,
 } from "./defaults.js";
 import {
@@ -31,6 +32,7 @@ export type SettingsProvider = "claude" | "codex";
 export type SettingsReasoningEffort = "none" | "low" | "medium" | "high" | "xhigh";
 const AGENT_TOKEN_REGEX = /^[0-9a-f]{32}$/;
 const TELEGRAM_COMMAND_REPLY_AUTO_DELETE_SECONDS_RANGE = { min: 0, max: 86_400 } as const;
+const TELEGRAM_INBOUND_INTERRUPT_WINDOW_SECONDS_RANGE = { min: 0, max: 60 } as const;
 
 export interface SettingsBinding {
   adapterType: string;
@@ -53,6 +55,7 @@ export interface SettingsAgent {
   reasoningEffort: SettingsReasoningEffort | null;
   permissionLevel: "restricted" | "standard" | "privileged" | "admin";
   sessionPolicy?: SettingsSessionPolicy;
+  relayMode?: "default-on" | "default-off";
   metadata?: Record<string, unknown>;
   bindings: SettingsBinding[];
 }
@@ -69,6 +72,7 @@ export interface SettingsRuntime {
   };
   telegram?: {
     commandReplyAutoDeleteSeconds?: number;
+    inboundInterruptWindowSeconds?: number;
   };
   deployment?: {
     mode: "pm2";
@@ -234,6 +238,7 @@ function parseRuntime(raw: unknown): SettingsRuntime {
       },
       telegram: {
         commandReplyAutoDeleteSeconds: DEFAULT_TELEGRAM_COMMAND_REPLY_AUTO_DELETE_SECONDS,
+        inboundInterruptWindowSeconds: DEFAULT_TELEGRAM_INBOUND_INTERRUPT_WINDOW_SECONDS,
       },
     };
   }
@@ -297,6 +302,14 @@ function parseRuntime(raw: unknown): SettingsRuntime {
     DEFAULT_TELEGRAM_COMMAND_REPLY_AUTO_DELETE_SECONDS,
     TELEGRAM_COMMAND_REPLY_AUTO_DELETE_SECONDS_RANGE,
   );
+  const inboundInterruptWindowSeconds = parseIntInRange(
+    telegramRaw
+      ? telegramRaw["inbound-interrupt-window-seconds"] ?? telegramRaw.inboundInterruptWindowSeconds
+      : undefined,
+    "runtime.telegram.inbound-interrupt-window-seconds",
+    DEFAULT_TELEGRAM_INBOUND_INTERRUPT_WINDOW_SECONDS,
+    TELEGRAM_INBOUND_INTERRUPT_WINDOW_SECONDS_RANGE,
+  );
 
   const deploymentRaw = raw.deployment;
   let deployment: SettingsRuntime["deployment"];
@@ -339,6 +352,7 @@ function parseRuntime(raw: unknown): SettingsRuntime {
     },
     telegram: {
       commandReplyAutoDeleteSeconds,
+      inboundInterruptWindowSeconds,
     },
     ...(deployment ? { deployment } : {}),
   };
@@ -492,6 +506,16 @@ function parseAgent(raw: unknown, index: number): SettingsAgent {
     fail(`agents[${index}].metadata`, "must be an object");
   }
 
+  const relayModeRaw = raw["relay-mode"];
+  let relayMode: "default-on" | "default-off" | undefined;
+  if (relayModeRaw === undefined || relayModeRaw === null) {
+    relayMode = undefined;
+  } else if (relayModeRaw === "default-on" || relayModeRaw === "default-off") {
+    relayMode = relayModeRaw;
+  } else {
+    fail(`agents[${index}].relay-mode`, "must be default-on|default-off|null");
+  }
+
   const sessionPolicy = parseSessionPolicy(raw["session-policy"], name);
   const bindings = parseBindings(raw.bindings, name);
 
@@ -505,6 +529,7 @@ function parseAgent(raw: unknown, index: number): SettingsAgent {
     reasoningEffort,
     permissionLevel,
     sessionPolicy,
+    relayMode,
     metadata: metadataRaw,
     bindings,
   };
@@ -563,6 +588,19 @@ export function assertValidSettings(settings: Settings): void {
     fail(
       "runtime.telegram.command-reply-auto-delete-seconds",
       `must be between ${TELEGRAM_COMMAND_REPLY_AUTO_DELETE_SECONDS_RANGE.min} and ${TELEGRAM_COMMAND_REPLY_AUTO_DELETE_SECONDS_RANGE.max}`,
+    );
+  }
+  const inboundInterruptWindowSeconds =
+    settings.runtime?.telegram?.inboundInterruptWindowSeconds ??
+    DEFAULT_TELEGRAM_INBOUND_INTERRUPT_WINDOW_SECONDS;
+  if (
+    !Number.isFinite(inboundInterruptWindowSeconds) ||
+    Math.trunc(inboundInterruptWindowSeconds) < TELEGRAM_INBOUND_INTERRUPT_WINDOW_SECONDS_RANGE.min ||
+    Math.trunc(inboundInterruptWindowSeconds) > TELEGRAM_INBOUND_INTERRUPT_WINDOW_SECONDS_RANGE.max
+  ) {
+    fail(
+      "runtime.telegram.inbound-interrupt-window-seconds",
+      `must be between ${TELEGRAM_INBOUND_INTERRUPT_WINDOW_SECONDS_RANGE.min} and ${TELEGRAM_INBOUND_INTERRUPT_WINDOW_SECONDS_RANGE.max}`,
     );
   }
   const deploymentMode = settings.runtime?.deployment?.mode;
@@ -685,6 +723,9 @@ export function stringifySettings(settings: Settings): string {
         "command-reply-auto-delete-seconds":
           settings.runtime?.telegram?.commandReplyAutoDeleteSeconds ??
           DEFAULT_TELEGRAM_COMMAND_REPLY_AUTO_DELETE_SECONDS,
+        "inbound-interrupt-window-seconds":
+          settings.runtime?.telegram?.inboundInterruptWindowSeconds ??
+          DEFAULT_TELEGRAM_INBOUND_INTERRUPT_WINDOW_SECONDS,
       },
       ...(settings.runtime?.deployment
         ? {
@@ -727,6 +768,7 @@ export function stringifySettings(settings: Settings): string {
             },
           }
         : {}),
+      ...(agent.relayMode ? { "relay-mode": agent.relayMode } : {}),
       ...(agent.metadata ? { metadata: agent.metadata } : {}),
       bindings: agent.bindings.map((binding) => ({
         "adapter-type": binding.adapterType,

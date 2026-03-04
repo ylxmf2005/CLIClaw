@@ -64,6 +64,7 @@ export function createAgentHandlers(ctx: DaemonContext): RpcMethodRegistry {
           reasoningEffort: a.reasoningEffort,
           permissionLevel: a.permissionLevel,
           sessionPolicy: a.sessionPolicy,
+          relayMode: a.relayMode,
           createdAt: a.createdAt,
           lastSeenAt: a.lastSeenAt,
           metadata: a.metadata,
@@ -116,6 +117,7 @@ export function createAgentHandlers(ctx: DaemonContext): RpcMethodRegistry {
           ...(agent.reasoningEffort ? { reasoningEffort: agent.reasoningEffort } : {}),
           ...(agent.permissionLevel ? { permissionLevel: agent.permissionLevel } : {}),
           ...(agent.sessionPolicy ? { sessionPolicy: agent.sessionPolicy } : {}),
+          ...(agent.relayMode ? { relayMode: agent.relayMode } : {}),
         },
         bindings,
         effective: {

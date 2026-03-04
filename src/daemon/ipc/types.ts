@@ -99,25 +99,6 @@ export interface EnvelopeThreadResult {
   envelopes: Envelope[];
 }
 
-export interface SessionListParams {
-  token: string;
-  agentName?: string;
-  limit?: number;
-}
-
-export interface SessionListResult {
-  sessions: Array<{
-    id: string;
-    agentName: string;
-    provider: "claude" | "codex";
-    providerSessionId?: string;
-    createdAt: number;
-    lastActiveAt: number;
-    lastAdapterType?: string;
-    lastChatId?: string;
-  }>;
-}
-
 export interface CronCreateParams {
   token: string;
   cron: string;
@@ -245,6 +226,7 @@ export interface AgentStatusResult {
       idleTimeout?: string;
       maxContextLength?: number;
     };
+    relayMode?: "default-on" | "default-off";
   };
   bindings: string[];
   effective: {
@@ -294,6 +276,7 @@ export interface AgentSetParams {
     idleTimeout?: string;
     maxContextLength?: number;
   } | null;
+  relayMode?: "default-on" | "default-off" | null;
   metadata?: Record<string, unknown> | null;
   bindAdapterType?: string;
   bindAdapterToken?: string;
@@ -488,4 +471,41 @@ export interface AdminVerifyParams {
 
 export interface AdminVerifyResult {
   valid: boolean;
+}
+
+// ==================== Session Parameters ====================
+
+export interface SessionListParams {
+  token: string;
+  agentName: string;
+  limit?: number;
+}
+
+export interface SessionListResult {
+  sessions: Array<{
+    id: string;
+    agentName: string;
+    provider: "claude" | "codex";
+    providerSessionId?: string;
+    createdAt: number;
+    lastActiveAt: number;
+    lastAdapterType?: string;
+    lastChatId?: string;
+  }>;
+}
+
+// ==================== Chat State Parameters ====================
+
+export interface ChatRelayToggleParams {
+  token: string;
+  agentName: string;
+  chatId: string;
+  relayOn: boolean;
+}
+
+export interface ChatRelayToggleResult {
+  success: boolean;
+  agentName: string;
+  chatId: string;
+  relayOn: boolean;
 }
