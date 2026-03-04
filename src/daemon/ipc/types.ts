@@ -83,6 +83,7 @@ export interface EnvelopeListParams {
   limit?: number;
   createdAfter?: string;
   createdBefore?: string;
+  chatId?: string;
 }
 
 export interface EnvelopeThreadParams {

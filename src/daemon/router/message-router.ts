@@ -118,7 +118,7 @@ export class MessageRouter {
       });
     }
 
-    if (destination.type === "agent") {
+    if (destination.type === "agent" || destination.type === "agent-chat" || destination.type === "agent-new-chat") {
       await this.deliverToAgent(envelope, destination.agentName);
     } else if (destination.type === "channel") {
       await this.deliverToChannel(envelope, destination.adapter, destination.chatId);

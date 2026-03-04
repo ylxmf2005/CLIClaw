@@ -123,8 +123,15 @@ export function createEnvelopeHandlers(ctx: DaemonContext): RpcMethodRegistry {
       }
 
       // Support prefix matching for admin queries (e.g., "agent:nex:%" or exact "agent:nex:chat123")
+      // When chatId is provided, construct the full address filter
+      let toFilter = rawTo;
+      const rawChatId = typeof p.chatId === "string" ? p.chatId.trim() : "";
+      if (rawChatId && !rawTo.includes(":") || (rawTo.startsWith("agent:") && rawTo.split(":").length === 2)) {
+        // e.g., to="agent:nex" + chatId="abc" → filter "agent:nex:abc"
+        toFilter = `${rawTo}:${rawChatId}`;
+      }
       const envelopes = ctx.db.listEnvelopesByToFilter({
-        toFilter: rawTo,
+        toFilter,
         status: p.status,
         limit,
         createdAfter,

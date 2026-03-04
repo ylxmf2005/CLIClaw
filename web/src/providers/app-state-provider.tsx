@@ -131,8 +131,8 @@ function reducer(state: AppState, action: Action): AppState {
       // Route envelope to both sender's and receiver's conversation views
       const env = action.envelope;
       const chatId = (env.metadata?.chatScope as string) || "default";
-      const fromAgent = env.from.startsWith("agent:") ? env.from.slice(6).split(":")[0] : null;
-      const toAgent = env.to.startsWith("agent:") ? env.to.slice(6).split(":")[0] : null;
+      const fromAgent = env.from?.startsWith("agent:") ? env.from.slice(6).split(":")[0] : null;
+      const toAgent = env.to?.startsWith("agent:") ? env.to.slice(6).split(":")[0] : null;
 
       const newEnvelopes = { ...state.envelopes };
 
@@ -374,6 +374,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         const { envelopes } = await api.listEnvelopes({
           to: address,
           chatId,
+          status: "done",
           limit: 50,
         });
         const key = chatId ? `${address}:${chatId}` : address;
