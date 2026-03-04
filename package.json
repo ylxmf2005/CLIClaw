@@ -1,0 +1,54 @@
+{
+  "name": "hiboss",
+  "version": "2026.2.12",
+  "type": "module",
+  "description": "Local-first daemon + CLI for routing durable envelopes between agents and chat channels (e.g., Telegram).",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "bin": {
+    "hiboss": "dist/bin/hiboss.js"
+  },
+  "files": [
+    "dist/",
+    "prompts/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "dev": "tsx watch src/daemon-entry.ts",
+    "start": "tsx src/daemon-entry.ts",
+    "build": "tsc",
+    "postbuild": "chmod +x dist/bin/hiboss.js",
+    "prepack": "npm run build",
+    "typecheck": "tsc --noEmit",
+    "hiboss": "tsx bin/hiboss.ts",
+    "examples:cli": "tsx scripts/gen-cli-examples.ts",
+    "examples:prompts": "tsx scripts/gen-prompt-examples.ts",
+    "version:suggest": "tsx scripts/suggest-version.ts",
+    "defaults:check": "tsx scripts/check-defaults.ts",
+    "verify:token-usage:real": "tsx scripts/verify-token-usage-real.ts",
+    "prompts:check": "tsx scripts/validate-prompts.ts",
+    "inventory:magic": "tsx scripts/magic-inventory.ts --out docs/spec/generated/magic-inventory.md"
+  },
+  "dependencies": {
+    "@inquirer/prompts": "^7.0.0",
+    "@types/proper-lockfile": "^4.1.4",
+    "better-sqlite3": "^11.7.0",
+    "commander": "^13.0.0",
+    "cron-parser": "^5.5.0",
+    "dotenv": "^16.4.5",
+    "https-proxy-agent": "^7.0.6",
+    "nunjucks": "^3.2.4",
+    "proper-lockfile": "^4.1.2",
+    "telegraf": "^4.16.3"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.10.0",
+    "@types/nunjucks": "^3.2.6",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

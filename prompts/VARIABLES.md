@@ -1,0 +1,132 @@
+# Template Variables
+
+This document lists the context variables available to templates under `prompts/`.
+
+Notes:
+- Template language is **Nunjucks** (Jinja-like).
+- Most “optional” fields are provided as empty strings or empty arrays/objects, so templates can safely do `{% if ... %}` checks.
+- `auth.agentToken` is sensitive; prefer `hiboss.tokenEnvVar` guidance instead of printing the token.
+
+---
+
+## System Instructions (`prompts/system/base.md`)
+
+| Variable | Type | Meaning |
+|---------|------|---------|
+| `hiboss.dir` | string | Hi-Boss state directory (default `~/hiboss`) |
+| `hiboss.tokenEnvVar` | string | Environment variable name for the agent token (`HIBOSS_TOKEN`) |
+| `hiboss.additionalContext` | string | Optional extra context appended by code (usually empty) |
+| `internalSpace.note` | string | Snapshot of `{{hiboss.dir}}/agents/{{agent.name}}/internal_space/MEMORY.md` (or empty) |
+| `internalSpace.noteFence` | string | Markdown code fence delimiter for `internalSpace.note` (e.g., ``` or ````) |
+| `internalSpace.error` | string | Internal space snapshot error message (or empty) |
+| `internalSpace.daily` | string | Snapshot of recent `{{hiboss.dir}}/agents/{{agent.name}}/internal_space/memories/YYYY-MM-DD.md` files (or empty) |
+| `internalSpace.dailyFence` | string | Markdown code fence delimiter for `internalSpace.daily` (e.g., ``` or ````) |
+| `internalSpace.dailyError` | string | Daily memory snapshot error message (or empty) |
+| `internalSpace.sessionSummaries` | string | Snapshot of recent session summaries from `{{hiboss.dir}}/agents/{{agent.name}}/internal_space/history/**/<session-id>.md` (or empty) |
+| `internalSpace.sessionSummariesFence` | string | Markdown code fence delimiter for `internalSpace.sessionSummaries` (e.g., ``` or ````) |
+| `internalSpace.sessionSummariesError` | string | Session summary snapshot error message (or empty) |
+| `internalSpace.longtermMaxChars` | number | Truncation limit (chars) for injected `internal_space/MEMORY.md` snapshot |
+| `internalSpace.dailyRecentFiles` | number | How many recent daily memory files are injected (newest-first by filename) |
+| `internalSpace.dailyPerFileMaxChars` | number | Truncation limit (chars) per injected daily file |
+| `internalSpace.dailyMaxChars` | number | Truncation limit (chars) for the combined injected daily snapshot |
+| `internalSpace.sessionSummaryRecentDays` | number | How many recent history date directories are scanned for summary injection |
+| `internalSpace.sessionSummaryPerSessionMaxChars` | number | Truncation limit (chars) per injected session summary item |
+| `environment.time` | string | Current time formatted in boss timezone offset (ISO 8601) |
+| `environment.bossTimezone` | string | Boss timezone (IANA) used for displayed timestamps |
+| `environment.daemonTimezone` | string | Daemon host timezone (IANA) used by shell commands |
+| `boss.name` | string | Boss name (how agent should address the user, or empty) |
+| `boss.adapterIds` | object | Boss identity per adapter type (e.g. `{ telegram: "kevin" }`, or `{}`) |
+| `agent.name` | string | Agent name |
+| `agent.description` | string | Agent description (or empty) |
+| `agent.workspace` | string | Effective workspace directory used for the run (active teamspace if member of an active team, otherwise agent workspace or runtime default) |
+| `agent.workspaceConfigured` | string | Agent's configured personal workspace (`agent.workspace` setting) or empty |
+| `agent.teamWorkspaces` | array | Active team workspace directories for this agent |
+| `agent.allWorkspaces` | array | All available workspaces for the run (effective + configured + active team workspaces; deduplicated) |
+| `agent.provider` | string | `claude` or `codex` |
+| `agent.model` | string | Model id/alias (or empty) |
+| `agent.reasoningEffort` | string | one of: `none`, `low`, `medium`, `high`, `xhigh` (or empty) |
+| `agent.permissionLevel` | string | one of: `restricted`, `standard`, `privileged`, `admin` (or empty) |
+| `agent.sessionPolicy.dailyResetAt` | string | Daily reset time in `HH:MM` format (or empty) |
+| `agent.sessionPolicy.idleTimeout` | string | Idle timeout duration like `2h`, `30m` (or empty) |
+| `agent.sessionPolicy.maxContextLength` | number | Max context length before session refresh (or `0`) |
+| `agent.createdAt` | string | ISO 8601 |
+| `agent.lastSeenAt` | string | ISO 8601 (or empty) |
+| `agent.metadata` | object | Agent metadata JSON blob (or `{}`) |
+| `auth.agentToken` | string | Agent token (sensitive; avoid printing) |
+| `bindings` | array | Adapter bindings (no secrets) |
+| `bindings[].adapterType` | string | Adapter type (e.g. `telegram`) |
+| `bindings[].createdAt` | string | ISO 8601 |
+| `teams` | array | Active team memberships for this agent (may be empty) |
+| `teams[].name` | string | Team name |
+| `teams[].members` | array | Team member agent names |
+| `teams[].teamspaceDir` | string | Team shared workspace directory (`{{hiboss.dir}}/teamspaces/<team-name>/`) |
+| `workspace.dir` | string | Effective workspace directory (same as `agent.workspace`) |
+| `workspace.configuredDir` | string | Agent's configured personal workspace (or empty) |
+| `workspace.teamDirs` | array | Active team workspace directories |
+| `workspace.allDirs` | array | All available workspaces for the run (deduplicated) |
+
+---
+
+## Turn Input (`prompts/turn/turn.md`)
+
+| Variable | Type | Meaning |
+|---------|------|---------|
+| `turn.datetimeIso` | string | Current turn time formatted in boss timezone offset (ISO 8601) |
+| `turn.agentName` | string | Agent name |
+| `envelopes` | array | Pending envelopes for this run |
+| `envelopes[].index` | number | 1-based index |
+| `envelopes[].id` | string | Envelope id |
+| `envelopes[].idShort` | string | Envelope id (short id; first 8 hex chars of the UUID with hyphens removed) |
+| `envelopes[].from` | string | Sender address |
+| `envelopes[].fromName` | string | Human-readable name: `group "<name>"` for group messages, or sender name with optional `[boss]` suffix for direct messages (or empty) |
+| `envelopes[].inReplyTo` | object | Present only when the channel message is a reply (or empty) |
+| `envelopes[].inReplyTo.fromName` | string | Replied-to sender display name (or empty) |
+| `envelopes[].inReplyTo.text` | string | Replied-to text excerpt (or `(none)`) |
+| `envelopes[].fromBoss` | boolean | Boss flag |
+| `envelopes[].isGroup` | boolean | Whether message is from a group chat |
+| `envelopes[].isStartCommand` | boolean | Whether text begins with `/start` (Telegram-style start command) |
+| `envelopes[].groupName` | string | Group name (or empty for direct/agent messages) |
+| `envelopes[].authorName` | string | Sender display name without boss marker (or empty) |
+| `envelopes[].authorLine` | string | Sender with `[boss]` suffix for group messages (or empty) |
+| `envelopes[].senderLine` | string | Sender line for channel messages (e.g. `Alice (@alice) in group "hiboss-test"` or `Alice (@alice) in private chat`) (or empty) |
+| `envelopes[].createdAt.iso` | string | Created-at formatted in boss timezone offset (ISO 8601) |
+| `envelopes[].deliverAt.present` | boolean | Whether deliver-at is present |
+| `envelopes[].deliverAt.iso` | string | Deliver-at formatted in boss timezone offset (ISO 8601) (or empty) |
+| `envelopes[].cronId` | string | Cron schedule id (short id) if this envelope was created by a cron schedule (or empty) |
+| `envelopes[].chatScope` | string | Agent chat id/session scope for agent-origin routing (or empty) |
+| `envelopes[].content.text` | string | Text content (or `(none)`) |
+| `envelopes[].content.attachments` | array | Attachment objects |
+| `envelopes[].content.attachments[].type` | string | one of: `image`, `video`, `audio`, `file` |
+| `envelopes[].content.attachments[].source` | string | Source path/URL |
+| `envelopes[].content.attachments[].filename` | string | Filename (or empty) |
+| `envelopes[].content.attachments[].displayName` | string | Display name (or empty) |
+| `envelopes[].content.attachmentsText` | string | Pre-rendered attachment list (or `(none)`) |
+
+---
+
+## CLI Envelope Instructions (`prompts/envelope/instruction.md`)
+
+| Variable | Type | Meaning |
+|---------|------|---------|
+| `envelope.id` | string | Envelope id |
+| `envelope.idShort` | string | Envelope id (short id; first 8 hex chars of the UUID with hyphens removed) |
+| `envelope.from` | string | Sender address |
+| `envelope.to` | string | Destination address |
+| `envelope.fromName` | string | Human-readable name: `group "<name>"` for group messages, or sender name with optional `[boss]` suffix for direct messages (or empty) |
+| `envelope.inReplyTo` | object | Present only when the channel message is a reply (or empty) |
+| `envelope.inReplyTo.fromName` | string | Replied-to sender display name (or empty) |
+| `envelope.inReplyTo.text` | string | Replied-to text excerpt (or `(none)`) |
+| `envelope.fromBoss` | boolean | Boss flag |
+| `envelope.isGroup` | boolean | Whether message is from a group chat |
+| `envelope.groupName` | string | Group name (or empty for direct/agent messages) |
+| `envelope.authorName` | string | Sender display name without boss marker (or empty) |
+| `envelope.authorLine` | string | Sender with `[boss]` suffix for group messages (or empty) |
+| `envelope.senderLine` | string | Sender line for channel messages (e.g. `Alice (@alice) in group "hiboss-test"` or `Alice (@alice) in private chat`) (or empty) |
+| `envelope.createdAt.iso` | string | Created-at formatted in boss timezone offset (ISO 8601) |
+| `envelope.deliverAt.present` | boolean | Whether deliver-at is present |
+| `envelope.deliverAt.iso` | string | Deliver-at formatted in boss timezone offset (ISO 8601) (or empty) |
+| `envelope.cronId` | string | Cron schedule id (short id) if this envelope was created by a cron schedule (or empty) |
+| `envelope.content.text` | string | Text content (or `(none)`) |
+| `envelope.content.attachments` | array | Attachment objects |
+| `envelope.content.attachmentsText` | string | Pre-rendered attachment list (or `(none)`) |
+| `envelope.metadata` | object | Raw metadata JSON blob (or `{}`) |

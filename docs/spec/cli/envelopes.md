@@ -1,0 +1,130 @@
+# CLI: Envelopes
+
+This document specifies `hiboss envelope ...`.
+
+See also:
+- `docs/spec/envelope.md` (envelope semantics and lifecycle)
+- `docs/spec/definitions.md` (canonical output keys for instructions)
+- `docs/spec/cli/reactions.md` (reacting to channel messages)
+
+## `hiboss envelope send`
+
+Sends an envelope to an agent or channel.
+
+Flags:
+- `--to <address>` (required)
+  - `agent:<name>:new` (create a fresh agent private chat context)
+  - `agent:<name>:<chat-id>` (send into an existing agent chat context)
+  - `team:<name>` (broadcast fan-out)
+  - `team:<name>:<agent>` (single target in team chat scope)
+  - `channel:<adapter>:<chat-id>`
+- `--text <text>` or `--text -` (stdin) or `--text-file <path>`
+- `--attachment <path>` (repeatable)
+- `--reply-to <envelope-id>` (optional; adds thread context for agent↔agent envelopes; for channel destinations, also replies/quotes the referenced channel envelope when possible)
+- `--interrupt-now` (optional; only for single-agent destinations: `to=agent:<name>:new`, `to=agent:<name>:<chat-id>`, or `to=team:<name>:<agent>`; immediately interrupts current work and prioritizes this envelope)
+- `--parse-mode <mode>` (optional; channel destinations only; `plain|markdownv2|html`)
+- `--deliver-at <time>` (ISO 8601 or relative: `+2h`, `+30m`, `+1Y2M`, `-15m`; units: `Y/M/D/h/m/s`)
+
+Notes:
+- Sender identity is derived from the authenticated **agent token**.
+- Admin tokens cannot send envelopes via `hiboss envelope send`; to message an agent as a human/boss, send via a channel adapter (e.g., Telegram).
+- Sending to `agent:<name>:new` / `agent:<name>:<chat-id>` fails fast if the target agent does not exist (`NOT_FOUND`) or the address is invalid (`INVALID_PARAMS`).
+- Bare `agent:<name>` is rejected for `envelope.send`; use `agent:<name>:new` or `agent:<name>:<chat-id>`.
+- Sending to `team:<name>` fans out one envelope per team member (sender excluded).
+- Sending to `team:<name>:<agent>` validates team membership and sends one envelope.
+- `--interrupt-now` is only supported for single-agent destinations (`agent:<name>:new`, `agent:<name>:<chat-id>`, and `team:<name>:<agent>`).
+- `--interrupt-now` and `--deliver-at` are mutually exclusive.
+- `team:<name>` broadcast rejects `--interrupt-now`.
+- Cron schedules cannot use team destinations (enforced by `cron.create`).
+
+Output (parseable):
+
+Single-envelope success output:
+
+```text
+id: <envelope-id>  # short id
+```
+
+Team broadcast success output:
+
+```text
+id: <envelope-id-1>  # short id
+id: <envelope-id-2>  # short id
+...
+```
+
+Team broadcast with only sender in team:
+
+```text
+no-recipients: true
+```
+
+When `--interrupt-now` is used:
+
+```text
+id: <envelope-id>  # short id
+interrupt-now: true
+interrupted-work: true|false
+priority-applied: true
+```
+
+Default permission:
+- `restricted`
+
+## `hiboss envelope thread`
+
+Prints the envelope chain from a target envelope up to its root (following `metadata.replyToEnvelopeId`).
+
+Flags:
+- `--envelope-id <id>` (required; short id, longer prefix, or full UUID)
+- `--token <token>` (optional; defaults to `HIBOSS_TOKEN`)
+
+Output (parseable):
+- `thread-max-depth: 20`
+- `thread-total-count: <n>` (full chain length, including the root envelope)
+- `thread-returned-count: <n>` (how many envelope blocks are printed)
+- `thread-truncated: true|false`
+- `thread-truncated-intermediate-count: <n>` (only when truncated)
+- If `thread-returned-count > 0`, prints a blank line, then repeated envelope instruction blocks (same shape as `hiboss envelope list`), separated by a blank line.
+- Thread output suppresses `in-reply-to-from-name:` and `in-reply-to-text:` fields (the chain ordering already provides this context).
+- If truncated, prints a single marker line between the blocks:
+  - `...<n intermediate envelopes truncated>...`
+
+Default permission:
+- `restricted`
+
+## `hiboss envelope list`
+
+Lists envelopes relevant to the authenticated agent.
+
+Empty output:
+
+```text
+no-envelopes: true
+```
+
+Rendering (default):
+- Prints one envelope instruction per envelope, separated by a blank line.
+- Each envelope is formatted by `formatEnvelopeInstruction()` using `prompts/envelope/instruction.md`.
+
+Notes:
+- Envelopes are marked `done` automatically by the daemon after successful delivery (channels) or immediately after being read for an agent run (agents, at-most-once).
+- `hiboss envelope list` only lists envelopes where the authenticated agent is either the sender (`from: agent:<name>`) or the recipient (`to: agent:<name>`).
+- Listing with `--from <address> --status pending` is treated as a work-queue read: the daemon returns **due** pending envelopes and immediately acknowledges what it returns (marks them `done`, at-most-once) so they won’t be reprocessed.
+- Envelope instructions do not include a `status:` field; agents should rely on the `--status` flag they requested.
+- Admin tokens cannot list envelopes (use an agent token).
+
+Flags:
+- Exactly one of:
+  - `--to <address>`: list envelopes sent **by this agent** to `<address>`
+  - `--from <address>`: list envelopes sent **to this agent** from `<address>`
+- `--status <pending|done>` (required)
+- `--created-after <time>` (optional; filter `created-at >= time`; ISO 8601 or relative `+2h`, `+30m`, `+1Y2M`, `-15m`; units: `Y/M/D/h/m/s`)
+- `--created-before <time>` (optional; filter `created-at <= time`; same format as `--created-after`)
+- `-n, --limit <n>` (default: `10`, max: `50`)
+
+Validation:
+- If both date filters are present, `created-after` must be less than or equal to `created-before`.
+
+Default permission:
+- `restricted`

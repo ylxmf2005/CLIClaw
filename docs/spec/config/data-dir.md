@@ -1,0 +1,29 @@
+# Config: Data Directory Layout
+
+Default root:
+- `~/hiboss/` (override via `HIBOSS_DIR`)
+
+Operator-visible files:
+- `{{HIBOSS_DIR}}/media/` — downloaded attachments (e.g., Telegram)
+- `{{HIBOSS_DIR}}/teamspaces/<team-name>/` — shared team workspace directory
+- `{{HIBOSS_DIR}}/agents/<agent-name>/internal_space/MEMORY.md` — per-agent memory file injected into system instructions (may be truncated)
+- `{{HIBOSS_DIR}}/agents/<agent-name>/internal_space/memories/` — per-agent daily memory files (`YYYY-MM-DD.md`)
+- `{{HIBOSS_DIR}}/agents/<agent-name>/internal_space/history/YYYY-MM-DD/<chat-id>/<session-id>.json` — per-session history files (event-based; version `"v0.0.0"`)
+- `{{HIBOSS_DIR}}/agents/<agent-name>/internal_space/history/YYYY-MM-DD/<chat-id>/<session-id>.events.ndjson` — append-only per-session event journal (crash-safe write path)
+- `{{HIBOSS_DIR}}/agents/<agent-name>/internal_space/history/YYYY-MM-DD/<chat-id>/<session-id>.md` — per-session conversation markdown (`from/to/content`) + frontmatter (`summary`, status)
+
+Internal daemon files (do not touch):
+- `{{HIBOSS_DIR}}/.daemon/hiboss.db` — SQLite DB (durable queue + audit)
+- `{{HIBOSS_DIR}}/.daemon/daemon.sock` — IPC socket
+- `{{HIBOSS_DIR}}/.daemon/daemon.lock` — single-instance lock
+- `{{HIBOSS_DIR}}/.daemon/daemon.pid` — PID (informational)
+- `{{HIBOSS_DIR}}/.daemon/daemon.log` — current daemon log
+- `{{HIBOSS_DIR}}/.daemon/log_history/` — archived daemon logs
+
+Note: there is no `--data-dir` flag; use `HIBOSS_DIR`.
+
+Provider CLI homes are not part of the Hi-Boss data directory:
+- Claude: `~/.claude`
+- Codex: `~/.codex`
+
+Provider-home behavior (including cleared override env vars and optional per-agent overrides) is canonical in `docs/spec/provider-clis.md#provider-homes-shared-defaults-agent-overrides-optional`.

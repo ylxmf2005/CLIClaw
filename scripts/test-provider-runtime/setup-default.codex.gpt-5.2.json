@@ -1,0 +1,50 @@
+{
+  "version": "v0.0.0",
+  "boss": {
+    "name": "Kevin",
+    "timezone": "Asia/Shanghai"
+  },
+  "admin": {
+    "token": "REPLACE_ME_ADMIN_TOKEN"
+  },
+  "telegram": {
+    "boss-ids": ["kky1024"]
+  },
+  "permission-policy": {
+    "version": "v0.0.0",
+    "operations": {
+      "envelope.send": "restricted",
+      "envelope.list": "restricted",
+      "agent.register": "admin"
+    }
+  },
+  "agents": [
+    {
+      "name": "test-codex",
+      "token": "REPLACE_ME_TEST_CODEX_TOKEN",
+      "provider": "codex",
+      "description": "test-codex (codex/gpt-5.2)",
+      "workspace": "REPLACE_ME_WORKSPACE_PATH",
+      "model": "gpt-5.2",
+      "reasoning-effort": "medium",
+      "permission-level": "standard",
+      "bindings": [
+        {
+          "adapter-type": "telegram",
+          "adapter-token": "123456789:REPLACE_ME_WITH_REAL_TELEGRAM_BOT_TOKEN"
+        }
+      ]
+    },
+    {
+      "name": "test-helper",
+      "token": "REPLACE_ME_TEST_HELPER_TOKEN",
+      "provider": "codex",
+      "description": "helper agent for provider runtime validation",
+      "workspace": "REPLACE_ME_WORKSPACE_PATH",
+      "model": null,
+      "reasoning-effort": null,
+      "permission-level": "standard",
+      "bindings": []
+    }
+  ]
+}

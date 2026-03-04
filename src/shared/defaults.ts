@@ -1,0 +1,132 @@
+import * as os from "os";
+import * as path from "path";
+import type { PermissionPolicy } from "./permissions.js";
+import type { UserPermissionPolicy } from "./user-permissions.js";
+
+// ==================== Hi-Boss Paths ====================
+
+export const DEFAULT_HIBOSS_DIRNAME = "hiboss";
+export const DEFAULT_DAEMON_DIRNAME = ".daemon";
+export const DEFAULT_DB_FILENAME = "hiboss.db";
+export const DEFAULT_SOCKET_FILENAME = "daemon.sock";
+export const DEFAULT_PID_FILENAME = "daemon.pid";
+export const DEFAULT_MEDIA_DIRNAME = "media";
+export const DEFAULT_AGENTS_DIRNAME = "agents";
+
+export function getDefaultHiBossDir(): string {
+  return path.join(os.homedir(), DEFAULT_HIBOSS_DIRNAME);
+}
+
+export function getDefaultMediaDir(): string {
+  return path.join(getDefaultHiBossDir(), DEFAULT_MEDIA_DIRNAME);
+}
+
+// ==================== Memory Defaults ====================
+
+export const DEFAULT_MEMORY_LONGTERM_MAX_CHARS = 12_000 as const;
+export const DEFAULT_MEMORY_SHORTTERM_PER_DAY_MAX_CHARS = 4_000 as const;
+export const DEFAULT_MEMORY_SHORTTERM_DAYS = 2 as const;
+export const DEFAULT_SESSION_SUMMARY_RECENT_DAYS = 3 as const;
+export const DEFAULT_SESSION_SUMMARY_PER_SESSION_MAX_CHARS = 24_000 as const;
+export const DEFAULT_SESSION_SUMMARY_MAX_RETRIES = 3 as const;
+
+// ==================== Agent Defaults ====================
+
+export const DEFAULT_AGENT_PROVIDER = "claude" as const;
+export const DEFAULT_AGENT_REASONING_EFFORT = "medium" as const;
+export const DEFAULT_AGENT_PERMISSION_LEVEL = "standard" as const;
+
+// ==================== Reserved Agents ====================
+
+export const DEFAULT_ONESHOT_MAX_CONCURRENT = 4 as const;
+export const DEFAULT_SESSION_CONCURRENCY_PER_AGENT = 4 as const;
+export const DEFAULT_SESSION_CONCURRENCY_GLOBAL = 16 as const;
+export const DEFAULT_TELEGRAM_COMMAND_REPLY_AUTO_DELETE_SECONDS = 30 as const;
+
+// ==================== DB/Envelope Defaults ====================
+
+export const DEFAULT_ENVELOPE_STATUS = "pending" as const;
+export const DEFAULT_AGENT_RUN_STATUS = "running" as const;
+export const DEFAULT_ENVELOPE_LIST_BOX = "inbox" as const;
+
+// ==================== Setup Defaults ====================
+
+export const DEFAULT_SETUP_AGENT_NAME = "nex" as const;
+export const DEFAULT_SETUP_PERMISSION_LEVEL = DEFAULT_AGENT_PERMISSION_LEVEL;
+export const DEFAULT_SETUP_BIND_TELEGRAM = true as const;
+
+export const SETUP_MODEL_CHOICES_BY_PROVIDER = {
+  claude: ["haiku", "sonnet", "opus"],
+  codex: ["gpt-5.2", "gpt-5.2-codex", "gpt-5.3-codex"],
+} as const;
+
+export function getDefaultAgentDescription(agentName: string): string {
+  void agentName; // reserved for future personalization
+  return "A reliable and collaborative professional who delivers results with clarity and respect for others, and consistently makes teamwork more effective and enjoyable.";
+}
+
+export function getDefaultSetupBossName(): string {
+  return os.userInfo().username;
+}
+
+export function getDefaultRuntimeWorkspace(): string {
+  return os.homedir();
+}
+
+export function getDefaultSetupWorkspace(): string {
+  return getDefaultRuntimeWorkspace();
+}
+
+// ==================== Permissions ====================
+
+export const DEFAULT_PERMISSION_POLICY: PermissionPolicy = {
+  operations: {
+    // Envelope operations (agents)
+    "envelope.send": "restricted",
+    "envelope.list": "restricted",
+    "envelope.thread": "restricted",
+    "session.list": "restricted",
+
+    // Reactions
+    "reaction.set": "restricted",
+
+    // Cron schedules
+    "cron.create": "restricted",
+    "cron.list": "restricted",
+    "cron.enable": "restricted",
+    "cron.disable": "restricted",
+    "cron.delete": "restricted",
+
+    // Daemon read-only
+    "daemon.status": "admin",
+    "daemon.ping": "standard",
+    "daemon.time": "restricted",
+
+    // Admin operations (admin-only by default; configurable via policy)
+    "daemon.start": "admin",
+    "daemon.stop": "admin",
+    "agent.register": "admin",
+    "agent.list": "restricted",
+    "agent.status": "restricted",
+    "agent.bind": "privileged",
+    "agent.unbind": "privileged",
+    "agent.refresh": "admin",
+    "agent.abort": "admin",
+    "agent.delete": "admin",
+    "agent.set": "privileged",
+    "agent.session-policy.set": "privileged",
+    "team.register": "privileged",
+    "team.set": "privileged",
+    "team.list": "restricted",
+    "team.list-members": "restricted",
+    "team.status": "restricted",
+    "team.send": "restricted",
+    "team.add-member": "privileged",
+    "team.remove-member": "privileged",
+    "team.delete": "admin",
+  },
+};
+
+export const DEFAULT_USER_PERMISSION_POLICY: UserPermissionPolicy = {
+  tokens: [],
+};

@@ -1,0 +1,429 @@
+import type { HiBossDatabase } from "../db/database.js";
+import type { Envelope, CreateEnvelopeInput } from "../../envelope/types.js";
+import { getEnvelopeSourceFromCreateInput } from "../../envelope/source.js";
+import { parseAddress } from "../../adapters/types.js";
+import type { ChatAdapter } from "../../adapters/types.js";
+import { formatUnixMsAsTimeZoneOffset, isDueUnixMs } from "../../shared/time.js";
+import { errorMessage, logEvent } from "../../shared/daemon-log.js";
+import { RPC_ERRORS } from "../ipc/types.js";
+import type { OutgoingParseMode } from "../../adapters/types.js";
+import { formatTelegramMessageIdCompact } from "../../shared/telegram-message-id.js";
+
+export type EnvelopeHandler = (envelope: Envelope) => void | Promise<void>;
+
+export interface MessageRouterOptions {
+  onEnvelopeCreated?: EnvelopeHandler;
+  onEnvelopeDone?: EnvelopeHandler;
+}
+
+/**
+ * Message router for handling envelope delivery.
+ */
+export class MessageRouter {
+  private adaptersByToken: Map<string, ChatAdapter> = new Map();
+  private agentHandlers: Map<string, EnvelopeHandler> = new Map();
+  private onEnvelopeCreated?: EnvelopeHandler;
+  private onEnvelopeDone?: EnvelopeHandler;
+
+  constructor(private db: HiBossDatabase, options: MessageRouterOptions = {}) {
+    this.onEnvelopeCreated = options.onEnvelopeCreated;
+    this.onEnvelopeDone = options.onEnvelopeDone;
+  }
+
+  /**
+   * Register a chat adapter for outbound channel messages.
+   */
+  registerAdapter(adapter: ChatAdapter, token?: string): void {
+    if (token) {
+      this.adaptersByToken.set(token, adapter);
+    }
+  }
+
+  /**
+   * Register a handler for messages to a specific agent.
+   */
+  registerAgentHandler(agentName: string, handler: EnvelopeHandler): void {
+    this.agentHandlers.set(agentName, handler);
+  }
+
+  /**
+   * Unregister an agent handler.
+   */
+  unregisterAgentHandler(agentName: string): void {
+    this.agentHandlers.delete(agentName);
+  }
+
+  /**
+   * Route a new envelope to its destination.
+   */
+  async routeEnvelope(input: CreateEnvelopeInput): Promise<Envelope> {
+    const envelope = this.db.createEnvelope(input);
+
+    const source = getEnvelopeSourceFromCreateInput(input);
+    const bossTz = this.db.getBossTimezone();
+    const fields: Record<string, unknown> = {
+      "envelope-id": envelope.id,
+      from: envelope.from,
+      to: envelope.to,
+      "deliver-at": envelope.deliverAt ? formatUnixMsAsTimeZoneOffset(envelope.deliverAt, bossTz) : "none",
+    };
+
+    if (source === "channel") {
+      const md = envelope.metadata;
+      if (md && typeof md === "object") {
+        const channelMessageId = (md as Record<string, unknown>).channelMessageId;
+        if (typeof channelMessageId === "string" && channelMessageId.trim()) {
+          fields["channel-message-id"] = channelMessageId.trim();
+        }
+      }
+    }
+
+    logEvent("info", "envelope-created", fields);
+
+    if (this.onEnvelopeCreated) {
+      try {
+        await this.onEnvelopeCreated(envelope);
+      } catch (err) {
+        logEvent("error", "router-on-envelope-created-failed", {
+          "envelope-id": envelope.id,
+          error: errorMessage(err),
+        });
+      }
+    }
+
+    if (isDueUnixMs(envelope.deliverAt)) {
+      await this.deliverEnvelope(envelope);
+    }
+    return envelope;
+  }
+
+  /**
+   * Deliver an envelope to its destination.
+   */
+  async deliverEnvelope(envelope: Envelope): Promise<void> {
+    let destination: ReturnType<typeof parseAddress>;
+    try {
+      destination = parseAddress(envelope.to);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Invalid address format";
+      this.recordDeliveryError(envelope, {
+        kind: "invalid-address",
+        message: msg,
+      });
+      this.markEnvelopeDoneBestEffort(envelope, "router-invalid-address");
+      this.throwDeliveryFailed(msg, {
+        envelopeId: envelope.id,
+        to: envelope.to,
+        reason: "invalid-address",
+      });
+    }
+
+    if (destination.type === "agent") {
+      await this.deliverToAgent(envelope, destination.agentName);
+    } else if (destination.type === "channel") {
+      await this.deliverToChannel(envelope, destination.adapter, destination.chatId);
+    } else {
+      const msg = `Unsupported delivery destination type: ${destination.type}`;
+      this.recordDeliveryError(envelope, {
+        kind: "unsupported-destination",
+        message: msg,
+      });
+      this.markEnvelopeDoneBestEffort(envelope, "router-unsupported-destination");
+      this.throwDeliveryFailed(msg, {
+        envelopeId: envelope.id,
+        to: envelope.to,
+        reason: "unsupported-destination",
+      });
+    }
+  }
+
+  private async deliverToAgent(envelope: Envelope, agentName: string): Promise<void> {
+    const handler = this.agentHandlers.get(agentName);
+    if (handler) {
+      try {
+        await handler(envelope);
+      } catch (err) {
+        logEvent("error", "router-deliver-to-agent-failed", {
+          "envelope-id": envelope.id,
+          "agent-name": agentName,
+          error: errorMessage(err),
+        });
+      }
+    } else {
+      logEvent("warn", "router-no-agent-handler", {
+        "envelope-id": envelope.id,
+        "agent-name": agentName,
+      });
+    }
+    // If no handler, message stays in inbox with pending status
+  }
+
+  private async deliverToChannel(
+    envelope: Envelope,
+    adapterType: string,
+    chatId: string
+  ): Promise<void> {
+    // Find the sender's agent name
+    let sender: ReturnType<typeof parseAddress>;
+    try {
+      sender = parseAddress(envelope.from);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Invalid from";
+      logEvent("error", "router-invalid-channel-sender", {
+        "envelope-id": envelope.id,
+        from: envelope.from,
+        to: envelope.to,
+        error: msg,
+      });
+      this.recordDeliveryError(envelope, {
+        kind: "invalid-sender-address",
+        message: msg,
+        adapterType,
+        chatId,
+      });
+      this.markEnvelopeDoneBestEffort(envelope, "router-invalid-sender-address");
+      this.throwDeliveryFailed(msg, {
+        envelopeId: envelope.id,
+        adapterType,
+        chatId,
+        from: envelope.from,
+        reason: "invalid-sender-address",
+      });
+    }
+
+    if (sender.type !== "agent") {
+      const msg = "Channel destinations require from=agent:<name>";
+      logEvent("error", "router-invalid-channel-sender", {
+        "envelope-id": envelope.id,
+        from: envelope.from,
+        to: envelope.to,
+        error: msg,
+      });
+      this.recordDeliveryError(envelope, {
+        kind: "invalid-sender",
+        message: msg,
+        adapterType,
+        chatId,
+      });
+      this.markEnvelopeDoneBestEffort(envelope, "router-invalid-sender");
+      this.throwDeliveryFailed(msg, {
+        envelopeId: envelope.id,
+        adapterType,
+        chatId,
+        from: envelope.from,
+        reason: "invalid-sender",
+      });
+    }
+
+    // Get the sender's binding for this adapter type
+    const binding = this.db.getAgentBindingByType(sender.agentName, adapterType);
+    if (!binding) {
+      const msg = `Agent '${sender.agentName}' is not bound to adapter '${adapterType}'`;
+      this.recordDeliveryError(envelope, {
+        kind: "no-binding",
+        message: msg,
+        adapterType,
+        chatId,
+        senderAgentName: sender.agentName,
+      });
+      this.markEnvelopeDoneBestEffort(envelope, "router-no-binding");
+      this.throwDeliveryFailed(msg, {
+        envelopeId: envelope.id,
+        adapterType,
+        chatId,
+        senderAgentName: sender.agentName,
+        reason: "no-binding",
+      });
+    }
+
+    // Get the adapter by token
+    const adapter = this.adaptersByToken.get(binding.adapterToken);
+    if (!adapter) {
+      const msg = `No adapter loaded for adapter-type '${adapterType}' (binding exists but adapter token is not loaded)`;
+      this.recordDeliveryError(envelope, {
+        kind: "adapter-not-loaded",
+        message: msg,
+        adapterType,
+        chatId,
+        senderAgentName: sender.agentName,
+      });
+      this.markEnvelopeDoneBestEffort(envelope, "router-adapter-not-loaded");
+      this.throwDeliveryFailed(msg, {
+        envelopeId: envelope.id,
+        adapterType,
+        chatId,
+        senderAgentName: sender.agentName,
+        reason: "adapter-not-loaded",
+      });
+    }
+
+    const parseMode = this.getOutgoingParseMode(envelope);
+    const replyToMessageId = this.getOutgoingReplyToMessageId(envelope, adapterType, chatId);
+
+    try {
+      await adapter.sendMessage(chatId, {
+        text: envelope.content.text,
+        attachments: envelope.content.attachments?.map((a) => ({
+          source: a.source,
+          filename: a.filename,
+          telegramFileId: a.telegramFileId,
+        })),
+      }, {
+        parseMode,
+        replyToMessageId,
+      });
+      this.db.updateEnvelopeStatus(envelope.id, "done", {
+        reason: "channel-delivered",
+        origin: "internal",
+        outcome: "delivered",
+      });
+
+      if (this.onEnvelopeDone) {
+        try {
+          await this.onEnvelopeDone(envelope);
+        } catch (err) {
+          logEvent("error", "router-on-envelope-done-failed", {
+            "envelope-id": envelope.id,
+            error: errorMessage(err),
+          });
+        }
+      }
+    } catch (err) {
+      const details = this.extractAdapterErrorDetails(adapterType, err);
+      const msg = `Delivery to ${adapterType}:${chatId} failed: ${details.summary}`;
+      logEvent("error", "channel-delivery-failed", {
+        "envelope-id": envelope.id,
+        "adapter-type": adapterType,
+        "chat-id": chatId,
+        error: details.summary,
+        hint: details.hint ?? undefined,
+      });
+      this.recordDeliveryError(envelope, {
+        kind: "send-failed",
+        message: msg,
+        adapterType,
+        chatId,
+        senderAgentName: sender.agentName,
+        details,
+      });
+      this.markEnvelopeDoneBestEffort(envelope, "channel-send-failed");
+      this.throwDeliveryFailed(msg, {
+        envelopeId: envelope.id,
+        adapterType,
+        chatId,
+        senderAgentName: sender.agentName,
+        parseMode: parseMode ?? "plain",
+        replyToMessageId: replyToMessageId ?? "",
+        adapterError: details,
+        reason: "send-failed",
+      });
+    }
+  }
+
+  private markEnvelopeDoneBestEffort(envelope: Envelope, reason: string): void {
+    try {
+      this.db.updateEnvelopeStatus(envelope.id, "done", {
+        reason,
+        origin: "internal",
+        outcome: "marked-done-best-effort",
+      });
+    } catch (err) {
+      logEvent("error", "envelope-status-update-failed", {
+        "envelope-id": envelope.id,
+        error: errorMessage(err),
+      });
+    }
+  }
+
+  private getOutgoingParseMode(envelope: Envelope): OutgoingParseMode | undefined {
+    const md = envelope.metadata;
+    if (!md || typeof md !== "object") return undefined;
+    const v = (md as Record<string, unknown>).parseMode;
+    if (v === "plain" || v === "markdownv2" || v === "html") return v;
+    return undefined;
+  }
+
+  private getOutgoingReplyToMessageId(envelope: Envelope, adapterType: string, chatId: string): string | undefined {
+    const md = envelope.metadata;
+    if (!md || typeof md !== "object") return undefined;
+
+    const replyToEnvelopeId = (md as Record<string, unknown>).replyToEnvelopeId;
+    if (typeof replyToEnvelopeId !== "string" || !replyToEnvelopeId.trim()) return undefined;
+    const parent = this.db.getEnvelopeById(replyToEnvelopeId.trim());
+    if (!parent?.metadata || typeof parent.metadata !== "object") return undefined;
+
+    // Best-effort: only apply quoting when the referenced envelope is a channel message in the same destination chat.
+    try {
+      const parentFrom = parseAddress(parent.from);
+      if (parentFrom.type !== "channel") return undefined;
+      if (parentFrom.adapter !== adapterType) return undefined;
+      if (parentFrom.chatId !== chatId) return undefined;
+    } catch {
+      return undefined;
+    }
+
+    const channelMessageId = (parent.metadata as Record<string, unknown>).channelMessageId;
+    if (typeof channelMessageId !== "string" || !channelMessageId.trim()) return undefined;
+
+    // Adapters consume a platform message id string; Telegram expects the compact base36 form.
+    if (adapterType === "telegram") {
+      return formatTelegramMessageIdCompact(channelMessageId.trim());
+    }
+    return channelMessageId.trim();
+  }
+
+  private recordDeliveryError(envelope: Envelope, update: Record<string, unknown>): void {
+    const current =
+      envelope.metadata && typeof envelope.metadata === "object" ? (envelope.metadata as Record<string, unknown>) : {};
+    const next = {
+      ...current,
+      lastDeliveryError: {
+        atMs: Date.now(),
+        ...update,
+      },
+    };
+
+    try {
+      this.db.updateEnvelopeMetadata(envelope.id, next);
+    } catch (err) {
+      logEvent("error", "envelope-metadata-update-failed", {
+        "envelope-id": envelope.id,
+        error: errorMessage(err),
+      });
+    }
+  }
+
+  private throwDeliveryFailed(message: string, data: Record<string, unknown>): never {
+    const err = new Error(message) as Error & { code: number; data: unknown };
+    err.code = RPC_ERRORS.DELIVERY_FAILED;
+    err.data = data;
+    throw err;
+  }
+
+  private extractAdapterErrorDetails(adapterType: string, err: unknown): { summary: string; hint?: string; rawMessage?: string; telegram?: { errorCode?: number; description?: string } } {
+    const rawMessage = err instanceof Error ? err.message : typeof err === "string" ? err : undefined;
+
+    if (adapterType === "telegram" && err && typeof err === "object") {
+      const maybe = err as { response?: { error_code?: number; description?: string } };
+      const errorCode = maybe.response?.error_code;
+      const description = maybe.response?.description;
+      const descLower = typeof description === "string" ? description.toLowerCase() : "";
+      const hint =
+        descLower.includes("can't parse entities") || descLower.includes("can't parse entity")
+          ? "Telegram parse error: try --parse-mode plain, or escape special characters for MarkdownV2/HTML."
+          : undefined;
+      const summaryParts: string[] = [];
+      if (typeof errorCode === "number") summaryParts.push(`telegram error_code=${errorCode}`);
+      if (typeof description === "string" && description.trim()) summaryParts.push(description.trim());
+      const summary = summaryParts.length ? summaryParts.join(" - ") : (rawMessage ?? "unknown error");
+      return {
+        summary,
+        hint,
+        rawMessage,
+        telegram: { errorCode: typeof errorCode === "number" ? errorCode : undefined, description: typeof description === "string" ? description : undefined },
+      };
+    }
+
+    return { summary: rawMessage ?? "unknown error", rawMessage };
+  }
+}

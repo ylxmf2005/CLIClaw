@@ -1,0 +1,356 @@
+/**
+ * One-shot executor for /clone and /isolated envelope execution.
+ *
+ * Runs envelopes independently of the main agent session queue:
+ * - Full agent identity (HIBOSS_TOKEN, system instructions, Hi-Boss tools)
+ * - Does NOT block or pollute the main session
+ * - Concurrent execution (configurable max, default 4)
+ * - Results routed back to the originating channel
+ */
+
+import type { HiBossDatabase } from "../daemon/db/database.js";
+import type { MessageRouter } from "../daemon/router/message-router.js";
+import type { Envelope, OneshotType } from "../envelope/types.js";
+import type { Agent } from "./types.js";
+import type { AgentSession } from "./executor-support.js";
+import { getBossInfo } from "./executor-support.js";
+import { generateSystemInstructions } from "./instruction-generator.js";
+import { buildTurnInput } from "./turn-input.js";
+import { executeCliTurn } from "./executor-turn.js";
+import { cloneSessionFile, cleanupClonedSession, type ClonedSession } from "./session-clone.js";
+import { formatAgentAddress, parseAddress } from "../adapters/types.js";
+import {
+  DEFAULT_AGENT_PROVIDER,
+  DEFAULT_ONESHOT_MAX_CONCURRENT,
+} from "../shared/defaults.js";
+import { errorMessage, logEvent } from "../shared/daemon-log.js";
+import { getHiBossDir } from "./home-setup.js";
+import { buildAgentTeamPromptContext, resolveAgentWorkspace } from "../team/runtime.js";
+
+interface OneShotJob {
+  envelope: Envelope;
+  agent: Agent;
+  mode: OneshotType;
+}
+
+export class OneShotExecutor {
+  private readonly maxConcurrent: number;
+  private readonly queue: OneShotJob[] = [];
+  private inFlight = 0;
+
+  constructor(
+    private readonly deps: {
+      db: HiBossDatabase;
+      router: MessageRouter;
+      hibossDir: string;
+      onEnvelopeDone?: (envelope: Envelope) => void;
+    },
+    options: { maxConcurrent?: number } = {},
+  ) {
+    const raw = options.maxConcurrent ?? DEFAULT_ONESHOT_MAX_CONCURRENT;
+    const n = Number.isFinite(raw) ? Math.trunc(raw) : DEFAULT_ONESHOT_MAX_CONCURRENT;
+    this.maxConcurrent = Math.max(1, Math.min(32, n));
+  }
+
+  /**
+   * Enqueue a one-shot envelope for execution.
+   *
+   * The envelope is ACKed immediately (marked `done`) so it doesn't re-trigger
+   * the main agent queue.
+   */
+  enqueue(envelope: Envelope, agent: Agent, mode: OneshotType): void {
+    try {
+      this.deps.db.updateEnvelopeStatus(envelope.id, "done", {
+        reason: "oneshot-enqueue-ack",
+        origin: "internal",
+        outcome: "queued-for-oneshot",
+      });
+    } catch (err) {
+      logEvent("error", "oneshot-envelope-ack-failed", {
+        "envelope-id": envelope.id,
+        error: errorMessage(err),
+      });
+      // If ACK fails the envelope stays "pending" — don't enqueue the job
+      // to avoid double execution on daemon restart.
+      return;
+    }
+
+    // Notify cron scheduler so it can advance to the next occurrence.
+    if (this.deps.onEnvelopeDone) {
+      try {
+        this.deps.onEnvelopeDone(envelope);
+      } catch (err) {
+        logEvent("error", "oneshot-on-envelope-done-failed", {
+          "envelope-id": envelope.id,
+          error: errorMessage(err),
+        });
+      }
+    }
+
+    this.queue.push({ envelope, agent, mode });
+    this.drain();
+  }
+
+  private drain(): void {
+    while (this.inFlight < this.maxConcurrent && this.queue.length > 0) {
+      const job = this.queue.shift()!;
+      this.inFlight++;
+      void this.runOne(job)
+        .catch((err) => {
+          logEvent("error", "oneshot-job-failed", {
+            "envelope-id": job.envelope.id,
+            "agent-name": job.agent.name,
+            mode: job.mode,
+            error: errorMessage(err),
+          });
+        })
+        .finally(() => {
+          this.inFlight--;
+          this.drain();
+        });
+    }
+  }
+
+  private async runOne(job: OneShotJob): Promise<void> {
+    const { envelope, agent, mode } = job;
+    const startedAtMs = Date.now();
+    let clone: ClonedSession | null = null;
+    let effectiveMode = mode;
+
+    logEvent("info", "oneshot-job-start", {
+      "envelope-id": envelope.id,
+      "agent-name": agent.name,
+      mode,
+      from: envelope.from,
+      to: envelope.to,
+    });
+
+    try {
+      // For clone mode: attempt to clone the session file.
+      let cloneSessionId: string | undefined;
+      if (mode === "clone") {
+        clone = await this.tryCloneSession(agent, envelope);
+        if (clone) {
+          cloneSessionId = clone.clonedSessionId;
+        } else {
+          // No session to clone — fall back to isolated.
+          effectiveMode = "isolated";
+          logEvent("info", "oneshot-clone-fallback-isolated", {
+            "envelope-id": envelope.id,
+            "agent-name": agent.name,
+          });
+        }
+      }
+
+      // Build an ephemeral session (not stored in executor.sessions)
+      const session = this.buildEphemeralSession(agent, cloneSessionId);
+
+      // Build turn input from the single envelope
+      const turnInput = buildTurnInput({
+        context: {
+          datetimeMs: Date.now(),
+          agentName: agent.name,
+          bossTimezone: this.deps.db.getBossTimezone(),
+        },
+        envelopes: [envelope],
+      });
+
+      let finalText: string;
+      let executionSessionId: string | undefined = session.sessionId;
+      try {
+        const turn = await executeCliTurn(session, turnInput, {
+          hibossDir: this.deps.hibossDir,
+          agentName: agent.name,
+        });
+
+        executionSessionId = turn.sessionId ?? session.sessionId;
+        const body = turn.finalText?.trim() ? turn.finalText.trim() : "(no response)";
+        finalText = [
+          body,
+          "",
+          `oneshot-mode: ${effectiveMode}`,
+          `execution-session-id: ${executionSessionId ?? "(none)"}`,
+          "chat-session-changed: false",
+        ].join("\n");
+
+        logEvent("info", "oneshot-job-complete", {
+          "envelope-id": envelope.id,
+          "agent-name": agent.name,
+          mode: effectiveMode,
+          state: "success",
+          "duration-ms": Date.now() - startedAtMs,
+          "context-length": turn.usage.contextLength,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        finalText = [
+          `One-shot (${effectiveMode}) execution failed. Check daemon logs for details.`,
+          "",
+          `oneshot-mode: ${effectiveMode}`,
+          `execution-session-id: ${executionSessionId ?? "(none)"}`,
+          "chat-session-changed: false",
+        ].join("\n");
+
+        logEvent("info", "oneshot-job-complete", {
+          "envelope-id": envelope.id,
+          "agent-name": agent.name,
+          mode: effectiveMode,
+          state: "failed",
+          "duration-ms": Date.now() - startedAtMs,
+          error: msg,
+        });
+      }
+
+      // NOTE: Do NOT persist session handle — one-shot sessions are ephemeral.
+      // NOTE: Do NOT append to conversation history — one-shot doesn't pollute main context.
+
+      // Route response back to the originating address.
+      // For cron one-shot: metadata.cronResponseTo overrides the default reply-to.
+      const md = envelope.metadata as Record<string, unknown> | undefined;
+      const cronResponseTo = typeof md?.cronResponseTo === "string" ? md.cronResponseTo : null;
+      const replyTo = cronResponseTo ?? envelope.from;
+
+      await this.deps.router.routeEnvelope({
+        from: formatAgentAddress(agent.name),
+        to: replyTo,
+        fromBoss: false,
+        content: { text: finalText },
+        metadata: {
+          origin: "internal",
+          ...(cronResponseTo ? {} : { replyToEnvelopeId: envelope.id }),
+          oneshotResponse: true,
+          oneshotMode: effectiveMode,
+        },
+      });
+    } finally {
+      // Always clean up cloned session files.
+      if (clone) {
+        await cleanupClonedSession(clone);
+      }
+    }
+  }
+
+  /**
+   * Attempt to clone the current session for an agent.
+   *
+   * Returns the cloned session info, or null if no session exists to clone.
+   */
+  private async tryCloneSession(agent: Agent, envelope: Envelope): Promise<ClonedSession | null> {
+    const md = envelope.metadata && typeof envelope.metadata === "object"
+      ? envelope.metadata as Record<string, unknown>
+      : undefined;
+
+    const candidateAgentSessionIds: string[] = [];
+    if (typeof md?.channelSessionId === "string" && md.channelSessionId.trim()) {
+      candidateAgentSessionIds.push(md.channelSessionId.trim());
+    }
+
+    if (typeof md?.chatScope === "string" && md.chatScope.trim()) {
+      const internalBinding = this.deps.db.getChannelSessionBinding(agent.name, "internal", md.chatScope.trim());
+      if (internalBinding?.sessionId) {
+        candidateAgentSessionIds.push(internalBinding.sessionId);
+      }
+    }
+
+    try {
+      const parsedFrom = parseAddress(envelope.from);
+      if (parsedFrom.type === "channel") {
+        const channelBinding = this.deps.db.getChannelSessionBinding(agent.name, parsedFrom.adapter, parsedFrom.chatId);
+        if (channelBinding?.sessionId) {
+          candidateAgentSessionIds.push(channelBinding.sessionId);
+        }
+      }
+    } catch {
+      // ignore invalid address
+    }
+
+    const seen = new Set<string>();
+    for (const candidateSessionId of candidateAgentSessionIds) {
+      if (seen.has(candidateSessionId)) continue;
+      seen.add(candidateSessionId);
+      const row = this.deps.db.getAgentSessionById(candidateSessionId);
+      if (!row?.providerSessionId) continue;
+
+      try {
+        return await cloneSessionFile({ provider: row.provider, sessionId: row.providerSessionId });
+      } catch (err) {
+        logEvent("warn", "oneshot-clone-failed", {
+          "agent-name": agent.name,
+          provider: row.provider,
+          "session-id": row.providerSessionId,
+          "agent-session-id": row.id,
+          error: errorMessage(err),
+        });
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Build an ephemeral AgentSession for a one-shot run.
+   *
+   * @param sessionId If provided (clone mode), the CLI will resume from this session ID.
+   */
+  private buildEphemeralSession(agent: Agent, sessionId?: string): AgentSession {
+    const agentRecord = this.deps.db.getAgentByName(agent.name);
+    if (!agentRecord) {
+      throw new Error(`Agent ${agent.name} not found in database`);
+    }
+
+    const provider = agent.provider ?? DEFAULT_AGENT_PROVIDER;
+    const workspace = resolveAgentWorkspace({
+      db: this.deps.db,
+      hibossDir: this.deps.hibossDir,
+      agent,
+    });
+
+    const bindings = this.deps.db.getBindingsByAgentName(agent.name);
+    const boss = getBossInfo(this.deps.db, bindings);
+    const teams = buildAgentTeamPromptContext({
+      db: this.deps.db,
+      hibossDir: this.deps.hibossDir,
+      agent,
+    });
+    const instructions = generateSystemInstructions({
+      agent,
+      agentToken: agentRecord.token,
+      bindings,
+      workspaceDir: workspace,
+      bossTimezone: this.deps.db.getBossTimezone(),
+      hibossDir: this.deps.hibossDir,
+      boss,
+      teams,
+      sessionSummaryConfig: this.deps.db.getRuntimeSessionSummaryConfig(),
+    });
+
+    return {
+      provider,
+      agentToken: agentRecord.token,
+      systemInstructions: instructions,
+      workspace,
+      model: agent.model,
+      reasoningEffort: agent.reasoningEffort,
+      sessionId,
+      createdAtMs: Date.now(),
+    };
+  }
+}
+
+export function createOneShotExecutor(params: {
+  db: HiBossDatabase;
+  router: MessageRouter;
+  hibossDir?: string;
+  maxConcurrent?: number;
+  onEnvelopeDone?: (envelope: Envelope) => void;
+}): OneShotExecutor {
+  return new OneShotExecutor(
+    {
+      db: params.db,
+      router: params.router,
+      hibossDir: params.hibossDir ?? getHiBossDir(),
+      onEnvelopeDone: params.onEnvelopeDone,
+    },
+    { maxConcurrent: params.maxConcurrent },
+  );
+}
