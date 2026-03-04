@@ -51,7 +51,11 @@ export function StatusIndicator({
   };
 
   return (
-    <span className={cn("inline-flex items-center gap-1.5", className)}>
+    <span
+      className={cn("inline-flex items-center gap-1.5", className)}
+      role="status"
+      aria-label={`Status: ${config.label.toLowerCase()}`}
+    >
       <span
         className={cn(
           "rounded-full",
@@ -59,6 +63,7 @@ export function StatusIndicator({
           config.color,
           state !== "unknown" && config.pulse
         )}
+        aria-hidden="true"
       />
       {showLabel && (
         <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">

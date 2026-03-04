@@ -101,9 +101,9 @@ export function CronPanel() {
   };
 
   return (
-    <div className="flex h-full flex-col border-l border-white/[0.04] bg-[#080c16]">
+    <div className="flex h-full flex-col border-l border-border bg-card">
       {/* Header */}
-      <div className="flex h-10 items-center justify-between border-b border-white/[0.04] px-3">
+      <div className="flex h-10 items-center justify-between border-b border-border px-3">
         <div className="flex items-center gap-2">
           <Clock className="h-3.5 w-3.5 text-lavender-info" />
           <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -114,16 +114,18 @@ export function CronPanel() {
           <Button
             variant="ghost"
             size="icon"
-            className="h-6 w-6 text-muted-foreground/40 hover:text-cyan-glow"
+            className="h-6 w-6 text-muted-foreground hover:text-cyan-glow"
             onClick={() => setShowCreate(!showCreate)}
+            aria-label="Add cron schedule"
           >
             <Plus className="h-3 w-3" />
           </Button>
           <Button
             variant="ghost"
             size="icon"
-            className="h-6 w-6 text-muted-foreground/40 hover:text-foreground"
+            className="h-6 w-6 text-muted-foreground hover:text-foreground"
             onClick={() => dispatch({ type: "SET_SPLIT_PANE", pane: null })}
+            aria-label="Close cron panel"
           >
             <X className="h-3 w-3" />
           </Button>
@@ -132,9 +134,9 @@ export function CronPanel() {
 
       {/* Create form */}
       {showCreate && (
-        <div className="space-y-3 border-b border-white/[0.04] p-3">
+        <div className="space-y-3 border-b border-border p-3">
           <div className="space-y-1.5">
-            <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
+            <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
               Schedule
             </label>
             <div className="flex flex-wrap gap-1.5">
@@ -145,7 +147,7 @@ export function CronPanel() {
                   className={`rounded-md px-2 py-1 text-[10px] transition-colors ${
                     cronExpr === p.value
                       ? "bg-cyan-glow/15 text-cyan-glow"
-                      : "bg-white/[0.03] text-muted-foreground hover:bg-white/[0.06]"
+                      : "bg-accent text-muted-foreground hover:bg-accent/80"
                   }`}
                 >
                   {p.label}
@@ -156,43 +158,43 @@ export function CronPanel() {
               value={cronExpr}
               onChange={(e) => setCronExpr(e.target.value)}
               placeholder="* * * * *"
-              className="h-7 border-white/[0.06] bg-white/[0.03] font-mono text-xs"
+              className="h-7 border-border bg-input font-mono text-xs"
             />
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
+            <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
               Message
             </label>
             <Input
               value={messageText}
               onChange={(e) => setMessageText(e.target.value)}
               placeholder="Optional message text"
-              className="h-7 border-white/[0.06] bg-white/[0.03] text-xs"
+              className="h-7 border-border bg-input text-xs"
             />
           </div>
 
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1.5">
-              <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
+              <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
                 Timezone
               </label>
               <Input
                 value={timezone}
                 onChange={(e) => setTimezone(e.target.value)}
                 placeholder="America/New_York"
-                className="h-7 border-white/[0.06] bg-white/[0.03] text-xs"
+                className="h-7 border-border bg-input text-xs"
               />
             </div>
             <div className="space-y-1.5">
-              <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
+              <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
                 Execution
               </label>
               <Select value={execMode} onValueChange={(v) => setExecMode(v as CronExecutionMode)}>
-                <SelectTrigger className="h-7 border-white/[0.06] bg-white/[0.03] text-xs">
+                <SelectTrigger className="h-7 border-border bg-input text-xs">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="border-white/[0.06] bg-[#0d1224]">
+                <SelectContent className="border-border bg-popover">
                   <SelectItem value="isolated">Isolated</SelectItem>
                   <SelectItem value="clone">Clone</SelectItem>
                   <SelectItem value="inline">Inline</SelectItem>
@@ -204,7 +206,7 @@ export function CronPanel() {
           <Button
             onClick={handleCreate}
             disabled={creating || !cronExpr.trim()}
-            className="h-7 w-full bg-cyan-glow text-black text-xs hover:bg-cyan-glow/90"
+            className="h-7 w-full bg-cyan-glow text-primary-foreground text-xs hover:bg-cyan-glow/90"
           >
             {creating ? "Creating..." : "Create Schedule"}
           </Button>
@@ -215,14 +217,14 @@ export function CronPanel() {
       <div className="flex-1 overflow-y-auto p-2">
         {schedules.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-center">
-            <Clock className="mb-3 h-8 w-8 text-muted-foreground/20" />
-            <p className="text-xs text-muted-foreground/40">
+            <Clock className="mb-3 h-8 w-8 text-muted-foreground/30" />
+            <p className="text-xs text-muted-foreground">
               No cron schedules for this chat
             </p>
             <Button
               variant="ghost"
               size="sm"
-              className="mt-2 h-7 text-xs text-cyan-glow/70"
+              className="mt-2 h-7 text-xs text-cyan-glow/80"
               onClick={() => setShowCreate(true)}
             >
               <Plus className="mr-1 h-3 w-3" />
@@ -234,27 +236,28 @@ export function CronPanel() {
             {schedules.map((s) => (
               <div
                 key={s.id}
-                className="rounded-lg border border-white/[0.04] bg-white/[0.02] p-3"
+                className="rounded-lg border border-border bg-background p-3"
               >
                 <div className="mb-2 flex items-center justify-between">
-                  <code className="text-xs font-semibold text-cyan-glow/80">
+                  <code className="text-xs font-semibold text-cyan-glow/90">
                     {s.cron}
                   </code>
                   <Switch
                     checked={s.enabled}
                     onCheckedChange={() => handleToggle(s.id, s.enabled)}
+                    aria-label={`${s.enabled ? "Disable" : "Enable"} schedule ${s.cron}`}
                     className="h-4 w-7 data-[state=checked]:bg-emerald-signal"
                   />
                 </div>
 
                 {s.content.text && (
-                  <p className="mb-2 truncate text-[11px] text-muted-foreground/60">
+                  <p className="mb-2 truncate text-[11px] text-muted-foreground">
                     {s.content.text}
                   </p>
                 )}
 
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-[10px] text-muted-foreground/40">
+                  <div className="flex items-center gap-2 text-[10px] text-muted-foreground/70">
                     {s.enabled ? (
                       <Play className="h-2.5 w-2.5 text-emerald-signal" />
                     ) : (
@@ -270,8 +273,9 @@ export function CronPanel() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-5 w-5 text-muted-foreground/30 hover:text-rose-alert"
+                    className="h-5 w-5 text-muted-foreground/50 hover:text-rose-alert"
                     onClick={() => handleDelete(s.id)}
+                    aria-label={`Delete schedule ${s.cron}`}
                   >
                     <Trash2 className="h-3 w-3" />
                   </Button>

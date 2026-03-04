@@ -43,9 +43,9 @@ export function DaemonStatusView() {
   );
 
   return (
-    <div className="flex flex-1 flex-col bg-grid">
+    <div className="flex flex-1 flex-col">
       {/* Header */}
-      <div className="flex h-14 items-center border-b border-white/[0.04] bg-[#080c16]/80 px-6 backdrop-blur-sm">
+      <div className="flex h-14 items-center border-b border-border bg-card/80 px-6 backdrop-blur-sm">
         <Server className="mr-3 h-5 w-5 text-cyan-glow" />
         <h2 className="font-display text-lg font-semibold">Daemon Status</h2>
       </div>
@@ -126,11 +126,11 @@ export function DaemonStatusView() {
             <DetailCard title="Timezone" icon={<Clock className="h-4 w-4" />}>
               <div className="space-y-1 text-xs">
                 <p>
-                  <span className="text-muted-foreground/60">Boss:</span>{" "}
+                  <span className="text-muted-foreground">Boss:</span>{" "}
                   <span className="text-foreground/80">{timeInfo?.bossTimezone || "—"}</span>
                 </p>
                 <p>
-                  <span className="text-muted-foreground/60">Daemon:</span>{" "}
+                  <span className="text-muted-foreground">Daemon:</span>{" "}
                   <span className="text-foreground/80">{timeInfo?.daemonTimezone || "—"}</span>
                 </p>
               </div>
@@ -143,14 +143,14 @@ export function DaemonStatusView() {
                   {ds.adapters.map((a) => (
                     <span
                       key={a}
-                      className="mr-2 inline-block rounded bg-white/[0.04] px-2 py-0.5 text-xs text-foreground/70"
+                      className="mr-2 inline-block rounded bg-accent px-2 py-0.5 text-xs text-foreground/80"
                     >
                       {a}
                     </span>
                   ))}
                 </div>
               ) : (
-                <span className="text-xs text-muted-foreground/40">None</span>
+                <span className="text-xs text-muted-foreground">None</span>
               )}
             </DetailCard>
 
@@ -160,14 +160,14 @@ export function DaemonStatusView() {
                 <div className="space-y-1">
                   {ds.bindings.map((b, i) => (
                     <p key={i} className="text-xs">
-                      <span className="text-cyan-glow/70">{b.agentName}</span>
-                      <span className="text-muted-foreground/40"> → </span>
-                      <span className="text-foreground/60">{b.adapterType}</span>
+                      <span className="text-cyan-glow/80">{b.agentName}</span>
+                      <span className="text-muted-foreground"> → </span>
+                      <span className="text-foreground/70">{b.adapterType}</span>
                     </p>
                   ))}
                 </div>
               ) : (
-                <span className="text-xs text-muted-foreground/40">None</span>
+                <span className="text-xs text-muted-foreground">None</span>
               )}
             </DetailCard>
           </div>
@@ -191,11 +191,11 @@ function StatCard({
   color: string;
 }) {
   return (
-    <div className="rounded-xl border border-white/[0.04] bg-white/[0.02] p-4">
+    <div className="rounded-xl border border-border bg-card p-4">
       <div className={`mb-3 ${color}`}>{icon}</div>
       <p className="text-2xl font-bold tabular-nums text-foreground">{value}</p>
-      <p className="text-[11px] text-muted-foreground/60">{label}</p>
-      {sub && <p className="mt-0.5 text-[10px] text-muted-foreground/40">{sub}</p>}
+      <p className="text-[11px] text-muted-foreground">{label}</p>
+      {sub && <p className="mt-0.5 text-[10px] text-muted-foreground/70">{sub}</p>}
     </div>
   );
 }
@@ -210,8 +210,8 @@ function DetailCard({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-white/[0.04] bg-white/[0.02] p-4">
-      <div className="mb-3 flex items-center gap-2 text-muted-foreground/60">
+    <div className="rounded-xl border border-border bg-card p-4">
+      <div className="mb-3 flex items-center gap-2 text-muted-foreground">
         {icon}
         <span className="text-[11px] font-semibold uppercase tracking-wider">
           {title}

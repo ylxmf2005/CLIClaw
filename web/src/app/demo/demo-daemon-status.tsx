@@ -10,8 +10,8 @@ export function DemoDaemonStatus() {
   );
 
   return (
-    <div className="flex flex-1 flex-col bg-grid">
-      <div className="flex h-14 items-center border-b border-white/[0.04] bg-[#080c16]/80 px-6 backdrop-blur-sm">
+    <div className="flex flex-1 flex-col">
+      <div className="flex h-14 items-center border-b border-border bg-card/80 px-6 backdrop-blur-sm">
         <svg className="mr-3 h-5 w-5 text-cyan-glow" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <rect x="2" y="2" width="20" height="8" rx="2" /><rect x="2" y="14" width="20" height="8" rx="2" />
           <circle cx="6" cy="6" r="1" fill="currentColor" /><circle cx="6" cy="18" r="1" fill="currentColor" />
@@ -36,10 +36,10 @@ export function DemoDaemonStatus() {
               { label: "Cron Jobs", value: state.cronSchedules.filter((c) => c.enabled).length, sub: `${state.cronSchedules.length} total` },
               { label: "Adapters", value: ds?.adapters.length ?? 0 },
             ].map((s, i) => (
-              <div key={i} className="rounded-xl border border-white/[0.04] bg-white/[0.02] p-4">
+              <div key={i} className="rounded-xl border border-border bg-card p-4">
                 <p className="text-2xl font-bold tabular-nums text-foreground">{s.value}</p>
-                <p className="text-[11px] text-muted-foreground/60">{s.label}</p>
-                {s.sub && <p className="mt-0.5 text-[10px] text-muted-foreground/40">{s.sub}</p>}
+                <p className="text-[11px] text-muted-foreground">{s.label}</p>
+                {s.sub && <p className="mt-0.5 text-[10px] text-muted-foreground">{s.sub}</p>}
               </div>
             ))}
           </div>
