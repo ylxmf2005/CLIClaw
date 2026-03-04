@@ -20,6 +20,7 @@ import {
   DEFAULT_SESSION_CONCURRENCY_GLOBAL,
   DEFAULT_SESSION_CONCURRENCY_PER_AGENT,
   DEFAULT_TELEGRAM_COMMAND_REPLY_AUTO_DELETE_SECONDS,
+  DEFAULT_TELEGRAM_INBOUND_INTERRUPT_WINDOW_SECONDS,
   getDefaultAgentDescription,
 } from "../../shared/defaults.js";
 import { generateToken } from "../../agent/auth.js";
@@ -43,6 +44,7 @@ interface AgentRow {
   reasoning_effort: string | null;
   permission_level: string | null;
   session_policy: string | null;
+  relay_mode: string | null;
   created_at: number;
   last_seen_at: number | null;
   metadata: string | null;
@@ -277,6 +279,7 @@ export class HiBossDatabase {
         "reasoning_effort",
         "permission_level",
         "session_policy",
+        "relay_mode",
         "created_at",
         "last_seen_at",
         "metadata",
@@ -370,6 +373,11 @@ export class HiBossDatabase {
         "token",
         "channel_username",
         "updated_at",
+      ],
+      chat_state: [
+        "agent_name",
+        "chat_id",
+        "relay_on",
       ],
     };
 
@@ -517,6 +525,10 @@ export class HiBossDatabase {
         settings.runtime?.telegram?.commandReplyAutoDeleteSeconds ??
         DEFAULT_TELEGRAM_COMMAND_REPLY_AUTO_DELETE_SECONDS,
       );
+      this.setRuntimeTelegramInboundInterruptWindowSeconds(
+        settings.runtime?.telegram?.inboundInterruptWindowSeconds ??
+        DEFAULT_TELEGRAM_INBOUND_INTERRUPT_WINDOW_SECONDS,
+      );
 
       const existingAgents = this.listAgents();
       const existingByName = new Map(existingAgents.map((agent) => [agent.name.toLowerCase(), agent]));
@@ -534,9 +546,9 @@ export class HiBossDatabase {
 
       const upsertAgentStmt = this.db.prepare(`
         INSERT INTO agents
-          (name, token, description, workspace, provider, model, reasoning_effort, permission_level, session_policy, created_at, metadata)
+          (name, token, description, workspace, provider, model, reasoning_effort, permission_level, session_policy, relay_mode, created_at, metadata)
         VALUES
-          (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(name) DO UPDATE SET
           token = excluded.token,
           description = excluded.description,
@@ -546,6 +558,7 @@ export class HiBossDatabase {
           reasoning_effort = excluded.reasoning_effort,
           permission_level = excluded.permission_level,
           session_policy = excluded.session_policy,
+          relay_mode = excluded.relay_mode,
           metadata = excluded.metadata
       `);
 
@@ -569,6 +582,7 @@ export class HiBossDatabase {
           agent.reasoningEffort ?? null,
           agent.permissionLevel,
           agent.sessionPolicy ? JSON.stringify(agent.sessionPolicy) : null,
+          agent.relayMode ?? "default-off",
           now,
           metadata ? JSON.stringify(metadata) : null
         );
@@ -753,6 +767,7 @@ export class HiBossDatabase {
       provider?: "claude" | "codex" | null;
       model?: string | null;
       reasoningEffort?: "none" | "low" | "medium" | "high" | "xhigh" | null;
+      relayMode?: "default-on" | "default-off" | null;
     }
   ): Agent {
     const agent = this.getAgentByNameCaseInsensitive(name);
@@ -782,6 +797,10 @@ export class HiBossDatabase {
     if (update.reasoningEffort !== undefined) {
       updates.push("reasoning_effort = ?");
       params.push(update.reasoningEffort);
+    }
+    if (update.relayMode !== undefined) {
+      updates.push("relay_mode = ?");
+      params.push(update.relayMode);
     }
 
     if (updates.length === 0) {
@@ -1141,6 +1160,10 @@ export class HiBossDatabase {
       }
     }
 
+    const relayMode: 'default-on' | 'default-off' | undefined =
+      row.relay_mode === 'default-on' ? 'default-on' :
+      row.relay_mode === 'default-off' ? 'default-off' : undefined;
+
     return {
       name: row.name,
       token: row.token,
@@ -1151,6 +1174,7 @@ export class HiBossDatabase {
       reasoningEffort: (row.reasoning_effort as 'none' | 'low' | 'medium' | 'high' | 'xhigh') ?? undefined,
       permissionLevel,
       sessionPolicy,
+      relayMode,
       createdAt: row.created_at,
       lastSeenAt: row.last_seen_at ?? undefined,
       metadata,
@@ -1269,6 +1293,7 @@ export class HiBossDatabase {
   listEnvelopesByRoute(options: {
     from: string;
     to: string;
+    toMatchMode?: "exact" | "prefix";
     status: EnvelopeStatus;
     limit: number;
     dueOnly?: boolean;
@@ -1276,9 +1301,18 @@ export class HiBossDatabase {
     createdBefore?: number;
   }): Envelope[] {
     const { from, to, status, limit, dueOnly, createdAfter, createdBefore } = options;
+    const toPrefix = options.toMatchMode === "prefix";
 
-    let sql = `SELECT * FROM envelopes WHERE "from" = ? AND "to" = ? AND status = ?`;
-    const params: (string | number)[] = [from, to, status];
+    let sql: string;
+    const params: (string | number)[] = [];
+
+    if (toPrefix) {
+      sql = `SELECT * FROM envelopes WHERE "from" = ? AND "to" LIKE ? AND status = ?`;
+      params.push(from, `${to}%`, status);
+    } else {
+      sql = `SELECT * FROM envelopes WHERE "from" = ? AND "to" = ? AND status = ?`;
+      params.push(from, to, status);
+    }
 
     if (typeof createdAfter === "number") {
       sql += " AND created_at >= ?";
@@ -1302,6 +1336,98 @@ export class HiBossDatabase {
     const stmt = this.db.prepare(sql);
     const rows = stmt.all(...params) as EnvelopeRow[];
     return rows.map((row) => this.rowToEnvelope(row));
+  }
+
+  /**
+   * List envelopes by `to` field filter with prefix matching support.
+   * If toFilter ends with '%', uses LIKE for prefix matching.
+   * Otherwise uses exact match on the `to` field.
+   */
+  listEnvelopesByToFilter(options: {
+    toFilter: string;
+    status: EnvelopeStatus;
+    limit: number;
+    createdAfter?: number;
+    createdBefore?: number;
+  }): Envelope[] {
+    const { toFilter, status, limit, createdAfter, createdBefore } = options;
+    const usePrefix = toFilter.endsWith("%");
+
+    let sql: string;
+    const params: (string | number)[] = [];
+
+    if (usePrefix) {
+      sql = `SELECT * FROM envelopes WHERE "to" LIKE ? AND status = ?`;
+      params.push(toFilter, status);
+    } else {
+      sql = `SELECT * FROM envelopes WHERE "to" = ? AND status = ?`;
+      params.push(toFilter, status);
+    }
+
+    if (typeof createdAfter === "number") {
+      sql += " AND created_at >= ?";
+      params.push(createdAfter);
+    }
+
+    if (typeof createdBefore === "number") {
+      sql += " AND created_at <= ?";
+      params.push(createdBefore);
+    }
+
+    sql += " ORDER BY created_at DESC LIMIT ?";
+    params.push(limit);
+
+    const stmt = this.db.prepare(sql);
+    const rows = stmt.all(...params) as EnvelopeRow[];
+    return rows.map((row) => this.rowToEnvelope(row));
+  }
+
+  /**
+   * List distinct conversations (chatIds) for an agent from the `to` field.
+   * Returns chatIds with metadata sorted by most recent message.
+   */
+  listConversationsForAgent(agentName: string): Array<{
+    chatId: string;
+    lastMessageAt: number;
+    lastMessageText: string | null;
+    messageCount: number;
+  }> {
+    const prefix = `agent:${agentName}:%`;
+    const sql = `
+      SELECT
+        "to" as to_address,
+        MAX(created_at) as last_message_at,
+        COUNT(*) as message_count
+      FROM envelopes
+      WHERE "to" LIKE ?
+      GROUP BY "to"
+      ORDER BY last_message_at DESC
+    `;
+    const stmt = this.db.prepare(sql);
+    const rows = stmt.all(prefix) as Array<{
+      to_address: string;
+      last_message_at: number;
+      message_count: number;
+    }>;
+
+    return rows
+      .map((row) => {
+        // Extract chatId from "agent:<name>:<chatId>"
+        const parts = row.to_address.split(":");
+        const chatId = parts.length >= 3 ? parts.slice(2).join(":") : row.to_address;
+
+        // Get last message text
+        const lastMsg = this.db.prepare(
+          `SELECT content_text FROM envelopes WHERE "to" = ? ORDER BY created_at DESC LIMIT 1`
+        ).get(row.to_address) as { content_text: string | null } | undefined;
+
+        return {
+          chatId,
+          lastMessageAt: row.last_message_at,
+          lastMessageText: lastMsg?.content_text ?? null,
+          messageCount: row.message_count,
+        };
+      });
   }
 
   /**
@@ -2864,5 +2990,67 @@ export class HiBossDatabase {
   setRuntimeTelegramCommandReplyAutoDeleteSeconds(seconds: number): void {
     const normalized = Math.max(0, Math.min(86_400, Math.trunc(seconds)));
     this.setConfig("runtime_telegram_command_reply_auto_delete_seconds", String(normalized));
+  }
+
+  getRuntimeTelegramInboundInterruptWindowSeconds(): number {
+    const raw = (this.getConfig("runtime_telegram_inbound_interrupt_window_seconds") ?? "").trim();
+    if (raw.length === 0) {
+      return DEFAULT_TELEGRAM_INBOUND_INTERRUPT_WINDOW_SECONDS;
+    }
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      return DEFAULT_TELEGRAM_INBOUND_INTERRUPT_WINDOW_SECONDS;
+    }
+    return Math.max(0, Math.min(60, Math.trunc(parsed)));
+  }
+
+  setRuntimeTelegramInboundInterruptWindowSeconds(seconds: number): void {
+    const normalized = Math.max(0, Math.min(60, Math.trunc(seconds)));
+    this.setConfig("runtime_telegram_inbound_interrupt_window_seconds", String(normalized));
+  }
+
+  // ==================== Chat State Operations ====================
+
+  /**
+   * Get the relay state for a specific agent+chat pair.
+   */
+  getChatRelayState(agentName: string, chatId: string): boolean {
+    const stmt = this.db.prepare(
+      "SELECT relay_on FROM chat_state WHERE agent_name = ? AND chat_id = ?"
+    );
+    const row = stmt.get(agentName, chatId) as { relay_on: number } | undefined;
+    return row ? row.relay_on === 1 : false;
+  }
+
+  /**
+   * Set the relay state for a specific agent+chat pair.
+   */
+  setChatRelayState(agentName: string, chatId: string, relayOn: boolean): void {
+    const stmt = this.db.prepare(`
+      INSERT INTO chat_state (agent_name, chat_id, relay_on)
+      VALUES (?, ?, ?)
+      ON CONFLICT(agent_name, chat_id)
+      DO UPDATE SET relay_on = excluded.relay_on
+    `);
+    stmt.run(agentName, chatId, relayOn ? 1 : 0);
+  }
+
+  /**
+   * List all chat relay states for an agent.
+   */
+  listChatRelayStates(agentName: string): Array<{ chatId: string; relayOn: boolean }> {
+    const stmt = this.db.prepare(
+      "SELECT chat_id, relay_on FROM chat_state WHERE agent_name = ?"
+    );
+    const rows = stmt.all(agentName) as Array<{ chat_id: string; relay_on: number }>;
+    return rows.map((row) => ({ chatId: row.chat_id, relayOn: row.relay_on === 1 }));
+  }
+
+  /**
+   * Delete all chat state for an agent (used on agent delete).
+   */
+  deleteChatStateForAgent(agentName: string): void {
+    const stmt = this.db.prepare("DELETE FROM chat_state WHERE agent_name = ?");
+    stmt.run(agentName);
   }
 }

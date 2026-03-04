@@ -16,7 +16,7 @@ import { formatAgentAddress, parseAddress } from "../../adapters/types.js";
 import { parseDateTimeInputToUnixMsInTimeZone } from "../../shared/time.js";
 import { resolveEnvelopeIdInput } from "./resolve-envelope-id.js";
 import type { Envelope } from "../../envelope/types.js";
-import { sendEnvelopeFromAgent } from "./envelope-send-core.js";
+import { sendEnvelopeFromAgent, sendEnvelopeFromBoss } from "./envelope-send-core.js";
 
 function parseEnvelopeListTimeBoundary(params: {
   raw: unknown;
@@ -37,6 +37,17 @@ function parseEnvelopeListTimeBoundary(params: {
   }
 }
 
+function parseLimit(v: unknown): number {
+  if (v === undefined || v === null) return 10;
+  if (typeof v !== "number" || !Number.isFinite(v)) {
+    rpcError(RPC_ERRORS.INVALID_PARAMS, "Invalid limit");
+  }
+  const n = Math.trunc(v);
+  if (n <= 0) rpcError(RPC_ERRORS.INVALID_PARAMS, "Invalid limit (must be >= 1)");
+  if (n > 50) rpcError(RPC_ERRORS.INVALID_PARAMS, "Invalid limit (max 50)");
+  return n;
+}
+
 /**
  * Create envelope RPC handlers.
  */
@@ -48,10 +59,20 @@ export function createEnvelopeHandlers(ctx: DaemonContext): RpcMethodRegistry {
     ctx.assertOperationAllowed(operation, principal);
 
     if (principal.kind === "admin") {
-      rpcError(
-        RPC_ERRORS.UNAUTHORIZED,
-        "Admin tokens cannot send envelopes (use an agent token or send via a channel adapter)"
-      );
+      // Admin tokens can send envelopes as boss messages
+      return sendEnvelopeFromBoss({
+        ctx,
+        input: {
+          to: p.to,
+          text: p.text,
+          attachments: p.attachments,
+          deliverAt: p.deliverAt,
+          interruptNow: p.interruptNow,
+          parseMode: p.parseMode,
+          replyToEnvelopeId: p.replyToEnvelopeId,
+          origin: p.origin,
+        },
+      });
     }
 
     if (p.from !== undefined || p.fromBoss !== undefined || p.fromName !== undefined) {
@@ -80,11 +101,37 @@ export function createEnvelopeHandlers(ctx: DaemonContext): RpcMethodRegistry {
     const principal = ctx.resolvePrincipal(token);
     ctx.assertOperationAllowed(operation, principal);
 
-    if (principal.kind !== "agent") {
-      rpcError(
-        RPC_ERRORS.UNAUTHORIZED,
-        "Admin tokens cannot list envelopes (use an agent token)"
-      );
+    const isAdmin = principal.kind === "admin";
+
+    if (isAdmin) {
+      // Admin can list any agent's envelopes — require `to` param as the filter
+      const rawTo = typeof p.to === "string" ? p.to.trim() : "";
+      if (!rawTo) {
+        rpcError(RPC_ERRORS.INVALID_PARAMS, "Admin must provide 'to' parameter");
+      }
+
+      if (p.status !== "pending" && p.status !== "done") {
+        rpcError(RPC_ERRORS.INVALID_PARAMS, "Invalid status (expected pending or done)");
+      }
+
+      const limit = parseLimit(p.limit);
+      const bossTimezone = ctx.db.getBossTimezone();
+      const createdAfter = parseEnvelopeListTimeBoundary({ raw: p.createdAfter, flag: "created-after", bossTimezone });
+      const createdBefore = parseEnvelopeListTimeBoundary({ raw: p.createdBefore, flag: "created-before", bossTimezone });
+      if (typeof createdAfter === "number" && typeof createdBefore === "number" && createdAfter > createdBefore) {
+        rpcError(RPC_ERRORS.INVALID_PARAMS, "Invalid created range (expected created-after <= created-before)");
+      }
+
+      // Support prefix matching for admin queries (e.g., "agent:nex:%" or exact "agent:nex:chat123")
+      const envelopes = ctx.db.listEnvelopesByToFilter({
+        toFilter: rawTo,
+        status: p.status,
+        limit,
+        createdAfter,
+        createdBefore,
+      });
+
+      return { envelopes };
     }
 
     ctx.db.updateAgentLastSeen(principal.agent.name);
@@ -108,17 +155,7 @@ export function createEnvelopeHandlers(ctx: DaemonContext): RpcMethodRegistry {
       rpcError(RPC_ERRORS.INVALID_PARAMS, err instanceof Error ? err.message : "Invalid address");
     }
 
-    const limit = (() => {
-      const v = p.limit;
-      if (v === undefined || v === null) return 10;
-      if (typeof v !== "number" || !Number.isFinite(v)) {
-        rpcError(RPC_ERRORS.INVALID_PARAMS, "Invalid limit");
-      }
-      const n = Math.trunc(v);
-      if (n <= 0) rpcError(RPC_ERRORS.INVALID_PARAMS, "Invalid limit (must be >= 1)");
-      if (n > 50) rpcError(RPC_ERRORS.INVALID_PARAMS, "Invalid limit (max 50)");
-      return n;
-    })();
+    const limit = parseLimit(p.limit);
 
     const bossTimezone = ctx.db.getBossTimezone();
     const createdAfter = parseEnvelopeListTimeBoundary({
@@ -148,9 +185,14 @@ export function createEnvelopeHandlers(ctx: DaemonContext): RpcMethodRegistry {
     const from = isIncoming ? otherAddress : agentAddress;
     const to = isIncoming ? agentAddress : otherAddress;
 
+    // When listing incoming messages (to=self), use prefix matching since
+    // the `to` field now includes chatId (e.g., "agent:nex:chat-1")
+    const toMatchMode = isIncoming ? "prefix" as const : "exact" as const;
+
     const envelopes = ctx.db.listEnvelopesByRoute({
       from,
       to,
+      toMatchMode,
       status: p.status,
       limit,
       dueOnly: shouldAckIncomingPending,
@@ -179,15 +221,13 @@ export function createEnvelopeHandlers(ctx: DaemonContext): RpcMethodRegistry {
     const principal = ctx.resolvePrincipal(token);
     ctx.assertOperationAllowed(operation, principal);
 
-    if (principal.kind !== "agent") {
-      rpcError(RPC_ERRORS.UNAUTHORIZED, "Access denied");
-    }
-
     if (typeof p.envelopeId !== "string" || !p.envelopeId.trim()) {
       rpcError(RPC_ERRORS.INVALID_PARAMS, "Invalid envelope-id");
     }
 
-    ctx.db.updateAgentLastSeen(principal.agent.name);
+    if (principal.kind === "agent") {
+      ctx.db.updateAgentLastSeen(principal.agent.name);
+    }
     const resolvedId = resolveEnvelopeIdInput(ctx.db, p.envelopeId.trim());
 
     const maxDepth = 20;
@@ -231,10 +271,34 @@ export function createEnvelopeHandlers(ctx: DaemonContext): RpcMethodRegistry {
     return result;
   };
 
+  const createEnvelopeConversations = (operation: string) => async (params: Record<string, unknown>) => {
+    const p = params as unknown as { token: string; agentName: string };
+    const token = requireToken(p.token);
+    const principal = ctx.resolvePrincipal(token);
+    ctx.assertOperationAllowed(operation, principal);
+
+    if (principal.kind !== "admin") {
+      rpcError(RPC_ERRORS.UNAUTHORIZED, "Only admin tokens can list conversations");
+    }
+
+    if (typeof p.agentName !== "string" || !p.agentName.trim()) {
+      rpcError(RPC_ERRORS.INVALID_PARAMS, "Invalid agent-name");
+    }
+
+    const agent = ctx.db.getAgentByNameCaseInsensitive(p.agentName.trim());
+    if (!agent) {
+      rpcError(RPC_ERRORS.NOT_FOUND, "Agent not found");
+    }
+
+    const conversations = ctx.db.listConversationsForAgent(agent.name);
+    return { conversations };
+  };
+
   return {
     // Envelope methods (canonical)
     "envelope.send": createEnvelopeSend("envelope.send"),
     "envelope.list": createEnvelopeList("envelope.list"),
     "envelope.thread": createEnvelopeThread("envelope.thread"),
+    "envelope.conversations": createEnvelopeConversations("envelope.conversations"),
   };
 }

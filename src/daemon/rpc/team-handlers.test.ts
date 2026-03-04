@@ -293,7 +293,7 @@ test("team.send fans out to team members and excludes sender", async () => {
     assert.equal(result.failedCount, 0);
     assert.deepEqual(result.results.map((item) => item.agentName), ["alice", "bob"]);
     assert.equal(result.results.every((item) => item.success), true);
-    assert.deepEqual(routeCalls.map((item) => item.to), ["agent:alice", "agent:bob"]);
+    assert.deepEqual(routeCalls.map((item) => item.to), ["agent:alice:team:alpha", "agent:bob:team:alpha"]);
     assert.deepEqual(routeCalls.map((item) => item.from), ["agent:sender", "agent:sender"]);
   });
 });
@@ -367,7 +367,7 @@ test("team.send best-effort returns partial failures", async () => {
       reloadedAgentNames: [],
       principal: { kind: "agent", agentName: "sender" },
       routeEnvelope: async (input) => {
-        if (input.to === "agent:bob") {
+        if (input.to.startsWith("agent:bob:")) {
           throw new Error("mock-failure:bob");
         }
         return {
@@ -495,7 +495,7 @@ test("team.send supports reply-to with partial success", async () => {
       reloadedAgentNames: [],
       principal: { kind: "agent", agentName: "sender" },
       routeEnvelope: async (input) => {
-        if (input.to === "agent:bob") {
+        if (input.to.startsWith("agent:bob:")) {
           throw new Error("mock-failure:bob");
         }
         routed.push(input);
