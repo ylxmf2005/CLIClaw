@@ -65,6 +65,8 @@ export function createAgentDeleteHandler(ctx: DaemonContext): RpcMethodRegistry 
           });
         }
 
+        ctx.eventBus?.emit("agent.deleted", { name: agent.name });
+
         logEvent("info", "agent-delete", {
           actor: principal.kind,
           "agent-name": agent.name,

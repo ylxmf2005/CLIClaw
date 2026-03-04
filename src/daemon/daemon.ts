@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "path";
+import type * as http from "node:http";
 import { HiBossDatabase } from "./db/database.js";
 import { IpcServer } from "./ipc/server.js";
 import { MessageRouter } from "./router/message-router.js";
@@ -14,7 +15,6 @@ import { bindHistoryHooks } from "./history/history-runtime-hooks.js";
 import type { RpcMethodRegistry } from "./ipc/types.js";
 import { RPC_ERRORS } from "./ipc/types.js";
 import type { ChatAdapter } from "../adapters/types.js";
-import { TelegramAdapter } from "../adapters/telegram.adapter.js";
 import { DEFAULT_AGENT_PERMISSION_LEVEL } from "../shared/defaults.js";
 import { getHiBossPaths } from "../shared/hiboss-paths.js";
 import {
@@ -35,20 +35,30 @@ import {
   createReactionHandlers,
   createCronHandlers,
   createEnvelopeHandlers,
-  createSessionHandlers,
   createTeamHandlers,
   createSetupHandlers,
   createAgentHandlers,
   createAgentSetHandler,
   createAgentDeleteHandler,
+  createSessionChatHandlers,
 } from "./rpc/index.js";
 import { createChannelCommandHandler } from "./channel-commands.js";
 import { TelegramTypingManager } from "./telegram-typing.js";
-import { resolveUiLocale } from "../shared/ui-locale.js";
 import { getSettingsPath } from "../shared/settings-io.js";
 import { loadSettingsOrThrow, syncSettingsToDb } from "./settings-sync.js";
+import { DaemonEventBus } from "./events/event-bus.js";
+import { createRouterEventHooks, createExecutorEventHooks } from "./events/daemon-event-hooks.js";
+import { createHttpServer, startHttpServer, stopHttpServer } from "./http/server.js";
+import { createRoutes } from "./http/routes.js";
+import { createWsServer } from "./ws/server.js";
+import { BrokerManager } from "./relay/broker-manager.js";
+import { RelayExecutor } from "../agent/executor-relay.js";
+import {
+  loadBindings as loadAdapterBindings,
+  createAdapterForBinding as createAdapterForBindingHelper,
+  removeAdapter as removeAdapterHelper,
+} from "./adapter-management.js";
 
-// Re-export for CLI and external use
 export { isDaemonRunning, isSocketAcceptingConnections };
 /**
  * Hi-Boss daemon configuration.
@@ -108,6 +118,12 @@ export class Daemon {
   private startTimeMs: number | null = null;
   private pidLock: PidLock;
   private defaultPermissionPolicy: PermissionPolicy = DEFAULT_PERMISSION_POLICY;
+  private eventBus: DaemonEventBus;
+  private httpServer: http.Server | null = null;
+  private wsCleanup: (() => void) | null = null;
+  private rpcMethods: RpcMethodRegistry = {};
+  private brokerManager: BrokerManager;
+  private relayExecutor: RelayExecutor | null = null;
 
   constructor(private config: DaemonConfig = getDefaultConfig()) {
     const dbPath = path.join(config.daemonDir, "hiboss.db");
@@ -117,16 +133,20 @@ export class Daemon {
 
     this.db = new HiBossDatabase(dbPath);
     this.ipc = new IpcServer(socketPath);
+    this.eventBus = new DaemonEventBus();
+    this.brokerManager = new BrokerManager({
+      cwd: config.dataDir,
+      eventBus: this.eventBus,
+    });
     this.conversationHistory = new ConversationHistory({
       agentsDir: path.join(config.dataDir, "agents"),
       timezone: this.db.getBossTimezone() ?? undefined,
     });
     bindHistoryHooks(this.db, this.conversationHistory);
-    this.router = new MessageRouter(this.db, {
-      onEnvelopeDone: (envelope) => this.cronScheduler?.onEnvelopeDone(envelope),
-    });
-    this.bridge = new ChannelBridge(this.router, this.db, config);
+    const routerHooks = createRouterEventHooks(this.eventBus, () => this.cronScheduler);
+    this.router = new MessageRouter(this.db, routerHooks);
     this.telegramTypingManager = new TelegramTypingManager(this.db, this.adapters);
+    const executorEventHooks = createExecutorEventHooks(this.eventBus);
     this.executor = createAgentExecutor({
       db: this.db,
       hibossDir: config.dataDir,
@@ -134,6 +154,8 @@ export class Daemon {
       onEnvelopesDone: (envelopeIds) => {
         this.cronScheduler?.onEnvelopesDone(envelopeIds);
       },
+      onRunStarted: executorEventHooks.onRunStarted,
+      onRunFinished: executorEventHooks.onRunFinished,
       onExecutionQueued: ({ executionId, agentName, envelopes }) => {
         return this.telegramTypingManager.onExecutionQueued({
           executionId,
@@ -145,6 +167,7 @@ export class Daemon {
         return this.telegramTypingManager.onExecutionFinished({ executionId });
       },
     });
+    this.bridge = new ChannelBridge(this.router, this.db, config, { executor: this.executor });
     this.oneshotExecutor = createOneShotExecutor({
       db: this.db,
       router: this.router,
@@ -187,9 +210,6 @@ export class Daemon {
     }
   }
 
-  /**
-   * Create the DaemonContext for RPC handlers.
-   */
   private createContext(): DaemonContext {
     // Important: `running`/`startTimeMs` must reflect live daemon state (daemon.status depends on it).
     const daemon = this;
@@ -213,12 +233,13 @@ export class Daemon {
       createAdapterForBinding: (type, token) => this.createAdapterForBinding(type, token),
       removeAdapter: (token) => this.removeAdapter(token),
       registerAgentHandler: (name) => this.registerSingleAgentHandler(name),
+      eventBus: this.eventBus,
+      get relayAvailable() {
+        return daemon.brokerManager.isAvailable();
+      },
     };
   }
 
-  /**
-   * Start the daemon.
-   */
   async start(): Promise<void> {
     if (this.running) {
       throw new Error("Daemon is already running");
@@ -283,6 +304,17 @@ export class Daemon {
       // Start scheduler after adapters/handlers are ready
       this.scheduler.start();
 
+      // Start relay broker (graceful — skips if binary not found)
+      await this.brokerManager.start();
+      this.relayExecutor = new RelayExecutor({
+        broker: this.brokerManager,
+        db: this.db,
+        hibossDir: this.config.dataDir,
+      });
+
+      // Start HTTP + WebSocket server
+      await this.startHttpWsServer();
+
       // Process any pending envelopes from before restart
       await this.processPendingEnvelopes();
     } catch (err) {
@@ -299,9 +331,6 @@ export class Daemon {
     });
   }
 
-  /**
-   * Set up command handler for adapter commands.
-   */
   private setupCommandHandler(): void {
     this.bridge.setCommandHandler(createChannelCommandHandler({
       db: this.db,
@@ -311,9 +340,6 @@ export class Daemon {
     }));
   }
 
-  /**
-   * Register handlers for all agents to trigger execution on new envelopes.
-   */
   private async registerAgentExecutionHandlers(): Promise<void> {
     const agents = this.db.listAgents();
 
@@ -322,9 +348,6 @@ export class Daemon {
     }
   }
 
-  /**
-   * Register a single agent handler for auto-execution.
-   */
   private registerSingleAgentHandler(agentName: string): void {
     this.router.registerAgentHandler(agentName, async (envelope) => {
       const currentAgent = this.db.getAgentByName(agentName);
@@ -357,9 +380,6 @@ export class Daemon {
     });
   }
 
-  /**
-   * Process any pending envelopes that existed before daemon restart.
-   */
   private async processPendingEnvelopes(): Promise<void> {
     const agents = this.db.listAgents();
 
@@ -376,67 +396,25 @@ export class Daemon {
     }
   }
 
-  /**
-   * Load bindings from database and create adapters.
-   */
   private async loadBindings(): Promise<void> {
-    const bindings = this.db.listBindings();
-
-    for (const binding of bindings) {
-      await this.createAdapterForBinding(binding.adapterType, binding.adapterToken);
-    }
+    await loadAdapterBindings({
+      db: this.db, adapters: this.adapters, bridge: this.bridge, running: this.running,
+    });
   }
 
-  /**
-   * Create an adapter for a binding.
-   */
   private async createAdapterForBinding(
-    adapterType: string,
-    adapterToken: string
+    adapterType: string, adapterToken: string,
   ): Promise<ChatAdapter | null> {
-    // Check if adapter already exists
-    if (this.adapters.has(adapterToken)) {
-      return this.adapters.get(adapterToken)!;
-    }
-
-    let adapter: ChatAdapter;
-
-    switch (adapterType) {
-      case "telegram":
-        adapter = new TelegramAdapter(adapterToken, resolveUiLocale(this.db.getConfig("ui_locale")), {
-          getCommandReplyAutoDeleteSeconds: () => this.db.getRuntimeTelegramCommandReplyAutoDeleteSeconds(),
-        });
-        break;
-      default:
-        logEvent("error", "adapter-unknown-type", { "adapter-type": adapterType });
-        return null;
-    }
-
-    this.adapters.set(adapterToken, adapter);
-    this.bridge.connect(adapter, adapterToken);
-
-    if (this.running) {
-      await adapter.start();
-    }
-
-    return adapter;
+    return createAdapterForBindingHelper(
+      { db: this.db, adapters: this.adapters, bridge: this.bridge, running: this.running },
+      adapterType, adapterToken,
+    );
   }
 
-  /**
-   * Remove an adapter.
-   */
   private async removeAdapter(adapterToken: string): Promise<void> {
-    const adapter = this.adapters.get(adapterToken);
-    if (adapter) {
-      await adapter.stop();
-      this.adapters.delete(adapterToken);
-    }
+    await removeAdapterHelper(this.adapters, adapterToken);
   }
 
-
-  /**
-   * Stop the daemon.
-   */
   async stop(): Promise<void> {
     if (!this.running) return;
 
@@ -451,6 +429,23 @@ export class Daemon {
     // Close agent executor
     await this.executor.closeAll();
 
+    // Release all relay sessions and stop broker
+    if (this.relayExecutor) {
+      await this.relayExecutor.releaseAll();
+    }
+    await this.brokerManager.stop();
+
+    // Stop HTTP + WebSocket server
+    if (this.wsCleanup) {
+      this.wsCleanup();
+      this.wsCleanup = null;
+    }
+    if (this.httpServer) {
+      await stopHttpServer(this.httpServer);
+      this.httpServer = null;
+    }
+    this.eventBus.removeAllListeners();
+
     // Stop IPC server
     await this.ipc.stop();
 
@@ -464,22 +459,15 @@ export class Daemon {
     logEvent("info", "daemon-stopped");
   }
 
-  /**
-   * Check if daemon is running.
-   */
   isRunning(): boolean {
     return this.running;
   }
 
-  /**
-   * Register all RPC methods using extracted handlers.
-   */
   private registerRpcMethods(): void {
     const ctx = this.createContext();
 
-    const methods: RpcMethodRegistry = {
+    this.rpcMethods = {
       ...createEnvelopeHandlers(ctx),
-      ...createSessionHandlers(ctx),
       ...createTeamHandlers(ctx),
       ...createReactionHandlers(ctx),
       ...createCronHandlers(ctx),
@@ -488,8 +476,25 @@ export class Daemon {
       ...createAgentDeleteHandler(ctx),
       ...createDaemonHandlers(ctx),
       ...createSetupHandlers(ctx),
+      ...createSessionChatHandlers(ctx),
     };
 
-    this.ipc.registerMethods(methods);
+    this.ipc.registerMethods(this.rpcMethods);
+  }
+
+  private async startHttpWsServer(): Promise<void> {
+    const ctx = this.createContext();
+    const router = createRoutes(this.rpcMethods, ctx);
+
+    this.httpServer = createHttpServer({ router });
+
+    const { cleanup } = createWsServer(this.httpServer, ctx, this.eventBus);
+    this.wsCleanup = cleanup;
+
+    await startHttpServer(this.httpServer);
+  }
+
+  getEventBus(): DaemonEventBus {
+    return this.eventBus;
   }
 }

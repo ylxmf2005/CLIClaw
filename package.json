@@ -33,6 +33,7 @@
     "inventory:magic": "tsx scripts/magic-inventory.ts --out docs/spec/generated/magic-inventory.md"
   },
   "dependencies": {
+    "@agent-relay/sdk": "^3.1.0",
     "@inquirer/prompts": "^7.0.0",
     "@types/proper-lockfile": "^4.1.4",
     "better-sqlite3": "^11.7.0",
@@ -42,12 +43,14 @@
     "https-proxy-agent": "^7.0.6",
     "nunjucks": "^3.2.4",
     "proper-lockfile": "^4.1.2",
-    "telegraf": "^4.16.3"
+    "telegraf": "^4.16.3",
+    "ws": "^8.19.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.10.0",
     "@types/nunjucks": "^3.2.6",
+    "@types/ws": "^8.18.1",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   }

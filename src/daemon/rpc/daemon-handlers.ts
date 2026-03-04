@@ -28,6 +28,7 @@ export function createDaemonHandlers(ctx: DaemonContext): RpcMethodRegistry {
           adapterType: b.adapterType,
         })),
         dataDir: ctx.config.dataDir,
+        relayAvailable: ctx.relayAvailable ?? false,
       };
     },
 
