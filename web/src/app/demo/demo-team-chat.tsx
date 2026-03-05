@@ -6,6 +6,7 @@ import { cn, formatMessageTime } from "@/lib/utils";
 import { getSenderColor } from "@/lib/colors";
 import { MessageContent } from "@/components/shared/message-content";
 import { DemoComposer } from "./demo-composer";
+import { MentionChip } from "@/components/chat/mention-chip";
 
 function parseAddr(a: string) {
   if (a.startsWith("agent:")) return { type: "agent", name: a.slice(6).split(":")[0] };
@@ -156,9 +157,15 @@ export function DemoTeamChat() {
             </div>
           </div>
 
-          {/* Composer */}
+          {/* Composer with mock mention chips */}
+          <div className="border-t border-border bg-card px-4 pt-1.5">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <MentionChip name="@all" onRemove={() => {}} disabled />
+              <MentionChip name={team.members[0] ?? "nex"} onRemove={() => {}} disabled />
+            </div>
+          </div>
           <DemoComposer
-            placeholder={`Message ${team.name}...`}
+            placeholder={`Use @ to mention members or @all`}
             onSend={(text) => {
               dispatch({ type: "ADD_ENVELOPE", to: `team:${team.name}`, text });
               dispatch({ type: "CLEAR_DRAFT", key: `team:${team.name}` });

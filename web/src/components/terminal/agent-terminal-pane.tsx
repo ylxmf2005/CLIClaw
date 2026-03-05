@@ -215,7 +215,9 @@ export function AgentTerminalPane({
     const disposable = terminal.onData((data: string) => {
       const selectedText = terminal.getSelection();
       if (selectedText && selectedText.length > 0) {
-        return;
+        // Match normal terminal behavior: typing should continue even when
+        // prior mouse selection exists.
+        terminal.clearSelection();
       }
       send({
         type: "agent.pty.input",

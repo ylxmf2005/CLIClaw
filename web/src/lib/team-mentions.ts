@@ -1,76 +1,83 @@
-export type TeamRecipientResolution =
-  | {
-      kind: "broadcast";
-      recipients: string[];
-      text: string;
-    }
-  | {
-      kind: "single";
-      recipients: [string];
-      text: string;
-      mentioned: string;
-    }
-  | {
-      kind: "unknown";
-      recipients: [];
-      text: string;
-      mentioned: string;
-    };
+/**
+ * Team mention resolution for the web frontend.
+ *
+ * Mentions are structured metadata (not text prefixes). The frontend
+ * collects a `mentions: string[]` via the mention bar UI and passes
+ * them alongside the message text.
+ */
 
-const LEADING_MENTION_RE = /^@([A-Za-z0-9._-]+)(?:\s+|$)/;
+export type MentionResolution =
+  | { kind: "broadcast"; recipients: string[]; text: string }
+  | { kind: "targeted"; recipients: string[]; text: string }
+  | { kind: "invalid"; recipients: []; text: string; invalidNames: string[] };
 
-export function resolveTeamRecipients(
-  rawText: string,
+const ALL_SENTINEL = "@all";
+
+/**
+ * Resolve a structured mentions array against the team member list.
+ *
+ * @param mentions - Array of mention strings from the UI (agent names or "@all")
+ * @param text - Raw message text (no @-prefixes — mentions are metadata)
+ * @param memberAgentNames - All agent names in the team
+ * @returns Resolution with recipients and cleaned text
+ */
+export function resolveTeamMentions(
+  mentions: string[],
+  text: string,
   memberAgentNames: string[],
-): TeamRecipientResolution {
-  const text = rawText.trim();
+): MentionResolution {
+  const trimmed = text.trim();
   const members = unique(memberAgentNames);
-  if (members.length === 0) {
-    return {
-      kind: "broadcast",
-      recipients: [],
-      text,
-    };
+
+  if (mentions.length === 0) {
+    return { kind: "invalid", recipients: [], text: trimmed, invalidNames: [] };
   }
 
-  const mentionMatch = text.match(LEADING_MENTION_RE);
-  if (!mentionMatch) {
-    return {
-      kind: "broadcast",
-      recipients: members,
-      text,
-    };
+  // @all → broadcast to all members
+  if (mentions.some((m) => m.toLowerCase() === ALL_SENTINEL.toLowerCase() || m.toLowerCase() === "all")) {
+    return { kind: "broadcast", recipients: members, text: trimmed };
   }
 
-  const mentioned = (mentionMatch[1] ?? "").trim();
-  const lowered = mentioned.toLowerCase();
-  const withoutMention = text.replace(LEADING_MENTION_RE, "").trim();
-  const resolvedText = withoutMention.length > 0 ? withoutMention : text;
+  // Validate each mentioned name against the member list
+  const resolved: string[] = [];
+  const invalid: string[] = [];
 
-  if (lowered === "all") {
-    return {
-      kind: "broadcast",
-      recipients: members,
-      text: resolvedText,
-    };
+  for (const mention of mentions) {
+    const name = mention.trim();
+    if (!name) continue;
+    const match = members.find((m) => m.toLowerCase() === name.toLowerCase());
+    if (match) {
+      if (!resolved.includes(match)) {
+        resolved.push(match);
+      }
+    } else {
+      invalid.push(name);
+    }
   }
 
-  const target = members.find((name) => name.toLowerCase() === lowered);
-  if (!target) {
-    return {
-      kind: "unknown",
-      recipients: [],
-      text,
-      mentioned,
-    };
+  if (invalid.length > 0) {
+    return { kind: "invalid", recipients: [], text: trimmed, invalidNames: invalid };
   }
 
-  return {
-    kind: "single",
-    recipients: [target],
-    text: resolvedText,
-    mentioned: target,
-  };
+  return { kind: "targeted", recipients: resolved, text: trimmed };
+}
+
+/**
+ * Check whether a mention string is the @all sentinel.
+ */
+export function isAllMention(mention: string): boolean {
+  return mention.toLowerCase() === ALL_SENTINEL.toLowerCase() || mention.toLowerCase() === "all";
+}
+
+/**
+ * Build the mentions array to send to the API from the UI state.
+ * Normalizes @all to the sentinel value.
+ */
+export function buildMentionsPayload(mentions: string[]): string[] {
+  if (mentions.some(isAllMention)) {
+    return [ALL_SENTINEL];
+  }
+  return [...mentions];
 }
 
 function unique(values: string[]): string[] {
