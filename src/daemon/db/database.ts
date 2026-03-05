@@ -126,6 +126,8 @@ interface AgentSessionRow {
   last_active_at: number;
   last_adapter_type: string | null;
   last_chat_id: string | null;
+  label: string | null;
+  pinned: number;
 }
 
 interface ChannelSessionBindingRow {
@@ -153,6 +155,8 @@ interface SessionLinkWithSessionRow {
   provider_session_id: string | null;
   last_adapter_type: string | null;
   last_chat_id: string | null;
+  label: string | null;
+  pinned: number;
 }
 
 /**
@@ -190,6 +194,8 @@ export interface AgentSessionRecord {
   lastActiveAt: number;
   lastAdapterType?: string;
   lastChatId?: string;
+  label?: string;
+  pinned: boolean;
 }
 
 export interface ChannelSessionBinding {
@@ -263,7 +269,20 @@ export class HiBossDatabase {
   private initSchema(): void {
     this.db.exec(SCHEMA_SQL);
     this.assertSchemaCompatible();
+    this.migrateAgentSessionsColumns();
     this.reconcileStaleAgentRunsOnStartup();
+  }
+
+  /** Add label and pinned columns to agent_sessions if missing (migration). */
+  private migrateAgentSessionsColumns(): void {
+    const info = this.db.prepare("PRAGMA table_info(agent_sessions)").all() as Array<{ name: string }>;
+    const names = new Set(info.map((c) => c.name));
+    if (!names.has("label")) {
+      this.db.exec("ALTER TABLE agent_sessions ADD COLUMN label TEXT");
+    }
+    if (!names.has("pinned")) {
+      this.db.exec("ALTER TABLE agent_sessions ADD COLUMN pinned INTEGER DEFAULT 0");
+    }
   }
 
   private assertSchemaCompatible(): void {
@@ -346,6 +365,8 @@ export class HiBossDatabase {
         "last_active_at",
         "last_adapter_type",
         "last_chat_id",
+        "label",
+        "pinned",
       ],
       channel_session_bindings: [
         "id",
@@ -2226,6 +2247,8 @@ export class HiBossDatabase {
       lastActiveAt: row.last_active_at,
       lastAdapterType: row.last_adapter_type ?? undefined,
       lastChatId: row.last_chat_id ?? undefined,
+      label: row.label ?? undefined,
+      pinned: !!(row.pinned),
     };
   }
 
@@ -2626,6 +2649,30 @@ export class HiBossDatabase {
     });
   }
 
+  updateSessionLabel(agentName: string, sessionId: string, label: string | null): boolean {
+    const stmt = this.db.prepare(
+      "UPDATE agent_sessions SET label = ? WHERE id = ? AND agent_name = ?"
+    );
+    const result = stmt.run(label, sessionId, agentName);
+    return result.changes > 0;
+  }
+
+  updateSessionPinned(agentName: string, sessionId: string, pinned: boolean): boolean {
+    const stmt = this.db.prepare(
+      "UPDATE agent_sessions SET pinned = ? WHERE id = ? AND agent_name = ?"
+    );
+    const result = stmt.run(pinned ? 1 : 0, sessionId, agentName);
+    return result.changes > 0;
+  }
+
+  deleteAgentSession(agentName: string, sessionId: string): boolean {
+    const stmt = this.db.prepare(
+      "DELETE FROM agent_sessions WHERE id = ? AND agent_name = ?"
+    );
+    const result = stmt.run(sessionId, agentName);
+    return result.changes > 0;
+  }
+
   listSessionsForScope(input: {
     agentName: string;
     scope: SessionListScope;
@@ -2693,6 +2740,8 @@ export class HiBossDatabase {
           last_active_at: row.last_active_at,
           last_adapter_type: row.last_adapter_type,
           last_chat_id: row.last_chat_id,
+          label: row.label,
+          pinned: row.pinned ?? 0,
         }),
         link: {
           adapterType: row.adapter_type,

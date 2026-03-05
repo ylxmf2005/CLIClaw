@@ -111,7 +111,9 @@ CREATE TABLE IF NOT EXISTS agent_sessions (
   created_at INTEGER NOT NULL,
   last_active_at INTEGER NOT NULL,
   last_adapter_type TEXT,
-  last_chat_id TEXT
+  last_chat_id TEXT,
+  label TEXT,
+  pinned INTEGER DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS channel_session_bindings (

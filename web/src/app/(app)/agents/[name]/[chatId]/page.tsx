@@ -2,7 +2,7 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { useAppState } from "@/providers/app-state-provider";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { cn, formatMessageTime } from "@/lib/utils";
 import { getSenderColor } from "@/lib/colors";
 import { deriveMention } from "@/lib/mention-utils";
@@ -53,6 +53,11 @@ export default function AgentChatPage() {
   const [pendingAttachments, setPendingAttachments] = useState<EnvelopeAttachment[]>([]);
   const [slashExecutions, setSlashExecutions] = useState<SlashExecution[]>([]);
 
+  const [chatTransition, setChatTransition] = useState(false);
+  const scrollPositions = useRef<Map<string, number>>(new Map());
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const prevChatRef = useRef<string>("");
+
   const agent = state.agents.find((a) => a.name === name);
   const status = state.agentStatuses[name];
   const envelopeKey = `agent:${name}:${chatId}`;
@@ -88,6 +93,37 @@ export default function AgentChatPage() {
     }
     return `channel:${currentBinding.adapterType}:${currentBinding.chatId}`;
   }, [state.sessions, name, chatId]);
+
+  // Save scroll position when switching away, restore when switching back
+  useEffect(() => {
+    const chatKey = `${name}:${chatId}`;
+    const prevKey = prevChatRef.current;
+
+    // Save scroll position of previous chat
+    if (prevKey && prevKey !== chatKey && scrollContainerRef.current) {
+      scrollPositions.current.set(prevKey, scrollContainerRef.current.scrollTop);
+    }
+
+    // Transition animation
+    if (prevKey && prevKey !== chatKey) {
+      setChatTransition(true);
+      const timer = setTimeout(() => setChatTransition(false), 150);
+      prevChatRef.current = chatKey;
+      return () => clearTimeout(timer);
+    }
+
+    prevChatRef.current = chatKey;
+  }, [name, chatId]);
+
+  // Restore scroll position after envelopes load
+  useEffect(() => {
+    const chatKey = `${name}:${chatId}`;
+    const saved = scrollPositions.current.get(chatKey);
+    if (saved != null && scrollContainerRef.current && envelopes.length > 0) {
+      scrollContainerRef.current.scrollTop = saved;
+      scrollPositions.current.delete(chatKey);
+    }
+  }, [name, chatId, envelopes.length]);
 
   // Load envelopes, conversations, and scheduled envelopes on mount / param change
   useEffect(() => {
@@ -507,7 +543,11 @@ export default function AgentChatPage() {
 
         {/* Messages - Task 10.3: drag-drop file upload */}
         <div
-          className="min-h-0 flex-1 overflow-y-auto px-4 py-3"
+          ref={scrollContainerRef}
+          className={cn(
+            "min-h-0 flex-1 overflow-y-auto px-4 py-3 transition-opacity duration-150",
+            chatTransition && "opacity-0 translate-y-1"
+          )}
           onDrop={handleFileDrop}
           onDragOver={(e) => e.preventDefault()}
         >

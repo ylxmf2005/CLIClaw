@@ -81,6 +81,8 @@ export function registerSessionRoutes(
       return {
         id: s.id,
         agentName: s.agentName,
+        label: s.label,
+        pinned: s.pinned,
         createdAt: s.createdAt,
         lastActivityAt: s.lastActiveAt,
         bindings: bindings.map((b) => ({
@@ -208,7 +210,105 @@ export function registerSessionRoutes(
     };
   });
 
-  // 4.4: DELETE /api/agents/:name/sessions/:id/bindings/:adapterType/:chatId
+  // 4.4a: PATCH /api/agents/:name/sessions/:id — update label/pinned
+  router.patch("/api/agents/:name/sessions/:id", async (ctx) => {
+    const token = requireTokenFromCtx(ctx);
+    const principal = daemonCtx.resolvePrincipal(token);
+    daemonCtx.assertOperationAllowed("session.list", principal);
+
+    const agentName = ctx.params.name ?? "";
+    const sessionId = ctx.params.id ?? "";
+    if (!agentName || !sessionId) {
+      rpcError(RPC_ERRORS.INVALID_PARAMS, "Agent name and session ID are required");
+    }
+
+    const agent = daemonCtx.db.getAgentByNameCaseInsensitive(agentName);
+    if (!agent) {
+      rpcError(RPC_ERRORS.NOT_FOUND, "Agent not found");
+    }
+
+    const session = daemonCtx.db.getAgentSessionById(sessionId);
+    if (!session || session.agentName !== agent.name) {
+      rpcError(RPC_ERRORS.NOT_FOUND, "Session not found");
+    }
+
+    const body = (ctx.body ?? {}) as Record<string, unknown>;
+    let updated = false;
+
+    if ("label" in body) {
+      const label = body.label === null ? null : typeof body.label === "string" ? body.label.trim().slice(0, 100) : null;
+      daemonCtx.db.updateSessionLabel(agent.name, session.id, label);
+      updated = true;
+    }
+
+    if ("pinned" in body) {
+      const pinned = !!body.pinned;
+      daemonCtx.db.updateSessionPinned(agent.name, session.id, pinned);
+      updated = true;
+    }
+
+    if (!updated) {
+      rpcError(RPC_ERRORS.INVALID_PARAMS, "At least one of label or pinned must be provided");
+    }
+
+    const refreshed = daemonCtx.db.getAgentSessionById(session.id);
+    const bindings = daemonCtx.db.getCoBindingsForSession(session.id);
+    return {
+      session: {
+        id: refreshed!.id,
+        agentName: refreshed!.agentName,
+        label: refreshed!.label,
+        pinned: refreshed!.pinned,
+        createdAt: refreshed!.createdAt,
+        lastActivityAt: refreshed!.lastActiveAt,
+        bindings: bindings.map((b) => ({
+          adapterType: b.adapterType,
+          chatId: b.chatId,
+          createdAt: b.updatedAt,
+        })),
+      },
+    };
+  });
+
+  // 4.4b: DELETE /api/agents/:name/sessions/:id — delete entire session
+  router.delete("/api/agents/:name/sessions/:id", async (ctx) => {
+    const token = requireTokenFromCtx(ctx);
+    const principal = daemonCtx.resolvePrincipal(token);
+    daemonCtx.assertOperationAllowed("session.list", principal);
+
+    const agentName = ctx.params.name ?? "";
+    const sessionId = ctx.params.id ?? "";
+    if (!agentName || !sessionId) {
+      rpcError(RPC_ERRORS.INVALID_PARAMS, "Agent name and session ID are required");
+    }
+
+    const agent = daemonCtx.db.getAgentByNameCaseInsensitive(agentName);
+    if (!agent) {
+      rpcError(RPC_ERRORS.NOT_FOUND, "Agent not found");
+    }
+
+    const session = daemonCtx.db.getAgentSessionById(sessionId);
+    if (!session || session.agentName !== agent.name) {
+      rpcError(RPC_ERRORS.NOT_FOUND, "Session not found");
+    }
+
+    // Cascade: bindings + links are deleted by FK ON DELETE CASCADE
+    const deleted = daemonCtx.db.deleteAgentSession(agent.name, session.id);
+    if (!deleted) {
+      rpcError(RPC_ERRORS.NOT_FOUND, "Session not found");
+    }
+
+    // Emit event so WebSocket clients can update
+    daemonCtx.eventBus?.emit("agent.status", {
+      name: agent.name,
+      agentState: "idle",
+      agentHealth: "ok",
+    });
+
+    return { success: true, deletedSessionId: session.id };
+  });
+
+  // 4.4c: DELETE /api/agents/:name/sessions/:id/bindings/:adapterType/:chatId
   router.delete("/api/agents/:name/sessions/:id/bindings/:adapterType/:chatId", async (ctx) => {
     const token = requireTokenFromCtx(ctx);
     const principal = daemonCtx.resolvePrincipal(token);

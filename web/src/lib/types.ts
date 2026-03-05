@@ -196,6 +196,8 @@ export interface ChatSelection {
 export interface AgentSession {
   id: string;
   agentName: string;
+  label?: string;
+  pinned?: boolean;
   createdAt: number;
   lastActivityAt?: number;
   bindings: SessionBinding[];

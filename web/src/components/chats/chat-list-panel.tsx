@@ -1,10 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { useAppState } from "@/providers/app-state-provider";
 import { ChatListItem } from "./chat-list-item";
 import { Input } from "@/components/ui/input";
-import { Search, ChevronDown, ChevronRight, Plus } from "lucide-react";
+import { Search, ChevronDown, ChevronRight, Plus, Trash2, Pin, PinOff, ChevronsDown } from "lucide-react";
 import { cn, generateChatId, resolveDefaultChatId, formatTime } from "@/lib/utils";
 import type { AgentState } from "@/components/shared/status-indicator";
 import { Avatar } from "@/components/shared/avatar";
@@ -207,13 +207,15 @@ export function ChatListPanel() {
                         key={convo.chatId}
                         kind="agent"
                         name={agent.name}
-                        chatLabel={convo.label || convo.chatId}
+                        chatLabel={session?.label || convo.label || convo.chatId}
                         subtitle={convo.lastMessage}
                         lastMessage={convo.lastMessage}
                         lastMessageAt={convo.lastMessageAt}
+                        messageCount={convo.messageCount}
                         agentState={agentState}
                         unreadCount={convo.unreadCount}
                         adapterTypes={adapterTypes}
+                        isPinned={session?.pinned}
                         isSelected={
                           state.selectedChat?.agentName === agent.name &&
                           state.selectedChat?.chatId === convo.chatId
@@ -221,6 +223,19 @@ export function ChatListPanel() {
                         onClick={() =>
                           handleConversationClick(agent.name, convo.chatId)
                         }
+                        onDelete={session ? async () => {
+                          try {
+                            await api.deleteSession(agent.name, session.id);
+                            loadConversations(agent.name);
+                            loadSessions(agent.name);
+                          } catch { /* silent */ }
+                        } : undefined}
+                        onPin={session ? async () => {
+                          try {
+                            await api.updateSession(agent.name, session.id, { pinned: !session.pinned });
+                            loadSessions(agent.name);
+                          } catch { /* silent */ }
+                        } : undefined}
                       />
                     );
                   })}

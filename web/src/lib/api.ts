@@ -177,6 +177,7 @@ export async function sendEnvelope(params: {
   interruptNow?: boolean;
   parseMode?: ParseMode;
   replyToEnvelopeId?: string;
+  mentions?: string[];
 }): Promise<{ id?: string; ids?: string[] }> {
   return apiFetch("/api/envelopes", {
     method: "POST",
@@ -394,6 +395,27 @@ export async function addSessionBinding(
   return apiFetch(
     `/api/agents/${encodeURIComponent(agentName)}/sessions/${encodeURIComponent(sessionId)}/bindings`,
     { method: "POST", body: JSON.stringify(params) }
+  );
+}
+
+export async function updateSession(
+  agentName: string,
+  sessionId: string,
+  params: { label?: string | null; pinned?: boolean }
+): Promise<{ session: AgentSession }> {
+  return apiFetch(
+    `/api/agents/${encodeURIComponent(agentName)}/sessions/${encodeURIComponent(sessionId)}`,
+    { method: "PATCH", body: JSON.stringify(params) }
+  );
+}
+
+export async function deleteSession(
+  agentName: string,
+  sessionId: string
+): Promise<{ success: boolean; deletedSessionId: string }> {
+  return apiFetch(
+    `/api/agents/${encodeURIComponent(agentName)}/sessions/${encodeURIComponent(sessionId)}`,
+    { method: "DELETE" }
   );
 }
 

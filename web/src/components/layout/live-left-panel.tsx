@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAppState } from "@/providers/app-state-provider";
 import { useRouteSelection } from "@/hooks/use-route-selection";
@@ -12,7 +12,7 @@ import * as api from "@/lib/api";
 import { ChatListItem } from "@/components/chats/chat-list-item";
 import type { BottomTab } from "@/lib/types";
 import type { AgentState } from "@/components/shared/status-indicator";
-import { cn } from "@/lib/utils";
+import { cn, formatTime } from "@/lib/utils";
 import { getAvatarColor, getInitials } from "@/lib/colors";
 import {
   User,
@@ -27,6 +27,12 @@ import {
   Moon,
   Wifi,
   WifiOff,
+  Trash2,
+  Pin,
+  PinOff,
+  Check,
+  X,
+  ChevronsDown,
 } from "lucide-react";
 import { AgentDetailSheet } from "@/components/agents/agent-detail-sheet";
 import type { Agent } from "@/lib/types";
@@ -205,18 +211,72 @@ function LiveChatList() {
 }
 
 // ─── Agent List (Agents tab) ───────────────────────────────
+
+const CHATS_PER_PAGE = 8;
+
 function LiveAgentList({ onCreateAgent }: { onCreateAgent?: () => void }) {
-  const { state, loadSessions } = useAppState();
+  const { state, loadSessions, loadConversations } = useAppState();
   const router = useRouter();
   const { agentName: selAgent, chatId: selChat } = useRouteSelection();
   const [expandedAgents, setExpandedAgents] = useState<Set<string>>(new Set());
   const [detailAgent, setDetailAgent] = useState<Agent | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [chatLimits, setChatLimits] = useState<Record<string, number>>({});
+  const [confirmDelete, setConfirmDelete] = useState<{ agentName: string; chatId: string; sessionId: string } | null>(null);
+  const [renamingChat, setRenamingChat] = useState<{ agentName: string; chatId: string } | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const renameInputRef = useRef<HTMLInputElement>(null);
 
   const handleOpenDetail = (agent: Agent) => {
     setDetailAgent(agent);
     setDetailOpen(true);
   };
+
+  const handleDeleteChat = useCallback(async (agentName: string, sessionId: string, chatId: string) => {
+    try {
+      await api.deleteSession(agentName, sessionId);
+      await loadSessions(agentName);
+      await loadConversations(agentName);
+      // Navigate away if the deleted chat was selected
+      if (selAgent === agentName && selChat === chatId) {
+        const convos = state.conversations[agentName]?.filter(c => c.chatId !== chatId) || [];
+        if (convos.length > 0) {
+          router.push(`/agents/${agentName}/${convos[0].chatId}`);
+        } else {
+          router.push(`/agents/${agentName}/default`);
+        }
+      }
+    } catch {
+      // silent
+    }
+    setConfirmDelete(null);
+  }, [loadSessions, loadConversations, selAgent, selChat, state.conversations, router]);
+
+  const handlePinChat = useCallback(async (agentName: string, sessionId: string, currentPinned: boolean) => {
+    try {
+      await api.updateSession(agentName, sessionId, { pinned: !currentPinned });
+      await loadSessions(agentName);
+    } catch {
+      // silent
+    }
+  }, [loadSessions]);
+
+  const handleRenameChat = useCallback(async (agentName: string, sessionId: string, newLabel: string) => {
+    try {
+      await api.updateSession(agentName, sessionId, { label: newLabel || null });
+      await loadSessions(agentName);
+      await loadConversations(agentName);
+    } catch {
+      // silent
+    }
+    setRenamingChat(null);
+  }, [loadSessions, loadConversations]);
+
+  const startRename = useCallback((agentName: string, chatId: string, currentLabel: string) => {
+    setRenamingChat({ agentName, chatId });
+    setRenameValue(currentLabel);
+    setTimeout(() => renameInputRef.current?.focus(), 50);
+  }, []);
 
   return (
     <div className="flex flex-col">
@@ -247,8 +307,23 @@ function LiveAgentList({ onCreateAgent }: { onCreateAgent?: () => void }) {
           const avatarColor = getAvatarColor(agent.name);
           const initials = getInitials(agent.name);
           const agentConvos = state.conversations[agent.name] || [];
+          const sessions = state.sessions[agent.name] || [];
           const hasChats = agentConvos.length > 0;
           const isExpanded = expandedAgents.has(agent.name);
+
+          // Sort: pinned first, then by recency
+          const sortedConvos = [...agentConvos].sort((a, b) => {
+            const aSession = sessions.find(s => s.bindings.some(bind => bind.chatId === a.chatId));
+            const bSession = sessions.find(s => s.bindings.some(bind => bind.chatId === b.chatId));
+            const aPinned = aSession?.pinned ? 1 : 0;
+            const bPinned = bSession?.pinned ? 1 : 0;
+            if (aPinned !== bPinned) return bPinned - aPinned;
+            return (b.lastMessageAt ?? b.createdAt) - (a.lastMessageAt ?? a.createdAt);
+          });
+
+          const limit = chatLimits[agent.name] || CHATS_PER_PAGE;
+          const visibleConvos = sortedConvos.slice(0, limit);
+          const hasMore = sortedConvos.length > limit;
 
           return (
             <div key={agent.name}>
@@ -319,14 +394,43 @@ function LiveAgentList({ onCreateAgent }: { onCreateAgent?: () => void }) {
 
               {hasChats && isExpanded && (
                 <div className="ml-6 space-y-0.5 border-l border-sidebar-border pl-3 py-1">
-                  {agentConvos
-                    .sort((a, b) => (b.lastMessageAt ?? b.createdAt) - (a.lastMessageAt ?? a.createdAt))
-                    .map((convo) => {
-                      const isChatSelected = selAgent === agent.name && selChat === convo.chatId;
-                      return (
+                  {visibleConvos.map((convo) => {
+                    const isChatSelected = selAgent === agent.name && selChat === convo.chatId;
+                    const session = sessions.find(s => s.bindings.some(b => b.chatId === convo.chatId));
+                    const isPinned = session?.pinned ?? false;
+                    const sessionLabel = session?.label || convo.label;
+                    const displayLabel = sessionLabel || convo.chatId;
+                    const isRenaming = renamingChat?.agentName === agent.name && renamingChat?.chatId === convo.chatId;
+                    const isDeleting = confirmDelete?.agentName === agent.name && confirmDelete?.chatId === convo.chatId;
+                    const adapterTypes = session ? Array.from(new Set(session.bindings.map(b => b.adapterType).filter(t => t !== "internal"))) : [];
+
+                    return (
+                      <div key={convo.chatId} className="group/chat relative">
+                        {/* Delete confirmation overlay */}
+                        {isDeleting && (
+                          <div className="absolute inset-0 z-10 flex items-center justify-center rounded-md bg-background/95 backdrop-blur-sm px-2">
+                            <span className="text-[10px] text-rose-alert mr-2">Delete?</span>
+                            <button
+                              onClick={() => handleDeleteChat(agent.name, confirmDelete.sessionId, convo.chatId)}
+                              className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-rose-alert/15 text-rose-alert hover:bg-rose-alert/25 transition-colors mr-1"
+                            >
+                              Yes
+                            </button>
+                            <button
+                              onClick={() => setConfirmDelete(null)}
+                              className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-accent text-muted-foreground hover:text-foreground transition-colors"
+                            >
+                              No
+                            </button>
+                          </div>
+                        )}
+
                         <button
-                          key={convo.chatId}
                           onClick={() => router.push(`/agents/${agent.name}/${convo.chatId}`)}
+                          onDoubleClick={(e) => {
+                            e.preventDefault();
+                            if (session) startRename(agent.name, convo.chatId, sessionLabel || "");
+                          }}
                           className={cn(
                             "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left transition-colors",
                             isChatSelected ? "bg-cyan-glow/10 text-cyan-glow" : "hover:bg-sidebar-accent text-muted-foreground"
@@ -334,21 +438,118 @@ function LiveAgentList({ onCreateAgent }: { onCreateAgent?: () => void }) {
                         >
                           <MessageCircle className="h-3 w-3 shrink-0" />
                           <div className="min-w-0 flex-1">
-                            <span className={cn("block truncate text-xs font-medium", convo.unreadCount ? "font-semibold text-foreground" : "")}>
-                              {convo.label || convo.chatId}
-                            </span>
-                            {convo.lastMessage && (
-                              <p className="truncate text-[10px] text-muted-foreground">{convo.lastMessage}</p>
-                            )}
+                            {/* Chat label row */}
+                            <div className="flex items-center gap-1">
+                              {isPinned && <Pin className="h-2.5 w-2.5 shrink-0 text-cyan-glow/60" />}
+                              {isRenaming ? (
+                                <form
+                                  className="flex items-center gap-1 flex-1"
+                                  onSubmit={(e) => {
+                                    e.preventDefault();
+                                    if (session) handleRenameChat(agent.name, session.id, renameValue);
+                                  }}
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <input
+                                    ref={renameInputRef}
+                                    value={renameValue}
+                                    onChange={(e) => setRenameValue(e.target.value)}
+                                    className="h-5 flex-1 rounded border border-cyan-glow/30 bg-background px-1 text-xs text-foreground outline-none focus:border-cyan-glow"
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Escape") setRenamingChat(null);
+                                    }}
+                                    onBlur={() => {
+                                      if (session) handleRenameChat(agent.name, session.id, renameValue);
+                                    }}
+                                  />
+                                </form>
+                              ) : (
+                                <span className={cn(
+                                  "block truncate text-xs font-medium",
+                                  convo.unreadCount ? "font-semibold text-foreground" : ""
+                                )}>
+                                  {displayLabel}
+                                </span>
+                              )}
+                              {/* Adapter badges */}
+                              {adapterTypes.length > 0 && (
+                                <span className="flex items-center gap-0.5 shrink-0">
+                                  {adapterTypes.map((at) => (
+                                    <span
+                                      key={at}
+                                      className="rounded bg-accent/80 px-0.5 py-0 text-[7px] font-medium uppercase tracking-wider text-muted-foreground/60"
+                                    >
+                                      {at === "telegram" ? "TG" : at === "console" ? "WEB" : at.slice(0, 3).toUpperCase()}
+                                    </span>
+                                  ))}
+                                </span>
+                              )}
+                            </div>
+                            {/* Second row: preview + meta */}
+                            <div className="flex items-center justify-between gap-1">
+                              <p className="truncate text-[10px] text-muted-foreground">
+                                {convo.lastMessage || "No messages yet"}
+                              </p>
+                              <div className="flex items-center gap-1 shrink-0">
+                                {convo.messageCount != null && convo.messageCount > 0 && (
+                                  <span className="text-[9px] text-muted-foreground/50">{convo.messageCount}</span>
+                                )}
+                                {convo.lastMessageAt && (
+                                  <span className="text-[9px] text-muted-foreground/50">{formatTime(convo.lastMessageAt)}</span>
+                                )}
+                              </div>
+                            </div>
                           </div>
+
+                          {/* Unread badge */}
                           {!!convo.unreadCount && (
                             <span className="flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-cyan-glow px-1 text-[9px] font-bold text-background">
                               {convo.unreadCount}
                             </span>
                           )}
+
+                          {/* Hover action icons */}
+                          {!isRenaming && !isDeleting && session && (
+                            <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover/chat:opacity-100 transition-opacity">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handlePinChat(agent.name, session.id, isPinned);
+                                }}
+                                title={isPinned ? "Unpin" : "Pin"}
+                                className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/50 hover:text-cyan-glow hover:bg-cyan-glow/10 transition-colors"
+                              >
+                                {isPinned ? <PinOff className="h-2.5 w-2.5" /> : <Pin className="h-2.5 w-2.5" />}
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setConfirmDelete({ agentName: agent.name, chatId: convo.chatId, sessionId: session.id });
+                                }}
+                                title="Delete chat"
+                                className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/50 hover:text-rose-alert hover:bg-rose-alert/10 transition-colors"
+                              >
+                                <Trash2 className="h-2.5 w-2.5" />
+                              </button>
+                            </div>
+                          )}
                         </button>
-                      );
-                    })}
+                      </div>
+                    );
+                  })}
+
+                  {/* Show more button */}
+                  {hasMore && (
+                    <button
+                      onClick={() => setChatLimits(prev => ({ ...prev, [agent.name]: limit + CHATS_PER_PAGE }))}
+                      className="flex w-full items-center justify-center gap-1.5 rounded-md px-2.5 py-1.5 text-left text-muted-foreground/60 transition-colors hover:bg-sidebar-accent hover:text-muted-foreground"
+                    >
+                      <ChevronsDown className="h-3 w-3" />
+                      <span className="text-[10px]">Show more ({sortedConvos.length - limit} remaining)</span>
+                    </button>
+                  )}
+
+                  {/* New chat button */}
                   <button
                     onClick={async () => {
                       try {
