@@ -3,7 +3,7 @@
 export type Provider = "claude" | "codex";
 export type ReasoningEffort = "none" | "low" | "medium" | "high" | "xhigh";
 export type PermissionLevel = "restricted" | "standard" | "privileged" | "admin";
-export type EnvelopeStatus = "pending" | "done";
+export type EnvelopeStatus = "pending" | "done" | "queued" | "failed" | "expired";
 export type AgentRunStatus = "running" | "completed" | "failed" | "cancelled";
 export type TeamStatus = "active" | "archived";
 export type ParseMode = "plain" | "markdownv2" | "html";
@@ -20,6 +20,7 @@ export interface Agent {
   reasoningEffort?: ReasoningEffort;
   permissionLevel: PermissionLevel;
   sessionPolicy?: SessionPolicy;
+  relayMode?: "default-on" | "default-off";
   bindings: string[];
   createdAt: number;
   lastSeenAt?: number;
@@ -71,6 +72,7 @@ export interface Envelope {
   priority?: number;
   deliverAt?: number;
   status: EnvelopeStatus;
+  origin?: "cli" | "channel" | "cron" | "internal" | "console";
   createdAt: number;
   replyToEnvelopeId?: string;
   metadata?: Record<string, unknown>;
@@ -115,17 +117,6 @@ export interface CronSchedule {
   createdAt: number;
 }
 
-export interface AgentSession {
-  id: string;
-  agentName: string;
-  provider: Provider;
-  providerSessionId?: string;
-  createdAt: number;
-  lastActiveAt: number;
-  lastAdapterType?: string;
-  lastChatId?: string;
-}
-
 export interface DaemonStatus {
   running: boolean;
   startTimeMs?: number;
@@ -135,6 +126,7 @@ export interface DaemonStatus {
     adapterType: string;
   }>;
   dataDir: string;
+  relayAvailable?: boolean;
 }
 
 export interface SetupCheck {
@@ -165,11 +157,14 @@ export type WsEventType =
   | "agent.registered"
   | "agent.deleted"
   | "agent.log"
+  | "agent.pty.output"
+  | "agent.pty.input"
   | "session.started"
   | "session.ended"
   | "cron.fired"
   | "run.started"
   | "run.completed"
+  | "console.message"
   | "snapshot";
 
 export interface WsEvent {
@@ -182,9 +177,36 @@ export interface WsEvent {
 export type ViewMode = "chat" | "team" | "admin" | "settings";
 export type BottomTab = "chats" | "agents" | "teams" | "settings";
 
+export interface ChatConversation {
+  agentName: string;
+  chatId: string;
+  label?: string;
+  lastMessage?: string;
+  lastMessageAt?: number;
+  messageCount?: number;
+  unreadCount?: number;
+  createdAt: number;
+}
+
 export interface ChatSelection {
   agentName: string;
-  chatId?: string; // undefined = most recent
+  chatId: string;
+}
+
+export interface AgentSession {
+  id: string;
+  agentName: string;
+  label?: string;
+  pinned?: boolean;
+  createdAt: number;
+  lastActivityAt?: number;
+  bindings: SessionBinding[];
+}
+
+export interface SessionBinding {
+  adapterType: string;
+  chatId: string;
+  createdAt: number;
 }
 
 export interface TeamSelection {

@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS agents (
   reasoning_effort TEXT,
   permission_level TEXT DEFAULT '${DEFAULT_AGENT_PERMISSION_LEVEL}',
   session_policy TEXT,           -- JSON blob for SessionPolicyConfig
+  relay_mode TEXT DEFAULT 'default-off', -- default-on | default-off
   created_at INTEGER DEFAULT (CAST(strftime('%s','now') AS INTEGER) * 1000),
   last_seen_at INTEGER,
   metadata TEXT
@@ -110,7 +111,9 @@ CREATE TABLE IF NOT EXISTS agent_sessions (
   created_at INTEGER NOT NULL,
   last_active_at INTEGER NOT NULL,
   last_adapter_type TEXT,
-  last_chat_id TEXT
+  last_chat_id TEXT,
+  label TEXT,
+  pinned INTEGER DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS channel_session_bindings (
@@ -165,4 +168,11 @@ CREATE INDEX IF NOT EXISTS idx_channel_session_bindings_lookup ON channel_sessio
 CREATE INDEX IF NOT EXISTS idx_channel_session_links_agent_owner_last_seen ON channel_session_links(agent_name, owner_user_id, last_seen_at DESC);
 CREATE INDEX IF NOT EXISTS idx_channel_session_links_agent_chat_last_seen ON channel_session_links(agent_name, adapter_type, chat_id, last_seen_at DESC);
 CREATE INDEX IF NOT EXISTS idx_channel_user_auth_lookup ON channel_user_auth(adapter_type, channel_user_id);
+
+CREATE TABLE IF NOT EXISTS chat_state (
+  agent_name TEXT NOT NULL,
+  chat_id TEXT NOT NULL,
+  relay_on INTEGER DEFAULT 0,
+  PRIMARY KEY (agent_name, chat_id)
+);
 `;

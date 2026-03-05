@@ -9,8 +9,10 @@ import React, {
 } from "react";
 import type {
   Agent,
+  AgentSession,
   AgentStatus,
   BottomTab,
+  ChatConversation,
   Envelope,
   Team,
   CronSchedule,
@@ -21,6 +23,7 @@ import type {
   WsEvent,
 } from "@/lib/types";
 import * as api from "@/lib/api";
+import { setBossTimezone } from "@/lib/utils";
 import { useWebSocket } from "./ws-provider";
 
 // ─── State Shape ─────────────────────────────────────────────
@@ -29,15 +32,21 @@ interface AppState {
   agentStatuses: Record<string, AgentStatus["status"]>;
   agentLogLines: Record<string, string>; // agentName -> last log line
   envelopes: Record<string, Envelope[]>; // "agent:name:chatId" -> envelopes
+  conversations: Record<string, ChatConversation[]>; // agentName -> conversations
+  sessions: Record<string, AgentSession[]>; // agentName -> sessions
+  relayStates: Record<string, boolean>; // "agentName:chatId" -> relay on/off
+  ptyOutput: Record<string, string[]>; // "agentName:chatId" -> pty output lines
   teams: Team[];
   cronSchedules: CronSchedule[];
   daemonStatus: DaemonStatus | null;
+  drafts: Record<string, string>; // address -> draft text (ephemeral)
   view: ViewMode;
   activeTab: BottomTab;
   selectedChat: ChatSelection | null;
   selectedTeam: TeamSelection | null;
   splitPane: "terminal" | "thread" | "cron" | null;
   loading: boolean;
+  initialLoadError: string | null;
 }
 
 const initialState: AppState = {
@@ -45,15 +54,21 @@ const initialState: AppState = {
   agentStatuses: {},
   agentLogLines: {},
   envelopes: {},
+  conversations: {},
+  sessions: {},
+  relayStates: {},
+  ptyOutput: {},
   teams: [],
   cronSchedules: [],
   daemonStatus: null,
+  drafts: {},
   view: "chat",
-  activeTab: "chats",
+  activeTab: "agents",
   selectedChat: null,
   selectedTeam: null,
   splitPane: null,
   loading: true,
+  initialLoadError: null,
 };
 
 // ─── Actions ─────────────────────────────────────────────────
@@ -73,7 +88,16 @@ type Action =
   | { type: "SELECT_TEAM"; selection: TeamSelection | null }
   | { type: "SET_SPLIT_PANE"; pane: AppState["splitPane"] }
   | { type: "SET_TAB"; tab: BottomTab }
-  | { type: "SET_LOADING"; loading: boolean };
+  | { type: "SET_LOADING"; loading: boolean }
+  | { type: "SET_INITIAL_LOAD_ERROR"; error: string | null }
+  | { type: "SET_DRAFT"; key: string; text: string }
+  | { type: "CLEAR_DRAFT"; key: string }
+  | { type: "SET_CONVERSATIONS"; agentName: string; conversations: ChatConversation[] }
+  | { type: "SET_RELAY_STATE"; key: string; relayOn: boolean }
+  | { type: "UPDATE_UNREAD"; agentName: string; chatId: string; delta: number }
+  | { type: "PTY_OUTPUT"; agentName: string; chatId?: string; data: string }
+  | { type: "UPDATE_ENVELOPE"; envelope: Envelope }
+  | { type: "SET_SESSIONS"; agentName: string; sessions: AgentSession[] };
 
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
@@ -111,15 +135,98 @@ function reducer(state: AppState, action: Action): AppState {
         envelopes: { ...state.envelopes, [action.key]: action.envelopes },
       };
     case "ADD_ENVELOPE": {
-      const key = action.envelope.to;
-      const existing = state.envelopes[key] || [];
-      return {
-        ...state,
-        envelopes: {
-          ...state.envelopes,
-          [key]: [...existing, action.envelope],
-        },
-      };
+      // Route envelope to both sender's and receiver's conversation views
+      const env = action.envelope;
+      const chatId = (env.metadata?.chatScope as string) || "default";
+      const fromAgent = env.from?.startsWith("agent:") ? env.from.slice(6).split(":")[0] : null;
+      const toAgent = env.to?.startsWith("agent:") ? env.to.slice(6).split(":")[0] : null;
+
+      const newEnvelopes = { ...state.envelopes };
+
+      // Add to receiver's conversation
+      if (toAgent) {
+        const recvKey = `agent:${toAgent}:${chatId}`;
+        const existing = newEnvelopes[recvKey] || [];
+        if (!existing.some((e) => e.id === env.id)) {
+          newEnvelopes[recvKey] = [...existing, env];
+        }
+      }
+
+      // Add to sender's conversation (for cross-agent visibility)
+      if (fromAgent && fromAgent !== toAgent) {
+        const sendKey = `agent:${fromAgent}:${chatId}`;
+        const existing = newEnvelopes[sendKey] || [];
+        if (!existing.some((e) => e.id === env.id)) {
+          newEnvelopes[sendKey] = [...existing, env];
+        }
+      }
+
+      // Also store under the raw to address for backward compat
+      const rawKey = env.to;
+      if (!newEnvelopes[rawKey]) {
+        newEnvelopes[rawKey] = [];
+      }
+      if (!newEnvelopes[rawKey].some((e) => e.id === env.id)) {
+        newEnvelopes[rawKey] = [...newEnvelopes[rawKey], env];
+      }
+
+      // Keep team chat timeline updated when envelopes are part of a team scope
+      // or when a reply lands on the team's console channel.
+      const teamKeys = new Set<string>();
+      if (typeof env.metadata?.chatScope === "string" && env.metadata.chatScope.startsWith("team:")) {
+        teamKeys.add(env.metadata.chatScope);
+      }
+      if (env.to.startsWith("channel:console:team-chat-")) {
+        const teamName = env.to.slice("channel:console:team-chat-".length);
+        if (teamName) {
+          teamKeys.add(`team:${teamName}`);
+        }
+      }
+      for (const teamKey of teamKeys) {
+        const existing = newEnvelopes[teamKey] || [];
+        if (!existing.some((e) => e.id === env.id)) {
+          newEnvelopes[teamKey] = [...existing, env];
+        }
+      }
+
+      // Update conversation preview and unread counts
+      const newConversations = { ...state.conversations };
+      const agentsToUpdate = [toAgent, fromAgent].filter(Boolean) as string[];
+      for (const agentName of agentsToUpdate) {
+        const convos = [...(newConversations[agentName] || [])];
+        const idx = convos.findIndex((c) => c.chatId === chatId);
+        const isSelected =
+          state.selectedChat?.agentName === agentName &&
+          state.selectedChat?.chatId === chatId;
+
+        if (idx >= 0) {
+          convos[idx] = {
+            ...convos[idx],
+            lastMessage: env.content.text?.slice(0, 100),
+            lastMessageAt: env.createdAt,
+            messageCount: (convos[idx].messageCount ?? 0) + 1,
+            unreadCount: isSelected
+              ? convos[idx].unreadCount
+              : (convos[idx].unreadCount ?? 0) + 1,
+          };
+        } else {
+          // New conversation discovered via WS event
+          convos.push({
+            agentName,
+            chatId,
+            lastMessage: env.content.text?.slice(0, 100),
+            lastMessageAt: env.createdAt,
+            messageCount: 1,
+            unreadCount: isSelected ? 0 : 1,
+            createdAt: env.createdAt,
+          });
+        }
+        // Sort by most recent
+        convos.sort((a, b) => (b.lastMessageAt ?? b.createdAt) - (a.lastMessageAt ?? a.createdAt));
+        newConversations[agentName] = convos;
+      }
+
+      return { ...state, envelopes: newEnvelopes, conversations: newConversations };
     }
     case "SET_TEAMS":
       return { ...state, teams: action.teams };
@@ -129,13 +236,27 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, daemonStatus: action.status };
     case "SET_VIEW":
       return { ...state, view: action.view };
-    case "SELECT_CHAT":
+    case "SELECT_CHAT": {
+      // Reset unread count for the selected conversation
+      let updatedConversations = state.conversations;
+      if (action.selection) {
+        const { agentName, chatId } = action.selection;
+        const convos = state.conversations[agentName];
+        if (convos) {
+          const updated = convos.map((c) =>
+            c.chatId === chatId ? { ...c, unreadCount: 0 } : c
+          );
+          updatedConversations = { ...state.conversations, [agentName]: updated };
+        }
+      }
       return {
         ...state,
         view: "chat",
         selectedChat: action.selection,
         selectedTeam: null,
+        conversations: updatedConversations,
       };
+    }
     case "SELECT_TEAM":
       return {
         ...state,
@@ -149,6 +270,72 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, activeTab: action.tab };
     case "SET_LOADING":
       return { ...state, loading: action.loading };
+    case "SET_INITIAL_LOAD_ERROR":
+      return { ...state, initialLoadError: action.error };
+    case "SET_DRAFT":
+      return {
+        ...state,
+        drafts: { ...state.drafts, [action.key]: action.text },
+      };
+    case "CLEAR_DRAFT": {
+      const { [action.key]: _, ...rest } = state.drafts;
+      return { ...state, drafts: rest };
+    }
+    case "SET_CONVERSATIONS":
+      return {
+        ...state,
+        conversations: {
+          ...state.conversations,
+          [action.agentName]: action.conversations,
+        },
+      };
+    case "SET_RELAY_STATE":
+      return {
+        ...state,
+        relayStates: { ...state.relayStates, [action.key]: action.relayOn },
+      };
+    case "UPDATE_UNREAD": {
+      const convos = state.conversations[action.agentName] || [];
+      return {
+        ...state,
+        conversations: {
+          ...state.conversations,
+          [action.agentName]: convos.map((c) =>
+            c.chatId === action.chatId
+              ? { ...c, unreadCount: action.delta === 0 ? 0 : (c.unreadCount ?? 0) + action.delta }
+              : c
+          ),
+        },
+      };
+    }
+    case "PTY_OUTPUT": {
+      const key = action.chatId ? `${action.agentName}:${action.chatId}` : action.agentName;
+      const existing = state.ptyOutput[key] || [];
+      return {
+        ...state,
+        ptyOutput: {
+          ...state.ptyOutput,
+          [key]: [...existing, action.data],
+        },
+      };
+    }
+    case "UPDATE_ENVELOPE": {
+      const updated: Record<string, Envelope[]> = {};
+      for (const [key, envs] of Object.entries(state.envelopes)) {
+        updated[key] = envs.map((e) =>
+          e.id === action.envelope.id ? { ...e, ...action.envelope } : e
+        );
+      }
+      return { ...state, envelopes: updated };
+    }
+    case "SET_SESSIONS":
+      return {
+        ...state,
+        sessions: {
+          ...state.sessions,
+          [action.agentName]: action.sessions,
+        },
+      };
     default:
       return state;
   }
@@ -158,11 +345,14 @@ function reducer(state: AppState, action: Action): AppState {
 interface AppContextValue {
   state: AppState;
   dispatch: React.Dispatch<Action>;
+  retryInitialLoad: () => Promise<void>;
   refreshAgents: () => Promise<void>;
   refreshTeams: () => Promise<void>;
   refreshCron: () => Promise<void>;
   refreshDaemonStatus: () => Promise<void>;
-  loadEnvelopes: (address: string) => Promise<void>;
+  loadEnvelopes: (address: string, chatId?: string) => Promise<void>;
+  loadConversations: (agentName: string) => Promise<void>;
+  loadSessions: (agentName: string) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -172,77 +362,149 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const { subscribe } = useWebSocket();
 
   const refreshAgents = useCallback(async () => {
-    try {
-      const { agents } = await api.listAgents();
-      dispatch({ type: "SET_AGENTS", agents });
-      // Fetch status for each agent
-      for (const agent of agents) {
-        api.getAgentStatus(agent.name).then((s) => {
-          dispatch({
-            type: "SET_AGENT_STATUS",
-            name: agent.name,
-            status: s.status,
-          });
+    const { agents } = await api.listAgents();
+    dispatch({ type: "SET_AGENTS", agents });
+
+    const statusResults = await Promise.allSettled(
+      agents.map((agent) => api.getAgentStatus(agent.name))
+    );
+    const sessionsResults = await Promise.allSettled(
+      agents.map((agent) => api.getAgentSessions(agent.name))
+    );
+    const conversationsResults = await Promise.allSettled(
+      agents.map((agent) => api.getConversations(agent.name))
+    );
+
+    let firstError: Error | null = null;
+
+    for (let i = 0; i < agents.length; i++) {
+      const agent = agents[i];
+      const statusResult = statusResults[i];
+      if (statusResult?.status === "fulfilled") {
+        dispatch({
+          type: "SET_AGENT_STATUS",
+          name: agent.name,
+          status: statusResult.value.status,
         });
+      } else if (!firstError && statusResult?.status === "rejected") {
+        firstError = statusResult.reason instanceof Error
+          ? statusResult.reason
+          : new Error(String(statusResult.reason));
       }
-    } catch {
-      // silent on initial load
+
+      const sessionsResult = sessionsResults[i];
+      if (sessionsResult?.status === "fulfilled") {
+        dispatch({ type: "SET_SESSIONS", agentName: agent.name, sessions: sessionsResult.value.sessions });
+      } else if (!firstError && sessionsResult?.status === "rejected") {
+        firstError = sessionsResult.reason instanceof Error
+          ? sessionsResult.reason
+          : new Error(String(sessionsResult.reason));
+      }
+
+      const conversationsResult = conversationsResults[i];
+      if (conversationsResult?.status === "fulfilled") {
+        const withAgent = conversationsResult.value.conversations.map((c) => ({ ...c, agentName: agent.name }));
+        dispatch({ type: "SET_CONVERSATIONS", agentName: agent.name, conversations: withAgent });
+      } else if (!firstError && conversationsResult?.status === "rejected") {
+        firstError = conversationsResult.reason instanceof Error
+          ? conversationsResult.reason
+          : new Error(String(conversationsResult.reason));
+      }
+    }
+
+    if (firstError) {
+      throw firstError;
     }
   }, []);
 
   const refreshTeams = useCallback(async () => {
-    try {
-      const { teams } = await api.listTeams();
-      dispatch({ type: "SET_TEAMS", teams });
-    } catch {
-      // silent
-    }
+    const { teams } = await api.listTeams();
+    dispatch({ type: "SET_TEAMS", teams });
   }, []);
 
   const refreshCron = useCallback(async () => {
-    try {
-      const { schedules } = await api.listCronSchedules();
-      dispatch({ type: "SET_CRON", schedules });
-    } catch {
-      // silent
-    }
+    const { schedules } = await api.listCronSchedules();
+    dispatch({ type: "SET_CRON", schedules });
   }, []);
 
   const refreshDaemonStatus = useCallback(async () => {
+    const status = await api.getDaemonStatus();
+    dispatch({ type: "SET_DAEMON_STATUS", status });
+  }, []);
+
+  const loadEnvelopes = useCallback(
+    async (address: string, chatId?: string) => {
+      try {
+        const { envelopes } = await api.listEnvelopes({
+          to: address,
+          chatId,
+          status: "done",
+          limit: 50,
+        });
+        // API returns newest-first; reverse for chronological chat display
+        const sorted = [...envelopes].reverse();
+        const key = chatId ? `${address}:${chatId}` : address;
+        dispatch({ type: "SET_ENVELOPES", key, envelopes: sorted });
+      } catch {
+        // silent
+      }
+    },
+    []
+  );
+
+  const loadSessions = useCallback(async (agentName: string) => {
     try {
-      const status = await api.getDaemonStatus();
-      dispatch({ type: "SET_DAEMON_STATUS", status });
+      const { sessions } = await api.getAgentSessions(agentName);
+      dispatch({ type: "SET_SESSIONS", agentName, sessions });
     } catch {
       // silent
     }
   }, []);
 
-  const loadEnvelopes = useCallback(async (address: string) => {
+  const loadConversations = useCallback(async (agentName: string) => {
     try {
-      const { envelopes } = await api.listEnvelopes({
-        to: address,
-        status: "done",
-        limit: 50,
-      });
-      dispatch({ type: "SET_ENVELOPES", key: address, envelopes });
+      const { conversations } = await api.getConversations(agentName);
+      // API returns conversations without agentName — inject it
+      const withAgent = conversations.map((c) => ({ ...c, agentName }));
+      dispatch({ type: "SET_CONVERSATIONS", agentName, conversations: withAgent });
     } catch {
       // silent
     }
   }, []);
 
-  // Initial data load
-  useEffect(() => {
-    async function init() {
+  const retryInitialLoad = useCallback(async () => {
+    dispatch({ type: "SET_LOADING", loading: true });
+    dispatch({ type: "SET_INITIAL_LOAD_ERROR", error: null });
+    try {
       await Promise.all([
         refreshAgents(),
         refreshTeams(),
         refreshCron(),
         refreshDaemonStatus(),
       ]);
+
+      try {
+        const timeInfo = await api.getDaemonTime();
+        if (timeInfo.bossTimezone) {
+          setBossTimezone(timeInfo.bossTimezone);
+        }
+      } catch {
+        // Fall back to browser timezone
+      }
+    } catch (err) {
+      dispatch({
+        type: "SET_INITIAL_LOAD_ERROR",
+        error: err instanceof Error ? err.message : "Unable to connect to daemon API",
+      });
+    } finally {
       dispatch({ type: "SET_LOADING", loading: false });
     }
-    init();
   }, [refreshAgents, refreshTeams, refreshCron, refreshDaemonStatus]);
+
+  // Initial data load
+  useEffect(() => {
+    retryInitialLoad();
+  }, [retryInitialLoad]);
 
   // Handle WebSocket events
   useEffect(() => {
@@ -258,8 +520,29 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           });
           break;
         case "agent.status": {
-          const p = event.payload as { name: string; status: AgentStatus["status"] };
-          dispatch({ type: "SET_AGENT_STATUS", name: p.name, status: p.status });
+          const p = event.payload as {
+            name?: string;
+            status?: AgentStatus["status"];
+            agentState?: AgentStatus["status"]["agentState"];
+            agentHealth?: AgentStatus["status"]["agentHealth"];
+            currentRun?: AgentStatus["status"]["currentRun"];
+            lastRun?: AgentStatus["status"]["lastRun"];
+            pendingCount?: number;
+          };
+          if (typeof p.name !== "string") break;
+          const status = p.status ?? (
+            p.agentState && p.agentHealth
+              ? {
+                  agentState: p.agentState,
+                  agentHealth: p.agentHealth,
+                  pendingCount: typeof p.pendingCount === "number" ? p.pendingCount : 0,
+                  currentRun: p.currentRun,
+                  lastRun: p.lastRun,
+                }
+              : undefined
+          );
+          if (!status) break;
+          dispatch({ type: "SET_AGENT_STATUS", name: p.name, status });
           break;
         }
         case "agent.log": {
@@ -267,9 +550,44 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           dispatch({ type: "AGENT_LOG_LINE", name: p.name, line: p.line });
           break;
         }
-        case "envelope.new":
-          dispatch({ type: "ADD_ENVELOPE", envelope: event.payload as Envelope });
+        case "envelope.new": {
+          const envPayload = event.payload as { envelope: Envelope };
+          dispatch({ type: "ADD_ENVELOPE", envelope: envPayload.envelope });
           break;
+        }
+        case "envelope.done": {
+          const p = event.payload as { id?: string; envelope?: { id: string } };
+          const envId = p.id || p.envelope?.id;
+          if (envId) {
+            dispatch({
+              type: "UPDATE_ENVELOPE",
+              envelope: { id: envId, status: "done" } as Envelope,
+            });
+          }
+          break;
+        }
+        case "agent.pty.output": {
+          const pty = event.payload as { name: string; chatId?: string; data: string };
+          dispatch({ type: "PTY_OUTPUT", agentName: pty.name, chatId: pty.chatId, data: pty.data });
+          break;
+        }
+        case "console.message": {
+          const p = event.payload as { chatId: string; envelope: Envelope };
+          const metadata = p.envelope.metadata && typeof p.envelope.metadata === "object"
+            ? { ...p.envelope.metadata }
+            : {};
+          if (typeof metadata.chatScope !== "string" || !metadata.chatScope) {
+            metadata.chatScope = p.chatId;
+          }
+          dispatch({
+            type: "ADD_ENVELOPE",
+            envelope: {
+              ...p.envelope,
+              metadata,
+            },
+          });
+          break;
+        }
         default:
           break;
       }
@@ -281,11 +599,14 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       value={{
         state,
         dispatch,
+        retryInitialLoad,
         refreshAgents,
         refreshTeams,
         refreshCron,
         refreshDaemonStatus,
         loadEnvelopes,
+        loadConversations,
+        loadSessions,
       }}
     >
       {children}

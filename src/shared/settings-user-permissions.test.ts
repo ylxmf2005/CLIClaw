@@ -172,17 +172,20 @@ test("parseSettingsJson accepts runtime telegram command reply auto-delete confi
       runtime: {
         telegram: {
           "command-reply-auto-delete-seconds": 45,
+          "inbound-interrupt-window-seconds": 5,
         },
       },
     }),
   );
 
   assert.equal(settings.runtime?.telegram?.commandReplyAutoDeleteSeconds, 45);
+  assert.equal(settings.runtime?.telegram?.inboundInterruptWindowSeconds, 5);
 });
 
 test("parseSettingsJson defaults runtime telegram command reply auto-delete config", () => {
   const settings = parseSettingsJson(buildSettingsJson({}));
   assert.equal(settings.runtime?.telegram?.commandReplyAutoDeleteSeconds, 30);
+  assert.equal(settings.runtime?.telegram?.inboundInterruptWindowSeconds, 3);
 });
 
 test("parseSettingsJson rejects invalid runtime telegram command reply auto-delete config", () => {
@@ -198,6 +201,22 @@ test("parseSettingsJson rejects invalid runtime telegram command reply auto-dele
         }),
       ),
     /runtime\.telegram\.command-reply-auto-delete-seconds/i,
+  );
+});
+
+test("parseSettingsJson rejects invalid runtime telegram inbound interrupt window config", () => {
+  assert.throws(
+    () =>
+      parseSettingsJson(
+        buildSettingsJson({
+          runtime: {
+            telegram: {
+              "inbound-interrupt-window-seconds": 999,
+            },
+          },
+        }),
+      ),
+    /runtime\.telegram\.inbound-interrupt-window-seconds/i,
   );
 });
 

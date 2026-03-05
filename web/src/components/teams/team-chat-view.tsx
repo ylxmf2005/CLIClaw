@@ -6,11 +6,11 @@ import { MessageList } from "@/components/chat/message-list";
 import { MessageComposer } from "@/components/chat/message-composer";
 import { Button } from "@/components/ui/button";
 import { Users, UserPlus, Settings, X } from "lucide-react";
-import { listTeamMembers } from "@/lib/api";
+import { sendEnvelope, listTeamMembers } from "@/lib/api";
 import type { TeamMember } from "@/lib/types";
 
 export function TeamChatView() {
-  const { state, loadEnvelopes } = useAppState();
+  const { state, dispatch, loadEnvelopes } = useAppState();
   const selection = state.selectedTeam;
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [showMembers, setShowMembers] = useState(false);
@@ -31,10 +31,10 @@ export function TeamChatView() {
 
   if (!selection || !team) {
     return (
-      <div className="flex flex-1 items-center justify-center bg-grid">
+      <div className="flex flex-1 items-center justify-center">
         <div className="text-center">
           <Users className="mx-auto mb-4 h-12 w-12 text-lavender-info/20" />
-          <p className="text-sm text-muted-foreground/50">
+          <p className="text-sm text-muted-foreground">
             Select a team to view its chat
           </p>
         </div>
@@ -47,7 +47,7 @@ export function TeamChatView() {
   return (
     <div className="flex flex-1 flex-col">
       {/* Header */}
-      <div className="flex h-14 items-center justify-between border-b border-white/[0.04] bg-[#080c16]/80 px-4 backdrop-blur-sm">
+      <div className="flex h-14 items-center justify-between border-b border-border bg-card/80 px-4 backdrop-blur-sm">
         <div className="flex items-center gap-3">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-lavender-info/10">
             <Users className="h-4 w-4 text-lavender-info" />
@@ -56,7 +56,7 @@ export function TeamChatView() {
             <h2 className="text-sm font-semibold text-foreground">
               {team.name}
             </h2>
-            <span className="text-[11px] text-muted-foreground/50">
+            <span className="text-[11px] text-muted-foreground">
               {members.length} members
             </span>
           </div>
@@ -66,15 +66,18 @@ export function TeamChatView() {
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8 text-muted-foreground/50 hover:text-foreground"
+            className="h-8 w-8 text-muted-foreground hover:text-foreground"
             onClick={() => setShowMembers(!showMembers)}
+            aria-label="Toggle members panel"
+            aria-pressed={showMembers}
           >
             <UserPlus className="h-4 w-4" />
           </Button>
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8 text-muted-foreground/50 hover:text-foreground"
+            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+            aria-label="Team settings"
           >
             <Settings className="h-3.5 w-3.5" />
           </Button>
@@ -86,24 +89,39 @@ export function TeamChatView() {
         <div className="flex flex-1 flex-col">
           <MessageList envelopes={envelopes} />
           <MessageComposer
-            toAddress={address}
+            onSend={(text, _attachments) => {
+              if (text) {
+                sendEnvelope({ to: address, text }).then(() => handleSent());
+              }
+              dispatch({ type: "CLEAR_DRAFT", key: address });
+            }}
+            onScheduleSend={(text, scheduledAt) => {
+              if (text) {
+                sendEnvelope({ to: address, text, deliverAt: scheduledAt.toISOString() }).then(() => handleSent());
+              }
+              dispatch({ type: "CLEAR_DRAFT", key: address });
+            }}
             placeholder={`Message ${team.name}... (@agent to mention, @all to broadcast)`}
-            onSent={handleSent}
+            draft={state.drafts[address]}
+            onDraftChange={(text) =>
+              dispatch({ type: "SET_DRAFT", key: address, text })
+            }
           />
         </div>
 
         {/* Members panel */}
         {showMembers && (
-          <div className="w-56 border-l border-white/[0.04] bg-[#080c16]">
-            <div className="flex items-center justify-between border-b border-white/[0.04] px-3 py-2">
+          <div className="w-56 border-l border-border bg-card">
+            <div className="flex items-center justify-between border-b border-border px-3 py-2">
               <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                 Members
               </span>
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-5 w-5 text-muted-foreground/40"
+                className="h-5 w-5 text-muted-foreground"
                 onClick={() => setShowMembers(false)}
+                aria-label="Close members panel"
               >
                 <X className="h-3 w-3" />
               </Button>
@@ -117,12 +135,14 @@ export function TeamChatView() {
                     className="flex items-center gap-2 rounded-md px-2 py-1.5"
                   >
                     <span
+                      role="status"
+                      aria-label={`Status: ${agentStatus?.agentState === "running" ? "running" : agentStatus ? "idle" : "unknown"}`}
                       className={`h-2 w-2 rounded-full ${
                         agentStatus?.agentState === "running"
                           ? "bg-amber-pulse pulse-amber"
                           : agentStatus
                             ? "bg-emerald-signal"
-                            : "bg-muted-foreground/30"
+                            : "bg-muted-foreground/40"
                       }`}
                     />
                     <span className="text-xs text-foreground/80">

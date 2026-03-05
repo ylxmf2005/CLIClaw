@@ -235,16 +235,16 @@ export function createCronHandlers(ctx: DaemonContext): RpcMethodRegistry {
     const principal = ctx.resolvePrincipal(token);
     ctx.assertOperationAllowed(operation, principal);
 
-    if (principal.kind !== "agent") {
-      rpcError(RPC_ERRORS.UNAUTHORIZED, "Access denied");
-    }
-
-    ctx.db.updateAgentLastSeen(principal.agent.name);
     const cron = ctx.cronScheduler;
     if (!cron) {
       rpcError(RPC_ERRORS.INTERNAL_ERROR, "Cron scheduler not initialized");
     }
 
+    if (principal.kind === "admin") {
+      return { schedules: cron.listAllSchedules() };
+    }
+
+    ctx.db.updateAgentLastSeen(principal.agent.name);
     return { schedules: cron.listSchedules(principal.agent.name) };
   };
 

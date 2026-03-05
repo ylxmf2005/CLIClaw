@@ -152,6 +152,9 @@ export async function executeCliTurn(
   // - Claude: ~/.claude (override var: CLAUDE_CONFIG_DIR)
   // - Codex:  ~/.codex  (override var: CODEX_HOME)
   // and then applies optional per-agent overrides from metadata.
+  //
+  // Also clear host session markers like CLAUDECODE so child Claude processes
+  // are not treated as nested Claude Code sessions.
   delete env.CLAUDE_CONFIG_DIR;
   delete env.CODEX_HOME;
   if (session.providerEnvOverrides) {
@@ -159,6 +162,8 @@ export async function executeCliTurn(
       env[key] = value;
     }
   }
+  // Never pass host/session marker env vars to child CLIs.
+  delete env.CLAUDECODE;
   applyProviderReasoningEffortEnv({
     provider: session.provider,
     reasoningEffort: session.reasoningEffort,

@@ -4,6 +4,7 @@
  * | "team:<name>" | "team:<name>:<agent>" | "channel:<adapter>:<chat-id>"
  */
 import { isValidAgentName, isValidTeamName } from "../shared/validation.js";
+import type { Envelope } from "../envelope/types.js";
 
 const ADAPTER_TYPE_REGEX = /^[a-z][a-z0-9-]*$/;
 
@@ -211,6 +212,11 @@ export type OutgoingParseMode = "plain" | "markdownv2" | "html";
 export interface SendMessageOptions {
   parseMode?: OutgoingParseMode;
   replyToMessageId?: string;
+  /**
+   * Source envelope that produced this outbound message.
+   * Used by the console adapter to forward full envelope payloads over WS.
+   */
+  envelope?: Envelope;
 }
 
 export interface ChatAdapter {

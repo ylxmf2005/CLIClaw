@@ -4,11 +4,13 @@ import type {
   Agent,
   AgentSession,
   AgentStatus,
+  ChatConversation,
   CronSchedule,
   DaemonStatus,
   Envelope,
   Provider,
   ReasoningEffort,
+  SessionBinding,
   SessionPolicy,
   SetupCheck,
   Team,
@@ -128,6 +130,7 @@ export async function updateAgent(
     reasoningEffort?: ReasoningEffort | null;
     permissionLevel?: string;
     sessionPolicy?: SessionPolicy | null;
+    relayMode?: "default-on" | "default-off" | null;
     metadata?: Record<string, unknown> | null;
     bindAdapterType?: string;
     bindAdapterToken?: string;
@@ -167,12 +170,14 @@ export async function refreshAgent(
 // Envelopes
 export async function sendEnvelope(params: {
   to: string;
+  from?: string;
   text?: string;
   attachments?: EnvelopeAttachment[];
   deliverAt?: string;
   interruptNow?: boolean;
   parseMode?: ParseMode;
   replyToEnvelopeId?: string;
+  mentions?: string[];
 }): Promise<{ id?: string; ids?: string[] }> {
   return apiFetch("/api/envelopes", {
     method: "POST",
@@ -185,6 +190,7 @@ export async function listEnvelopes(params: {
   from?: string;
   status?: string;
   limit?: number;
+  chatId?: string;
   createdAfter?: string;
   createdBefore?: string;
 }): Promise<{ envelopes: Envelope[] }> {
@@ -199,6 +205,56 @@ export async function getThread(
   envelopeId: string
 ): Promise<{ envelopes: Envelope[]; totalCount: number }> {
   return apiFetch(`/api/envelopes/${encodeURIComponent(envelopeId)}/thread`);
+}
+
+// Conversations
+export async function getConversations(
+  agentName: string
+): Promise<{ conversations: ChatConversation[] }> {
+  return apiFetch(`/api/agents/${encodeURIComponent(agentName)}/conversations`);
+}
+
+// Relay
+export async function toggleRelay(
+  agentName: string,
+  chatId: string,
+  on: boolean
+): Promise<{ success: boolean; agentName: string; chatId: string; relayOn: boolean }> {
+  return apiFetch(
+    `/api/agents/${encodeURIComponent(agentName)}/chats/${encodeURIComponent(chatId)}/relay`,
+    { method: "POST", body: JSON.stringify({ relayOn: on }) }
+  );
+}
+
+export async function getRelayState(
+  agentName: string,
+  chatId: string
+): Promise<{ agentName: string; chatId: string; relayOn: boolean }> {
+  return apiFetch(
+    `/api/agents/${encodeURIComponent(agentName)}/chats/${encodeURIComponent(chatId)}/relay`
+  );
+}
+
+// File upload
+export async function uploadFile(
+  file: File
+): Promise<{ path: string }> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const headers: Record<string, string> = {};
+  if (authToken) {
+    headers["Authorization"] = `Bearer ${authToken}`;
+  }
+  const res = await fetch(`${API_BASE}/api/upload`, {
+    method: "POST",
+    headers,
+    body: formData,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new ApiError(res.status, body.error?.message || res.statusText, body);
+  }
+  return res.json();
 }
 
 // Teams
@@ -315,13 +371,62 @@ export async function deleteCronSchedule(
 }
 
 // Sessions
-export async function listSessions(params?: {
-  agentName?: string;
-  limit?: number;
-}): Promise<{ sessions: AgentSession[] }> {
-  const query = new URLSearchParams();
-  if (params?.agentName) query.set("agentName", params.agentName);
-  if (params?.limit) query.set("limit", String(params.limit));
-  const qs = query.toString();
-  return apiFetch(`/api/sessions${qs ? `?${qs}` : ""}`);
+export async function getAgentSessions(
+  agentName: string
+): Promise<{ sessions: AgentSession[] }> {
+  return apiFetch(`/api/agents/${encodeURIComponent(agentName)}/sessions`);
+}
+
+export async function createAgentSession(
+  agentName: string,
+  params: { adapterType: string; chatId?: string }
+): Promise<{ session: { id: string; agentName: string; bindings: SessionBinding[] }; chatId: string }> {
+  return apiFetch(`/api/agents/${encodeURIComponent(agentName)}/sessions`, {
+    method: "POST",
+    body: JSON.stringify(params),
+  });
+}
+
+export async function addSessionBinding(
+  agentName: string,
+  sessionId: string,
+  params: { adapterType: string; chatId: string }
+): Promise<{ session: { id: string; agentName: string; bindings: SessionBinding[] } }> {
+  return apiFetch(
+    `/api/agents/${encodeURIComponent(agentName)}/sessions/${encodeURIComponent(sessionId)}/bindings`,
+    { method: "POST", body: JSON.stringify(params) }
+  );
+}
+
+export async function updateSession(
+  agentName: string,
+  sessionId: string,
+  params: { label?: string | null; pinned?: boolean }
+): Promise<{ session: AgentSession }> {
+  return apiFetch(
+    `/api/agents/${encodeURIComponent(agentName)}/sessions/${encodeURIComponent(sessionId)}`,
+    { method: "PATCH", body: JSON.stringify(params) }
+  );
+}
+
+export async function deleteSession(
+  agentName: string,
+  sessionId: string
+): Promise<{ success: boolean; deletedSessionId: string }> {
+  return apiFetch(
+    `/api/agents/${encodeURIComponent(agentName)}/sessions/${encodeURIComponent(sessionId)}`,
+    { method: "DELETE" }
+  );
+}
+
+export async function removeSessionBinding(
+  agentName: string,
+  sessionId: string,
+  adapterType: string,
+  chatId: string
+): Promise<{ session: { id: string; agentName: string; bindings: SessionBinding[] } }> {
+  return apiFetch(
+    `/api/agents/${encodeURIComponent(agentName)}/sessions/${encodeURIComponent(sessionId)}/bindings/${encodeURIComponent(adapterType)}/${encodeURIComponent(chatId)}`,
+    { method: "DELETE" }
+  );
 }

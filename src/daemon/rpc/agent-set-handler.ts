@@ -103,6 +103,7 @@ export function createAgentSetHandler(ctx: DaemonContext): RpcMethodRegistry {
         p.reasoningEffort !== undefined ||
         p.permissionLevel !== undefined ||
         p.sessionPolicy !== undefined ||
+        p.relayMode !== undefined ||
         p.metadata !== undefined ||
         wantsBind ||
         wantsUnbind;
@@ -119,6 +120,7 @@ export function createAgentSetHandler(ctx: DaemonContext): RpcMethodRegistry {
         ...(p.reasoningEffort !== undefined ? ["reasoning-effort"] : []),
         ...(p.permissionLevel !== undefined ? ["permission-level"] : []),
         ...(p.sessionPolicy !== undefined ? ["session-policy"] : []),
+        ...(p.relayMode !== undefined ? ["relay-mode"] : []),
         ...(p.metadata !== undefined ? ["metadata"] : []),
         ...(wantsBind ? ["bind-adapter"] : []),
         ...(wantsUnbind ? ["unbind-adapter"] : []),
@@ -266,6 +268,14 @@ export function createAgentSetHandler(ctx: DaemonContext): RpcMethodRegistry {
         } else {
           rpcError(RPC_ERRORS.INVALID_PARAMS, "Invalid session-policy (expected object or null)");
         }
+      }
+
+      let relayModeUpdate: "default-on" | "default-off" | null | undefined;
+      if (p.relayMode !== undefined) {
+        if (p.relayMode !== null && p.relayMode !== "default-on" && p.relayMode !== "default-off") {
+          rpcError(RPC_ERRORS.INVALID_PARAMS, "Invalid relay-mode (expected default-on, default-off, or null)");
+        }
+        relayModeUpdate = p.relayMode;
       }
 
       let metadata: Record<string, unknown> | null | undefined;
@@ -442,6 +452,13 @@ export function createAgentSetHandler(ctx: DaemonContext): RpcMethodRegistry {
                 };
               }
             }
+            if (relayModeUpdate !== undefined) {
+              if (relayModeUpdate === null) {
+                delete target.relayMode;
+              } else {
+                target.relayMode = relayModeUpdate;
+              }
+            }
             if (metadata !== undefined) {
               if (metadata === null) {
                 delete target.metadata;
@@ -497,6 +514,7 @@ export function createAgentSetHandler(ctx: DaemonContext): RpcMethodRegistry {
           reasoningEffort: updated.reasoningEffort,
           permissionLevel: updated.permissionLevel ?? DEFAULT_AGENT_PERMISSION_LEVEL,
           sessionPolicy: updated.sessionPolicy,
+          relayMode: updated.relayMode,
           metadata: updated.metadata,
         },
         bindings,

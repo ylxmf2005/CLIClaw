@@ -42,6 +42,7 @@ export const DEFAULT_ONESHOT_MAX_CONCURRENT = 4 as const;
 export const DEFAULT_SESSION_CONCURRENCY_PER_AGENT = 4 as const;
 export const DEFAULT_SESSION_CONCURRENCY_GLOBAL = 16 as const;
 export const DEFAULT_TELEGRAM_COMMAND_REPLY_AUTO_DELETE_SECONDS = 30 as const;
+export const DEFAULT_TELEGRAM_INBOUND_INTERRUPT_WINDOW_SECONDS = 3 as const;
 
 // ==================== DB/Envelope Defaults ====================
 
@@ -85,7 +86,7 @@ export const DEFAULT_PERMISSION_POLICY: PermissionPolicy = {
     "envelope.send": "restricted",
     "envelope.list": "restricted",
     "envelope.thread": "restricted",
-    "session.list": "restricted",
+    "envelope.conversations": "admin",
 
     // Reactions
     "reaction.set": "restricted",

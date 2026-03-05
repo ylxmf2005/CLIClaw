@@ -25,7 +25,6 @@ import {
 } from "./telegram/shared.js";
 import type { UiLocale } from "../shared/ui-locale.js";
 import { getUiText } from "../shared/ui-text.js";
-import { SESSIONS_CALLBACK_PREFIX } from "../shared/session-callbacks.js";
 import { DEFAULT_TELEGRAM_COMMAND_REPLY_AUTO_DELETE_SECONDS } from "../shared/defaults.js";
 
 /** Telegram typing status expires quickly; refresh every few seconds while active. */
@@ -102,16 +101,6 @@ export class TelegramAdapter implements ChatAdapter {
   private static extractCommandArgs(text: string, command: string): string {
     const re = new RegExp(`^\\/${command}(?:@\\w+)?\\s*`, "i");
     return text.replace(re, "");
-  }
-
-  private parseSessionsCallback(data: string): { tab: string; page: number } | null {
-    if (!data.startsWith(SESSIONS_CALLBACK_PREFIX)) return null;
-    const parts = data.split(":");
-    if (parts.length !== 4) return null;
-    const tab = parts[2]?.trim();
-    const pageRaw = Number(parts[3]);
-    if (!tab || !Number.isFinite(pageRaw)) return null;
-    return { tab, page: Math.max(1, Math.trunc(pageRaw)) };
   }
 
   private toInlineKeyboard(
@@ -285,56 +274,6 @@ export class TelegramAdapter implements ChatAdapter {
     console.log(`[${this.platform}] command response sent command=${commandName} chat=${chatId} duration-ms=${Date.now() - sendStartedAtMs}`);
   }
 
-  private async dispatchCallback(ctx: any): Promise<void> {
-    const callback = ctx.callbackQuery as { id?: string; data?: string; message?: { message_id?: number } } | undefined;
-    const data = typeof callback?.data === "string" ? callback.data : "";
-    const parsed = this.parseSessionsCallback(data);
-    if (!parsed) {
-      await this.safeAnswerCallback(callback?.id);
-      return;
-    }
-
-    const chatId = String(ctx.chat?.id ?? "");
-    if (!chatId) {
-      await this.safeAnswerCallback(callback?.id);
-      return;
-    }
-
-    const command: ChannelCommand = {
-      command: "sessions",
-      args: `tab=${parsed.tab} page=${parsed.page}`,
-      adapterType: this.platform,
-      chatId,
-      channelUserId: ctx.from?.id !== undefined && ctx.from?.id !== null ? String(ctx.from.id) : undefined,
-      channelUsername: ctx.from?.username,
-      messageId:
-        callback?.message?.message_id !== undefined && callback?.message?.message_id !== null
-          ? formatTelegramMessageIdCompact(String(callback.message.message_id))
-          : undefined,
-      callbackQueryId: callback?.id,
-      isCallback: true,
-    };
-
-    let response: ChannelCommandResponse | undefined;
-    for (const handler of this.commandHandlers) {
-      try {
-        const result = await handler(command);
-        if (result && (typeof result.text === "string" || (result.attachments?.length ?? 0) > 0)) {
-          response = result;
-          break;
-        }
-      } catch (err) {
-        console.error(`[${this.platform}] command handler error:`, err);
-      }
-    }
-
-    if (!response?.text) {
-      await this.safeAnswerCallback(command.callbackQueryId);
-      return;
-    }
-    await this.sendCommandResponse(command, response);
-  }
-
   private registerCommand(name: string): void {
     this.bot.command(name, async (ctx) => {
       await this.dispatchCommand(ctx, name);
@@ -342,12 +281,9 @@ export class TelegramAdapter implements ChatAdapter {
   }
 
   private setupListeners(): void {
-    for (const name of ["new", "status", "trace", "provider", "abort", "isolated", "clone", "sessions", "session"] as const) {
+    for (const name of ["new", "status", "trace", "provider", "abort", "isolated", "clone"] as const) {
       this.registerCommand(name);
     }
-    this.bot.on("callback_query", async (ctx) => {
-      await this.dispatchCallback(ctx);
-    });
 
     this.bot.on("text", (ctx) => { void this.handleMessage(ctx as unknown as MessageContext).catch((err) => console.error(`[${this.platform}] message handler error:`, err)); });
     this.bot.on("photo", (ctx) => { void this.handleMessage(ctx as unknown as MessageContext).catch((err) => console.error(`[${this.platform}] message handler error:`, err)); });

@@ -18,9 +18,9 @@ export function LoginScreen() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-grid noise-overlay">
-      {/* Ambient glow */}
-      <div className="pointer-events-none fixed inset-0">
+    <div className="flex min-h-screen items-center justify-center noise-overlay">
+      {/* Ambient glow (dark only) */}
+      <div className="pointer-events-none fixed inset-0 dark:block hidden">
         <div className="absolute left-1/2 top-1/3 h-[500px] w-[500px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-cyan-glow/[0.03] blur-[120px]" />
         <div className="absolute left-1/3 top-2/3 h-[300px] w-[300px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-lavender-info/[0.02] blur-[100px]" />
       </div>
@@ -28,7 +28,7 @@ export function LoginScreen() {
       <div className="relative z-10 w-full max-w-sm px-6">
         {/* Logo / Brand */}
         <div className="mb-10 text-center">
-          <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl border border-white/[0.06] bg-white/[0.02] shadow-[0_0_40px_rgba(0,212,255,0.08)]">
+          <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl border border-border bg-accent/50 shadow-lg">
             <svg
               width="28"
               height="28"
@@ -53,7 +53,7 @@ export function LoginScreen() {
           <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">
             Hi-Boss
           </h1>
-          <p className="mt-1.5 text-sm text-muted-foreground/60">
+          <p className="mt-1.5 text-sm text-muted-foreground">
             Agent Operations Console
           </p>
         </div>
@@ -68,15 +68,16 @@ export function LoginScreen() {
           )}
 
           <div className="space-y-2">
-            <label className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60">
+            <label htmlFor="admin-token" className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
               Admin Token
             </label>
             <Input
+              id="admin-token"
               type="password"
               value={token}
               onChange={(e) => setToken(e.target.value)}
               placeholder="Enter your admin token"
-              className="h-11 border-white/[0.08] bg-white/[0.03] text-sm placeholder:text-muted-foreground/30 focus:border-cyan-glow/30 focus:ring-cyan-glow/10"
+              className="h-11 border-border bg-input text-sm placeholder:text-muted-foreground focus:border-cyan-glow/40 focus:ring-cyan-glow/10"
               autoFocus
             />
           </div>
@@ -84,7 +85,7 @@ export function LoginScreen() {
           <Button
             type="submit"
             disabled={isLoading || !token.trim()}
-            className="h-11 w-full bg-cyan-glow text-sm font-semibold text-black shadow-[0_0_20px_rgba(0,212,255,0.2)] hover:bg-cyan-glow/90 hover:shadow-[0_0_30px_rgba(0,212,255,0.3)] disabled:opacity-50 disabled:shadow-none"
+            className="h-11 w-full bg-cyan-glow text-sm font-semibold text-primary-foreground hover:bg-cyan-glow/90 disabled:opacity-50"
           >
             {isLoading ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -92,13 +93,6 @@ export function LoginScreen() {
             {isLoading ? "Connecting..." : "Connect to Daemon"}
           </Button>
         </form>
-
-        <p className="mt-6 text-center text-[11px] text-muted-foreground/30">
-          Token from{" "}
-          <code className="rounded bg-white/[0.04] px-1.5 py-0.5 font-mono text-[10px]">
-            hiboss setup
-          </code>
-        </p>
       </div>
     </div>
   );

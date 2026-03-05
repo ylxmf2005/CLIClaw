@@ -210,3 +210,18 @@ test("runtime telegram command reply auto-delete falls back to default and can b
     assert.equal(db.getRuntimeTelegramCommandReplyAutoDeleteSeconds(), 86400);
   });
 });
+
+test("runtime telegram inbound interrupt window falls back to default and can be disabled", () => {
+  withTempDb((db) => {
+    assert.equal(db.getRuntimeTelegramInboundInterruptWindowSeconds(), 3);
+
+    db.setRuntimeTelegramInboundInterruptWindowSeconds(5);
+    assert.equal(db.getRuntimeTelegramInboundInterruptWindowSeconds(), 5);
+
+    db.setRuntimeTelegramInboundInterruptWindowSeconds(0);
+    assert.equal(db.getRuntimeTelegramInboundInterruptWindowSeconds(), 0);
+
+    db.setRuntimeTelegramInboundInterruptWindowSeconds(999999);
+    assert.equal(db.getRuntimeTelegramInboundInterruptWindowSeconds(), 60);
+  });
+});

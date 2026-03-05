@@ -1,22 +1,23 @@
-# Hi-Boss: Developer / Agent Guide
+## Specs (start here)
 
-Hi-Boss is a local daemon + `hiboss` CLI for routing durable messages (“envelopes”) between agents and chat channels (e.g., Telegram).
+All specs live under `openspec/specs/`:
 
-## Global rules (source of truth)
-
-- `docs/spec/` is canonical. If behavior and spec disagree, update the spec first (or fix the code to match).
-- Prefer PRs as the normal development flow; avoid direct pushes to `main`.
-- Keep CLI flags, CLI output keys, and agent instruction keys **stable and parseable** (kebab-case).
-- If you change CLI surface/output/DB fields, update `docs/spec/cli.md`, the relevant `docs/spec/cli/*.md` topic doc(s), and `docs/spec/definitions.md` in the same PR.
-- Don’t bump the npm version ahead of today’s date (local time). Avoid zero-padded segments (use `2026.2.5`, not `2026.02.05`).
-- Npm version scheme (dist-tags; “option A”):
-  - Stable daily: `YYYY.M.D` (published with dist-tag `latest`)
-  - Preview daily: `YYYY.M.D-rc.N` (published with dist-tag `next`)
-  - Same-day follow-up stable: `YYYY.M.D-rev.N` (dist-tag `latest`)
-  - Same-day follow-up preview: `YYYY.M.D-rev.N-rc.N` (dist-tag `next`)
-- For each file,LOC should be less than 500 lines, split it if needed.
-
-Start here: `docs/index.md`, `docs/spec/goals.md`, `docs/spec/architecture.md`, `docs/spec/definitions.md`.
+| Spec | Contents |
+|------|----------|
+| `core/spec.md` | Goals, architecture, conventions, naming, short IDs |
+| `core/definitions.md` | Field mappings (TypeScript ↔ SQLite ↔ CLI), data model |
+| `envelope/spec.md` | Envelope model, routing, scheduling, threading |
+| `cron/spec.md` | Cron schedules, timezone, misfire policy |
+| `agent/spec.md` | Agent model, providers, execution, background jobs |
+| `agent/sessions.md` | Session lifecycle, refresh, concurrency |
+| `agent/memory.md` | File-based memory protocol |
+| `cli/spec.md` | CLI surface, conventions, IPC protocol |
+| `cli/commands.md` | All command flags and output keys |
+| `configuration/spec.md` | Settings, env vars, data directory, SQLite schema |
+| `telegram/spec.md` | Telegram adapter |
+| `team/spec.md` | Teams, teamspaces, team messaging |
+| `web-frontend/spec.md` | Web management console and chat interface |
+| `web-frontend/events.md` | WebSocket events for real-time frontend |
 
 ## Goals & design philosophy (summary)
 
@@ -28,11 +29,11 @@ Start here: `docs/index.md`, `docs/spec/goals.md`, `docs/spec/architecture.md`, 
 
 ## Core architecture (mental model)
 
-- Daemon owns state and routing; CLI is a thin JSON-RPC client (`docs/spec/ipc.md`).
+- Daemon owns state and routing; CLI is a thin JSON-RPC client.
 - SQLite is the durable queue + audit log (`~/hiboss/.daemon/hiboss.db`).
-- Scheduler wakes due `deliver-at` envelopes (`docs/spec/components/scheduler.md`).
-- Agent executor runs provider sessions and marks envelopes done (`docs/spec/components/agent.md`, `docs/spec/components/session.md`).
-- Adapters bridge chat apps ↔ envelopes (e.g. Telegram: `docs/spec/adapters/telegram.md`).
+- Scheduler wakes due `deliver-at` envelopes.
+- Agent executor runs provider sessions and marks envelopes done.
+- Adapters bridge chat apps ↔ envelopes (e.g. Telegram).
 
 ## Naming & parsing safety (must follow)
 
@@ -43,7 +44,7 @@ Start here: `docs/index.md`, `docs/spec/goals.md`, `docs/spec/architecture.md`, 
 | CLI output keys | kebab-case, lowercase | `sender:` |
 | Agent instruction keys | kebab-case, lowercase | `from-boss` |
 
-Canonical mapping (see `docs/spec/definitions.md`):
+Canonical mapping (see `openspec/specs/core/definitions.md`):
 ```
 envelope.deliverAt  -> --deliver-at   (flag)
 envelope.fromBoss   -> from_boss      (SQLite; affects `[boss]` suffix in prompts)
@@ -64,9 +65,9 @@ Short IDs (must follow):
 
 ## Important settings / operational invariants
 
-- Runtime: Node.js 18+ (ES2022) recommended (`docs/spec/goals.md`).
-- Tokens are printed once by `hiboss setup` / `hiboss agent register` (no “show token” command).
-- `HIBOSS_TOKEN` is used when `--token` is omitted (`docs/spec/configuration.md`).
+- Runtime: Node.js 18+ (ES2022) recommended.
+- Tokens are printed once by `hiboss setup` / `hiboss agent register` (no "show token" command).
+- `HIBOSS_TOKEN` is used when `--token` is omitted.
 - Sending to `channel:<adapter>:...` is only allowed if the sending agent is bound to that adapter type.
 - `--deliver-at` supports relative (`+2h`, `+1Y2M3D`) and ISO 8601; units are case-sensitive (`Y/M/D/h/m/s`).
 - Security: agent tokens are stored plaintext in `~/hiboss/.daemon/hiboss.db`; protect `~/hiboss/`.
@@ -87,60 +88,6 @@ hiboss setup
 hiboss daemon start --token <boss-token>
 hiboss agent register --token <boss-token> --name nex --description "AI assistant" --workspace "$PWD"
 ```
-
-## Environment model (must follow)
-
-- Development split:
-  - Mac is the main coding environment.
-  - Windows is the runtime/data environment (`C:\hiboss`).
-  - Code is synchronized between Mac and Windows via Syncthing.
-- Operational rule:
-  - Use `hiboss daemon stop/start/status` as the canonical lifecycle interface.
-  - Do not use PM2 for this project.
-  - Runtime incident triage order is strict:
-    1. For runtime symptoms (`agent idle unexpectedly`, `pending-count` stuck, `/status` mismatch, message not sent), first verify on the Windows runtime host.
-    2. Run `hiboss daemon status --token <boss-token>` and check `~/hiboss/.daemon/daemon.log` (Windows side) before any Mac-local diagnosis.
-    3. Use Mac-local checks only after Windows runtime facts are collected.
-
-## Remote apply workflow (Mac edit + Windows runtime)
-
-Use this flow when code is already synced to Windows (via Syncthing) and you only need to apply runtime changes.
-
-Apply on Windows host:
-```bash
-cd C:\hiboss\agents\Shieru\workspace\hi-boss-dev
-npm run build && npm link
-hiboss daemon stop --token <boss-token>
-hiboss daemon start --token <boss-token>
-hiboss daemon status --token <boss-token>
-```
-
-Rollback / recovery (quick):
-```bash
-cd C:\hiboss\agents\Shieru\workspace\hi-boss-dev
-hiboss daemon stop --token <boss-token>
-hiboss daemon start --token <boss-token>
-```
-
-Windows (Tailscale) access:
-- Node: `WIN-H9HOROG0IKJ` (`100.72.210.95`)
-- SSH user: `Administrator`
-- Auth: SSH public key (no passwords in repo/docs)
-- Connect:
-  - `ssh Administrator@100.72.210.95`
-- Quick verification on host:
-  - `where hiboss`
-  - `hiboss --version`
-  - `hiboss daemon status --token <boss-token>`
-  - `hiboss envelope send --help`
-  - Runtime incident first-response:
-    - `cd C:\hiboss\agents\Shieru\workspace\hi-boss-dev`
-    - `hiboss daemon status --token <boss-token>`
-    - `Get-Content C:\hiboss\.daemon\daemon.log -Tail 200`
-
-Credentials policy:
-- Read server credentials from local private knowledge files (for Shieru: `agents/Shieru/internal_space/knowledge/credentials.md`).
-- Never copy passwords/tokens/keys into repo files, specs, plans, commits, or PR comments.
 
 Useful checks (run when relevant):
 - `npm run typecheck`
@@ -165,24 +112,6 @@ Real provider verification policy (required for provider/dependency/runtime chan
   - `npm run verify:token-usage:real -- --provider both --session-mode continuous --turns 2`
   - Run one isolated daemon-level smoke flow (setup/start/register/send/list) in the temp `HIBOSS_DIR` and confirm both provider-backed agents complete at least one run.
 
-## Versioning & publishing
-
-Terminology:
-- `rc` = release candidate (preview build that may become stable)
-- Stable installs use `latest`; preview installs use `next`
-- `CHANGELOG.md` is retired; GitHub Releases are the canonical changelog surface.
-
-Routine:
-1. Bump `package.json#version` (and `package-lock.json`) to the exact version string.
-2. Publish to npm:
-   - Preview: `npm publish --tag next`
-   - Stable: `npm publish --tag latest`
-3. Create a GitHub release with the same version tag (`v<version>`):
-   - Preview release: changelog body is optional/minimal.
-   - Stable release: include changelog/release notes in the GitHub release body.
-
-Suggestion helper:
-- `npm run version:suggest -- --type preview` (or `stable`) prints a suggested version for today’s date.
 
 ## Repo layout (what lives where)
 
@@ -195,7 +124,7 @@ Suggestion helper:
 - `src/adapters/` — channel adapters (Telegram, …)
 - `src/envelope/`, `src/cron/`, `src/shared/` — core models + shared utilities
 - `prompts/` — Nunjucks templates for agent instructions / turns
-- `docs/spec/` — developer-facing specs (canonical)
+- `openspec/specs/` — developer-facing specs (canonical)
 
 ## State & debugging
 

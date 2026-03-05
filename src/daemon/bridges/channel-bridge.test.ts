@@ -17,8 +17,6 @@ import type {
 import { HiBossDatabase } from "../db/database.js";
 import { ChannelBridge } from "./channel-bridge.js";
 
-const CHANNEL_BATCH_WAIT_MS = 350;
-
 class TestAdapter implements ChatAdapter {
   readonly platform = "telegram";
   private messageHandler: ChannelMessageHandler | null = null;
@@ -60,10 +58,6 @@ function withTempDb(run: (db: HiBossDatabase) => Promise<void> | void): Promise<
       db.close();
       fs.rmSync(dir, { recursive: true, force: true });
     });
-}
-
-async function waitForChannelBatchFlush(): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, CHANNEL_BATCH_WAIT_MS));
 }
 
 test("channel bridge requires /login token before routing channel messages", async () => {
@@ -130,7 +124,6 @@ test("channel bridge requires /login token before routing channel messages", asy
       content: { text: "hello after login" },
       raw: {},
     });
-    await waitForChannelBatchFlush();
 
     assert.equal(envelopes.length, 1);
     const firstMeta = envelopes[0]?.metadata;
@@ -142,7 +135,7 @@ test("channel bridge requires /login token before routing channel messages", asy
   });
 });
 
-test("channel bridge batches same-chat messages within 200ms into one envelope", async () => {
+test("channel bridge routes first message immediately then interrupt-now with merged content inside window", async () => {
   await withTempDb(async (db) => {
     db.registerAgent({ name: "nex", provider: "codex" });
     db.createBinding("nex", "telegram", "bot-token");
@@ -164,14 +157,18 @@ test("channel bridge batches same-chat messages within 200ms into one envelope",
       channelUserId: "tg-u-1",
       token: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
     });
+    db.setRuntimeTelegramInboundInterruptWindowSeconds(3);
 
     const envelopes: Array<{
+      priority?: number;
       content: { text?: string; attachments?: Array<{ source: string }> };
       metadata?: Record<string, unknown>;
     }> = [];
+    const abortCalls: Array<{ agentName: string; adapterType: string; chatId: string; reason: string }> = [];
     const router = {
       registerAdapter: () => undefined,
       routeEnvelope: async (payload: {
+        priority?: number;
         content: { text?: string; attachments?: Array<{ source: string }> };
         metadata?: Record<string, unknown>;
       }) => {
@@ -179,7 +176,19 @@ test("channel bridge batches same-chat messages within 200ms into one envelope",
       },
     } as any;
 
-    const bridge = new ChannelBridge(router, db, {} as any);
+    const bridge = new ChannelBridge(
+      router,
+      db,
+      {} as any,
+      {
+        executor: {
+          abortCurrentRunForChannel: (agentName: string, adapterType: string, chatId: string, reason: string) => {
+            abortCalls.push({ agentName, adapterType, chatId, reason });
+            return true;
+          },
+        } as any,
+      },
+    );
     const adapter = new TestAdapter();
     bridge.connect(adapter, "bot-token");
 
@@ -202,18 +211,26 @@ test("channel bridge batches same-chat messages within 200ms into one envelope",
       },
       raw: {},
     });
-
-    await waitForChannelBatchFlush();
-
-    assert.equal(envelopes.length, 1);
-    assert.equal(envelopes[0]?.content.text, "hello\nworld");
-    assert.equal(envelopes[0]?.content.attachments?.length, 1);
-    assert.equal(envelopes[0]?.metadata?.channelMessageId, "m2");
-    assert.deepEqual(envelopes[0]?.metadata?.channelMessageIds, ["m1", "m2"]);
+    assert.equal(envelopes.length, 2);
+    assert.equal(envelopes[0]?.content.text, "hello");
+    assert.equal(envelopes[0]?.priority ?? 0, 0);
+    assert.equal(envelopes[1]?.content.text, "hello\nworld");
+    assert.equal(envelopes[1]?.content.attachments?.length, 1);
+    assert.equal(envelopes[1]?.priority ?? 0, 1);
+    assert.equal(envelopes[1]?.metadata?.channelMessageId, "m2");
+    assert.deepEqual(envelopes[1]?.metadata?.channelMessageIds, ["m1", "m2"]);
+    assert.deepEqual(abortCalls, [
+      {
+        agentName: "nex",
+        adapterType: "telegram",
+        chatId: "chat-1",
+        reason: "channel:inbound-interrupt-now",
+      },
+    ]);
   });
 });
 
-test("channel bridge clears metadata.userToken when batching mixed-user messages", async () => {
+test("channel bridge clears metadata.userToken on merged interrupt envelope when users differ", async () => {
   await withTempDb(async (db) => {
     db.registerAgent({ name: "nex", provider: "codex" });
     db.createBinding("nex", "telegram", "bot-token");
@@ -247,10 +264,10 @@ test("channel bridge clears metadata.userToken when batching mixed-user messages
       token: "cccccccccccccccccccccccccccccccc",
     });
 
-    const envelopes: Array<{ metadata?: Record<string, unknown> }> = [];
+    const envelopes: Array<{ metadata?: Record<string, unknown>; priority?: number }> = [];
     const router = {
       registerAdapter: () => undefined,
-      routeEnvelope: async (payload: { metadata?: Record<string, unknown> }) => {
+      routeEnvelope: async (payload: { metadata?: Record<string, unknown>; priority?: number }) => {
         envelopes.push(payload);
       },
     } as any;
@@ -275,12 +292,10 @@ test("channel bridge clears metadata.userToken when batching mixed-user messages
       content: { text: "world" },
       raw: {},
     });
-
-    await waitForChannelBatchFlush();
-
-    assert.equal(envelopes.length, 1);
-    assert.equal(envelopes[0]?.metadata?.userToken, undefined);
-    assert.deepEqual(envelopes[0]?.metadata?.userTokens, [
+    assert.equal(envelopes.length, 2);
+    assert.equal(envelopes[1]?.priority ?? 0, 1);
+    assert.equal(envelopes[1]?.metadata?.userToken, undefined);
+    assert.deepEqual(envelopes[1]?.metadata?.userTokens, [
       "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
       "cccccccccccccccccccccccccccccccc",
     ]);

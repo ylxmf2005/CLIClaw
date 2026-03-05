@@ -198,6 +198,59 @@ test("envelope.send rejects interruptNow for channel destinations", async () => 
   );
 });
 
+test("envelope.send rejects channel send for unbound non-console adapter", async () => {
+  const sender = makeAgent("sender");
+  const ctx = makeContext({ sender, boundAdapterTypes: [] });
+  const handlers = createEnvelopeHandlers(ctx);
+
+  await assertRpcError(
+    () =>
+      handlers["envelope.send"]({
+        token: sender.token,
+        to: "channel:telegram:123",
+        text: "hello",
+      }),
+    RPC_ERRORS.UNAUTHORIZED,
+    "not bound to adapter 'telegram'"
+  );
+});
+
+test("envelope.send allows channel send to console without per-agent binding", async () => {
+  const sender = makeAgent("sender");
+  let routedInput: CreateEnvelopeInput | null = null;
+  const ctx = makeContext({
+    sender,
+    boundAdapterTypes: [],
+    routeEnvelope: async (input) => {
+      routedInput = input;
+      return {
+        id: "env-console",
+        from: input.from,
+        to: input.to,
+        fromBoss: false,
+        content: input.content,
+        priority: input.priority,
+        status: "pending",
+        createdAt: Date.now(),
+        metadata: input.metadata,
+      };
+    },
+  });
+  const handlers = createEnvelopeHandlers(ctx);
+
+  const result = (await handlers["envelope.send"]({
+    token: sender.token,
+    to: "channel:console:console-chat-1",
+    text: "hello console",
+  })) as { id: string };
+
+  assert.equal(result.id, "env-console");
+  assert.notEqual(routedInput, null);
+  const routed = routedInput as unknown as CreateEnvelopeInput;
+  assert.equal(routed.from, "agent:sender");
+  assert.equal(routed.to, "channel:console:console-chat-1");
+});
+
 test("envelope.send interruptNow aborts work and creates priority envelope", async () => {
   const sender = makeAgent("sender");
   const target = makeAgent("target");
@@ -375,7 +428,7 @@ test("envelope.send team mention stamps team chatScope", async () => {
   assert.notEqual(routedInput, null);
   const routed = routedInput as unknown as CreateEnvelopeInput;
   const metadata = routed.metadata as Record<string, unknown> | undefined;
-  assert.equal(routed.to, "agent:bob");
+  assert.equal(routed.to, "agent:bob:team:research");
   assert.equal(metadata?.chatScope, "team:research");
 });
 
@@ -475,7 +528,7 @@ test("envelope.send team broadcast fans out and returns ids", async () => {
   })) as { ids: string[] };
 
   assert.deepEqual(result.ids, ["env-1", "env-2"]);
-  assert.deepEqual(routed.map((item) => item.to), ["agent:alice", "agent:bob"]);
+  assert.deepEqual(routed.map((item) => item.to), ["agent:alice:team:alpha", "agent:bob:team:alpha"]);
   assert.deepEqual(
     routed.map((item) => (item.metadata as Record<string, unknown> | undefined)?.chatScope),
     ["team:alpha", "team:alpha"]
@@ -521,7 +574,7 @@ test("envelope.send team broadcast failure includes partial delivery ids", async
     (err: unknown) => {
       const e = err as Error & { code?: number; data?: unknown };
       assert.equal(e.code, RPC_ERRORS.DELIVERY_FAILED);
-      assert.equal(e.message.includes("failed to deliver to agent:bob"), true);
+      assert.equal(e.message.includes("failed to deliver to agent:bob:team:alpha"), true);
       const data =
         e.data && typeof e.data === "object" ? (e.data as Record<string, unknown>) : null;
       assert.notEqual(data, null);
@@ -551,6 +604,475 @@ test("envelope.send team broadcast returns no-recipients for sender-only team", 
 
   assert.deepEqual(result.ids, []);
   assert.equal(result.noRecipients, true);
+});
+
+function makeAdminContext(params: {
+  knownAgents?: Agent[];
+  routeEnvelope?: (input: CreateEnvelopeInput) => Promise<Envelope>;
+  abortCurrentRun?: (agentName: string, reason: string) => boolean;
+  envelopes?: Envelope[];
+}): DaemonContext {
+  const knownAgents = new Map<string, Agent>();
+  for (const agent of params.knownAgents ?? []) {
+    knownAgents.set(agent.name.toLowerCase(), agent);
+  }
+
+  const envelopes = params.envelopes ?? [];
+
+  const routeEnvelope =
+    params.routeEnvelope ??
+    (async (input) =>
+      ({
+        id: "e-1",
+        from: input.from,
+        to: input.to,
+        fromBoss: input.fromBoss ?? false,
+        content: input.content,
+        priority: input.priority,
+        deliverAt: input.deliverAt,
+        status: "pending",
+        createdAt: Date.now(),
+        metadata: input.metadata,
+      }) satisfies Envelope);
+
+  return {
+    db: {
+      updateAgentLastSeen: () => undefined,
+      getAgentByNameCaseInsensitive: (name: string) => knownAgents.get(name.toLowerCase()) ?? null,
+      getBossTimezone: () => "UTC",
+      getEnvelopeById: (id: string) => envelopes.find((e) => e.id === id) ?? null,
+      listEnvelopesByToFilter: (options: { toFilter: string; status: string; limit: number }) => {
+        return envelopes.filter((e) => {
+          if (options.toFilter.endsWith("%")) {
+            const prefix = options.toFilter.slice(0, -1);
+            return e.to.startsWith(prefix) && e.status === options.status;
+          }
+          return e.to === options.toFilter && e.status === options.status;
+        }).slice(0, options.limit);
+      },
+      listConversationsForAgent: (agentName: string) => {
+        const prefix = `agent:${agentName}:`;
+        const grouped = new Map<string, { count: number; lastAt: number; lastText: string | null }>();
+        for (const env of envelopes) {
+          if (env.to.startsWith(prefix)) {
+            const chatId = env.to.slice(prefix.length);
+            const existing = grouped.get(chatId);
+            if (!existing || env.createdAt > existing.lastAt) {
+              grouped.set(chatId, {
+                count: (existing?.count ?? 0) + 1,
+                lastAt: env.createdAt,
+                lastText: env.content.text ?? null,
+              });
+            } else {
+              existing.count++;
+            }
+          }
+        }
+        return Array.from(grouped.entries())
+          .map(([chatId, data]) => ({
+            chatId,
+            lastMessageAt: data.lastAt,
+            lastMessageText: data.lastText,
+            messageCount: data.count,
+          }))
+          .sort((a, b) => b.lastMessageAt - a.lastMessageAt);
+      },
+    } as unknown as DaemonContext["db"],
+    router: {
+      routeEnvelope,
+    } as unknown as DaemonContext["router"],
+    executor: {
+      abortCurrentRun: params.abortCurrentRun ?? (() => false),
+    } as unknown as DaemonContext["executor"],
+    scheduler: {
+      onEnvelopeCreated: () => undefined,
+    } as unknown as DaemonContext["scheduler"],
+    cronScheduler: null,
+    adapters: new Map(),
+    config: { dataDir: "/tmp", daemonDir: "/tmp" },
+    running: true,
+    startTimeMs: Date.now(),
+    resolvePrincipal: () => ({
+      kind: "admin",
+      level: "admin",
+    }),
+    assertOperationAllowed: () => undefined,
+    getPermissionPolicy: () => ({ version: INTERNAL_VERSION, operations: { "envelope.send": "restricted" } }),
+    createAdapterForBinding: async () => null,
+    removeAdapter: async () => undefined,
+    registerAgentHandler: () => undefined,
+  };
+}
+
+// ==================== Admin token tests ====================
+
+test("envelope.send with admin token sends fromBoss envelope", async () => {
+  const target = makeAgent("nex");
+  let routedInput: CreateEnvelopeInput | null = null;
+  const ctx = makeAdminContext({
+    knownAgents: [target],
+    routeEnvelope: async (input) => {
+      routedInput = input;
+      return {
+        id: "env-boss",
+        from: input.from,
+        to: input.to,
+        fromBoss: input.fromBoss ?? false,
+        content: input.content,
+        priority: input.priority,
+        status: "pending",
+        createdAt: Date.now(),
+        metadata: input.metadata,
+      };
+    },
+  });
+  const handlers = createEnvelopeHandlers(ctx);
+
+  const result = (await handlers["envelope.send"]({
+    token: "admin-token",
+    to: "agent:nex:chat-123",
+    text: "hello from boss",
+  })) as { id: string };
+
+  assert.equal(result.id, "env-boss");
+  assert.notEqual(routedInput, null);
+  const routed = routedInput as unknown as CreateEnvelopeInput;
+  assert.equal(routed.fromBoss, true);
+  assert.equal(routed.from, "channel:web:boss");
+  assert.equal(routed.to, "agent:nex:chat-123");
+});
+
+test("envelope.send with admin token generates chatId for agent:name:new", async () => {
+  const target = makeAgent("nex");
+  let routedInput: CreateEnvelopeInput | null = null;
+  const ctx = makeAdminContext({
+    knownAgents: [target],
+    routeEnvelope: async (input) => {
+      routedInput = input;
+      return {
+        id: "env-new-chat",
+        from: input.from,
+        to: input.to,
+        fromBoss: input.fromBoss ?? false,
+        content: input.content,
+        priority: input.priority,
+        status: "pending",
+        createdAt: Date.now(),
+        metadata: input.metadata,
+      };
+    },
+  });
+  const handlers = createEnvelopeHandlers(ctx);
+
+  await handlers["envelope.send"]({
+    token: "admin-token",
+    to: "agent:nex:new",
+    text: "new chat",
+  });
+
+  assert.notEqual(routedInput, null);
+  const routed = routedInput as unknown as CreateEnvelopeInput;
+  assert.equal(routed.to.startsWith("agent:nex:agent-chat-"), true);
+  assert.equal(routed.fromBoss, true);
+});
+
+test("envelope.send with admin token rejects plain agent address", async () => {
+  const target = makeAgent("nex");
+  const ctx = makeAdminContext({ knownAgents: [target] });
+  const handlers = createEnvelopeHandlers(ctx);
+
+  await assertRpcError(
+    () =>
+      handlers["envelope.send"]({
+        token: "admin-token",
+        to: "agent:nex",
+        text: "hello",
+      }),
+    RPC_ERRORS.INVALID_PARAMS,
+    "agent destinations must use agent:<name>:new or agent:<name>:<chat-id>"
+  );
+});
+
+test("envelope.send with admin token rejects channel destinations", async () => {
+  const ctx = makeAdminContext({});
+  const handlers = createEnvelopeHandlers(ctx);
+
+  await assertRpcError(
+    () =>
+      handlers["envelope.send"]({
+        token: "admin-token",
+        to: "channel:telegram:123",
+        text: "hello",
+      }),
+    RPC_ERRORS.INVALID_PARAMS,
+    "Admin can only send to agent destinations"
+  );
+});
+
+test("envelope.list with admin token returns envelopes", async () => {
+  const nex = makeAgent("nex");
+  const envelopes: Envelope[] = [
+    {
+      id: "e-1",
+      from: "channel:web:boss",
+      to: "agent:nex:chat-1",
+      fromBoss: true,
+      content: { text: "hello" },
+      status: "done",
+      createdAt: Date.now(),
+    },
+    {
+      id: "e-2",
+      from: "agent:nex",
+      to: "agent:nex:chat-1",
+      fromBoss: false,
+      content: { text: "reply" },
+      status: "done",
+      createdAt: Date.now() + 1,
+    },
+  ];
+  const ctx = makeAdminContext({ knownAgents: [nex], envelopes });
+  const handlers = createEnvelopeHandlers(ctx);
+
+  const result = (await handlers["envelope.list"]({
+    token: "admin-token",
+    to: "agent:nex:chat-1",
+    status: "done",
+  })) as { envelopes: Envelope[] };
+
+  assert.equal(result.envelopes.length, 2);
+});
+
+test("envelope.list with admin token supports prefix matching", async () => {
+  const nex = makeAgent("nex");
+  const envelopes: Envelope[] = [
+    {
+      id: "e-1",
+      from: "channel:web:boss",
+      to: "agent:nex:chat-1",
+      fromBoss: true,
+      content: { text: "hello" },
+      status: "done",
+      createdAt: Date.now(),
+    },
+    {
+      id: "e-2",
+      from: "channel:web:boss",
+      to: "agent:nex:chat-2",
+      fromBoss: true,
+      content: { text: "hi" },
+      status: "done",
+      createdAt: Date.now() + 1,
+    },
+  ];
+  const ctx = makeAdminContext({ knownAgents: [nex], envelopes });
+  const handlers = createEnvelopeHandlers(ctx);
+
+  const result = (await handlers["envelope.list"]({
+    token: "admin-token",
+    to: "agent:nex:%",
+    status: "done",
+  })) as { envelopes: Envelope[] };
+
+  assert.equal(result.envelopes.length, 2);
+});
+
+test("envelope.list with admin token requires to parameter", async () => {
+  const ctx = makeAdminContext({});
+  const handlers = createEnvelopeHandlers(ctx);
+
+  await assertRpcError(
+    () =>
+      handlers["envelope.list"]({
+        token: "admin-token",
+        status: "done",
+      }),
+    RPC_ERRORS.INVALID_PARAMS,
+    "Admin must provide 'to' parameter"
+  );
+});
+
+test("envelope.thread with admin token succeeds", async () => {
+  const env: Envelope = {
+    id: "e-thread-1",
+    from: "channel:web:boss",
+    to: "agent:nex:chat-1",
+    fromBoss: true,
+    content: { text: "hello" },
+    status: "done",
+    createdAt: Date.now(),
+  };
+  const ctx = makeAdminContext({ envelopes: [env] });
+  const handlers = createEnvelopeHandlers(ctx);
+
+  const result = (await handlers["envelope.thread"]({
+    token: "admin-token",
+    envelopeId: "e-thread-1",
+  })) as { envelopes: Envelope[]; totalCount: number };
+
+  assert.equal(result.totalCount, 1);
+  assert.equal(result.envelopes.length, 1);
+  assert.equal(result.envelopes[0]!.id, "e-thread-1");
+});
+
+test("envelope.conversations returns distinct chatIds for agent", async () => {
+  const nex = makeAgent("nex");
+  const envelopes: Envelope[] = [
+    {
+      id: "e-1",
+      from: "channel:web:boss",
+      to: "agent:nex:chat-1",
+      fromBoss: true,
+      content: { text: "hello" },
+      status: "done",
+      createdAt: 1000,
+    },
+    {
+      id: "e-2",
+      from: "channel:web:boss",
+      to: "agent:nex:chat-1",
+      fromBoss: true,
+      content: { text: "follow up" },
+      status: "done",
+      createdAt: 2000,
+    },
+    {
+      id: "e-3",
+      from: "channel:web:boss",
+      to: "agent:nex:chat-2",
+      fromBoss: true,
+      content: { text: "different chat" },
+      status: "done",
+      createdAt: 3000,
+    },
+  ];
+  const ctx = makeAdminContext({ knownAgents: [nex], envelopes });
+  const handlers = createEnvelopeHandlers(ctx);
+
+  const result = (await handlers["envelope.conversations"]({
+    token: "admin-token",
+    agentName: "nex",
+  })) as { conversations: Array<{ chatId: string; lastMessageAt: number; messageCount: number }> };
+
+  assert.equal(result.conversations.length, 2);
+  // chat-2 has the latest message
+  assert.equal(result.conversations[0]!.chatId, "chat-2");
+  assert.equal(result.conversations[0]!.messageCount, 1);
+  assert.equal(result.conversations[1]!.chatId, "chat-1");
+  assert.equal(result.conversations[1]!.messageCount, 2);
+});
+
+// ==================== Address model tests ====================
+
+test("envelope.send with agent token includes chatId in to field", async () => {
+  const sender = makeAgent("bob");
+  const target = makeAgent("alice");
+  let routedInput: CreateEnvelopeInput | null = null;
+  const ctx = makeContext({
+    sender,
+    knownAgents: [sender, target],
+    routeEnvelope: async (input) => {
+      routedInput = input;
+      return {
+        id: "env-chat-addr",
+        from: input.from,
+        to: input.to,
+        fromBoss: false,
+        content: input.content,
+        priority: input.priority,
+        status: "pending",
+        createdAt: Date.now(),
+        metadata: input.metadata,
+      };
+    },
+  });
+  const handlers = createEnvelopeHandlers(ctx);
+
+  await handlers["envelope.send"]({
+    token: sender.token,
+    to: "agent:alice:my-chat",
+    text: "hello",
+  });
+
+  assert.notEqual(routedInput, null);
+  const routed = routedInput as unknown as CreateEnvelopeInput;
+  assert.equal(routed.to, "agent:alice:my-chat");
+  const metadata = routed.metadata as Record<string, unknown> | undefined;
+  assert.equal(metadata?.chatScope, "my-chat");
+});
+
+test("envelope.send with agent token agent:new includes generated chatId in to field", async () => {
+  const sender = makeAgent("bob");
+  const target = makeAgent("alice");
+  let routedInput: CreateEnvelopeInput | null = null;
+  const ctx = makeContext({
+    sender,
+    knownAgents: [sender, target],
+    routeEnvelope: async (input) => {
+      routedInput = input;
+      return {
+        id: "env-new-addr",
+        from: input.from,
+        to: input.to,
+        fromBoss: false,
+        content: input.content,
+        priority: input.priority,
+        status: "pending",
+        createdAt: Date.now(),
+        metadata: input.metadata,
+      };
+    },
+  });
+  const handlers = createEnvelopeHandlers(ctx);
+
+  await handlers["envelope.send"]({
+    token: sender.token,
+    to: "agent:alice:new",
+    text: "hello",
+  });
+
+  assert.notEqual(routedInput, null);
+  const routed = routedInput as unknown as CreateEnvelopeInput;
+  assert.equal(routed.to.startsWith("agent:alice:agent-chat-"), true);
+  const metadata = routed.metadata as Record<string, unknown> | undefined;
+  assert.equal(typeof metadata?.chatScope, "string");
+  assert.equal(String(metadata?.chatScope).startsWith("agent-chat-"), true);
+});
+
+test("envelope.send team mention includes chatScope in to field", async () => {
+  const sender = makeAgent("carol");
+  const bob = makeAgent("bob");
+  let routedInput: CreateEnvelopeInput | null = null;
+  const ctx = makeContext({
+    sender,
+    knownAgents: [sender, bob],
+    teams: [{ name: "research", members: ["bob"] }],
+    routeEnvelope: async (input) => {
+      routedInput = input;
+      return {
+        id: "env-team-addr",
+        from: input.from,
+        to: input.to,
+        fromBoss: false,
+        content: input.content,
+        priority: input.priority,
+        status: "pending",
+        createdAt: Date.now(),
+        metadata: input.metadata,
+      };
+    },
+  });
+  const handlers = createEnvelopeHandlers(ctx);
+
+  await handlers["envelope.send"]({
+    token: sender.token,
+    to: "team:research:bob",
+    text: "ping",
+  });
+
+  assert.notEqual(routedInput, null);
+  const routed = routedInput as unknown as CreateEnvelopeInput;
+  assert.equal(routed.to, "agent:bob:team:research");
 });
 
 test("envelope.send validates team broadcast params even with no recipients", async () => {

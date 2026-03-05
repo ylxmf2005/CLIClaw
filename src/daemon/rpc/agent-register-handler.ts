@@ -235,6 +235,12 @@ export function createAgentRegisterHandler(ctx: DaemonContext): RpcMethodHandler
       // Register agent handler for auto-execution
       ctx.registerAgentHandler(p.name);
 
+      ctx.eventBus?.emit("agent.registered", {
+        name: p.name.trim(),
+        description: typeof p.description === "string" ? p.description : undefined,
+        provider: typeof p.provider === "string" ? p.provider as "claude" | "codex" : undefined,
+      });
+
       logEvent("info", "agent-register", {
         actor: principal.kind,
         "agent-name": p.name.trim(),

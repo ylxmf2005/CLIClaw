@@ -1,58 +1,111 @@
 import type { ChannelMessage } from "../../adapters/types.js";
 import type { CreateEnvelopeInput } from "../../envelope/types.js";
 
-const CHANNEL_MESSAGE_BATCH_DEBOUNCE_MS = 200;
+const DEFAULT_INTERRUPT_WINDOW_MS = 3_000;
+const MAX_INTERRUPT_WINDOW_MS = 60_000;
+const INTERRUPT_PRIORITY = 1;
 
 interface PendingChannelEnvelope {
   message: ChannelMessage;
   input: CreateEnvelopeInput;
 }
 
-interface PendingChannelBatch {
+interface RecentChannelBatch {
   items: PendingChannelEnvelope[];
-  timer: ReturnType<typeof setTimeout>;
+  lastMessageAtMs: number;
+  expiryTimer: ReturnType<typeof setTimeout> | null;
+}
+
+export interface ChannelMessageBatchDispatch {
+  input: CreateEnvelopeInput;
+  batchSize: number;
+  interruptNow: boolean;
+}
+
+export interface ChannelMessageBatcherOptions {
+  getInterruptWindowMs?: () => number;
 }
 
 export class ChannelMessageBatcher {
-  private pendingBatches: Map<string, PendingChannelBatch> = new Map();
+  private recentBatches: Map<string, RecentChannelBatch> = new Map();
+  private readonly getInterruptWindowMs: () => number;
 
-  constructor(
-    private onFlush: (input: CreateEnvelopeInput, batchSize: number) => Promise<void>
-  ) {}
+  constructor(options: ChannelMessageBatcherOptions = {}) {
+    this.getInterruptWindowMs = options.getInterruptWindowMs ?? (() => DEFAULT_INTERRUPT_WINDOW_MS);
+  }
 
-  enqueue(message: ChannelMessage, input: CreateEnvelopeInput): void {
+  enqueue(message: ChannelMessage, input: CreateEnvelopeInput): ChannelMessageBatchDispatch {
     const key = this.getBatchKey(input, message);
-    const existing = this.pendingBatches.get(key);
-    if (existing) {
-      existing.items.push({ message, input });
-      clearTimeout(existing.timer);
-      existing.timer = this.scheduleFlush(key);
-      return;
+    const interruptWindowMs = this.resolveInterruptWindowMs();
+    if (interruptWindowMs === 0) {
+      this.clearRecentBatch(key);
+      return { input, batchSize: 1, interruptNow: false };
     }
 
-    this.pendingBatches.set(key, {
-      items: [{ message, input }],
-      timer: this.scheduleFlush(key),
-    });
+    const nowMs = Date.now();
+    const existing = this.recentBatches.get(key);
+    const inInterruptWindow = existing !== undefined && (nowMs - existing.lastMessageAtMs) <= interruptWindowMs;
+
+    if (!existing || !inInterruptWindow) {
+      this.clearRecentBatch(key);
+      const next: RecentChannelBatch = {
+        items: [{ message, input }],
+        lastMessageAtMs: nowMs,
+        expiryTimer: null,
+      };
+      this.recentBatches.set(key, next);
+      this.scheduleExpiry(key, next, interruptWindowMs);
+      return { input, batchSize: 1, interruptNow: false };
+    }
+
+    existing.items.push({ message, input });
+    existing.lastMessageAtMs = nowMs;
+    this.scheduleExpiry(key, existing, interruptWindowMs);
+    return {
+      input: {
+        ...this.mergeBatch(existing.items),
+        priority: INTERRUPT_PRIORITY,
+      },
+      batchSize: existing.items.length,
+      interruptNow: true,
+    };
+  }
+
+  private resolveInterruptWindowMs(): number {
+    const raw = this.getInterruptWindowMs();
+    if (!Number.isFinite(raw)) return DEFAULT_INTERRUPT_WINDOW_MS;
+    const normalized = Math.trunc(raw);
+    if (normalized <= 0) return 0;
+    return Math.max(1, Math.min(MAX_INTERRUPT_WINDOW_MS, normalized));
+  }
+
+  private clearRecentBatch(key: string): void {
+    const existing = this.recentBatches.get(key);
+    if (!existing) return;
+    if (existing.expiryTimer) {
+      clearTimeout(existing.expiryTimer);
+    }
+    this.recentBatches.delete(key);
+  }
+
+  private scheduleExpiry(key: string, batch: RecentChannelBatch, interruptWindowMs: number): void {
+    if (batch.expiryTimer) {
+      clearTimeout(batch.expiryTimer);
+    }
+    batch.expiryTimer = setTimeout(() => {
+      const current = this.recentBatches.get(key);
+      if (!current || current !== batch) return;
+      const idleMs = Date.now() - current.lastMessageAtMs;
+      if (idleMs < interruptWindowMs) {
+        this.scheduleExpiry(key, current, interruptWindowMs);
+        return;
+      }
+      this.recentBatches.delete(key);
+    }, interruptWindowMs);
   }
 
   private getBatchKey(input: CreateEnvelopeInput, message: ChannelMessage): string {
     return `${message.platform}:${message.chat.id}:${input.to}`;
-  }
-
-  private scheduleFlush(key: string): ReturnType<typeof setTimeout> {
-    return setTimeout(() => {
-      void this.flush(key);
-    }, CHANNEL_MESSAGE_BATCH_DEBOUNCE_MS);
-  }
-
-  private async flush(key: string): Promise<void> {
-    const pending = this.pendingBatches.get(key);
-    if (!pending) return;
-    this.pendingBatches.delete(key);
-
-    const mergedInput = this.mergeBatch(pending.items);
-    await this.onFlush(mergedInput, pending.items.length);
   }
 
   private mergeBatch(items: PendingChannelEnvelope[]): CreateEnvelopeInput {

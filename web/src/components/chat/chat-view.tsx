@@ -1,67 +1,205 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useCallback, useState } from "react";
 import { useAppState } from "@/providers/app-state-provider";
+import { useToast } from "@/providers/toast-provider";
 import { MessageList } from "./message-list";
 import { MessageComposer } from "./message-composer";
+import { ScheduledEnvelopes } from "./scheduled-envelopes";
+import { ReplyPreview } from "./reply-preview";
+import { ChatHeader } from "./chat-header";
+import { AgentDetailSheet } from "@/components/agents/agent-detail-sheet";
+import type { AgentState } from "@/components/shared/status-indicator";
+import { Terminal } from "lucide-react";
+import { EmptyState } from "@/components/shared/empty-state";
+import { generateChatId } from "@/lib/utils";
 import {
-  StatusIndicator,
-  type AgentState,
-} from "@/components/shared/status-indicator";
-import { Button } from "@/components/ui/button";
-import {
-  Terminal,
-  Clock,
-  SquareSlash,
-  RefreshCw,
-  Plus,
-  Settings,
-} from "lucide-react";
-import { cn } from "@/lib/utils";
-import { abortAgent, refreshAgent } from "@/lib/api";
+  sendEnvelope,
+  abortAgent,
+  refreshAgent,
+  uploadFile,
+  listEnvelopes,
+  toggleRelay,
+} from "@/lib/api";
+import type { Envelope } from "@/lib/types";
+import type { AttachmentFile } from "./attachment-bar";
 
 export function ChatView() {
   const { state, dispatch, loadEnvelopes } = useAppState();
+  const { toast } = useToast();
   const selection = state.selectedChat;
+  const [interruptMode, setInterruptMode] = useState(false);
+  const [replyTo, setReplyTo] = useState<Envelope | null>(null);
+  const [pendingEnvelopes, setPendingEnvelopes] = useState<Envelope[]>([]);
+  const [detailSheetOpen, setDetailSheetOpen] = useState(false);
 
+  // Load envelopes for selected chat
   useEffect(() => {
     if (selection) {
-      const address = selection.chatId
-        ? `agent:${selection.agentName}:${selection.chatId}`
-        : `agent:${selection.agentName}`;
-      loadEnvelopes(address);
+      loadEnvelopes(`agent:${selection.agentName}`, selection.chatId);
     }
   }, [selection, loadEnvelopes]);
 
+  // Load pending/scheduled envelopes
+  useEffect(() => {
+    if (!selection) return;
+    let cancelled = false;
+    async function fetchPending() {
+      try {
+        const { envelopes } = await listEnvelopes({
+          to: `agent:${selection!.agentName}`,
+          chatId: selection!.chatId,
+          status: "pending",
+          limit: 20,
+        });
+        if (!cancelled) setPendingEnvelopes(envelopes);
+      } catch {
+        // silent
+      }
+    }
+    fetchPending();
+    return () => { cancelled = true; };
+  }, [selection]);
+
+  // Reset reply when chat changes
+  useEffect(() => {
+    setReplyTo(null);
+    setInterruptMode(false);
+  }, [selection?.agentName, selection?.chatId]);
+
+  const handleSend = useCallback(
+    async (text: string, attachments?: AttachmentFile[]) => {
+      if (!selection || !text.trim()) return;
+
+      const address = `agent:${selection.agentName}:${selection.chatId}`;
+
+      try {
+        // Upload attachments first if any
+        let uploadedAttachments: { source: string; filename: string }[] | undefined;
+        if (attachments && attachments.length > 0) {
+          uploadedAttachments = await Promise.all(
+            attachments.map(async (att) => {
+              const { path } = await uploadFile(att.file);
+              return { source: path, filename: att.file.name };
+            })
+          );
+        }
+
+        await sendEnvelope({
+          to: address,
+          text,
+          attachments: uploadedAttachments,
+          interruptNow: interruptMode || undefined,
+          replyToEnvelopeId: replyTo?.id,
+        });
+
+        dispatch({ type: "CLEAR_DRAFT", key: address });
+        setReplyTo(null);
+        if (interruptMode) setInterruptMode(false);
+      } catch (err) {
+        toast({
+          title: "Send failed",
+          description: err instanceof Error ? err.message : "Could not send message",
+          variant: "error",
+        });
+      }
+    },
+    [selection, interruptMode, replyTo, dispatch, toast]
+  );
+
+  const handleScheduleSend = useCallback(
+    async (text: string, scheduledAt: Date) => {
+      if (!selection || !text.trim()) return;
+      const address = `agent:${selection.agentName}:${selection.chatId}`;
+      try {
+        await sendEnvelope({
+          to: address,
+          text,
+          deliverAt: scheduledAt.toISOString(),
+        });
+        dispatch({ type: "CLEAR_DRAFT", key: address });
+        toast({
+          title: "Scheduled",
+          description: `Message scheduled for ${scheduledAt.toLocaleString()}`,
+          variant: "success",
+        });
+      } catch (err) {
+        toast({
+          title: "Schedule failed",
+          description: err instanceof Error ? err.message : "Could not schedule message",
+          variant: "error",
+        });
+      }
+    },
+    [selection, dispatch, toast]
+  );
+
+  const handleAbort = useCallback(async () => {
+    if (!selection) return;
+    try {
+      await abortAgent(selection.agentName);
+      toast({ description: `Aborted ${selection.agentName}`, variant: "warning" });
+    } catch (err) {
+      toast({
+        title: "Abort failed",
+        description: err instanceof Error ? err.message : "Could not abort agent",
+        variant: "error",
+      });
+    }
+  }, [selection, toast]);
+
+  const handleRefresh = useCallback(async () => {
+    if (!selection) return;
+    try {
+      await refreshAgent(selection.agentName);
+      toast({ description: `Session refreshed for ${selection.agentName}`, variant: "success" });
+    } catch (err) {
+      toast({
+        title: "Refresh failed",
+        description: err instanceof Error ? err.message : "Could not refresh session",
+        variant: "error",
+      });
+    }
+  }, [selection, toast]);
+
+  const handleReply = useCallback((envelope: Envelope) => {
+    setReplyTo(envelope);
+  }, []);
+
+  const handleNewChat = useCallback(() => {
+    if (!selection) return;
+    dispatch({
+      type: "SELECT_CHAT",
+      selection: { agentName: selection.agentName, chatId: generateChatId() },
+    });
+  }, [selection, dispatch]);
+
+  const relayKey = selection ? `${selection.agentName}:${selection.chatId}` : "";
+  const relayOn = state.relayStates[relayKey] ?? false;
+  const relayAvailable = state.daemonStatus?.relayAvailable ?? false;
+
+  const handleToggleRelay = useCallback(async () => {
+    if (!selection || !relayAvailable) return;
+    const newState = !relayOn;
+    try {
+      await toggleRelay(selection.agentName, selection.chatId, newState);
+      dispatch({ type: "SET_RELAY_STATE", key: relayKey, relayOn: newState });
+    } catch (err) {
+      toast({
+        title: "Relay toggle failed",
+        description: err instanceof Error ? err.message : "Could not toggle relay",
+        variant: "error",
+      });
+    }
+  }, [selection, relayAvailable, relayOn, relayKey, dispatch, toast]);
+
   if (!selection) {
     return (
-      <div className="flex flex-1 items-center justify-center bg-grid">
-        <div className="text-center">
-          <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-2xl border border-white/[0.04] bg-white/[0.02]">
-            <svg
-              width="32"
-              height="32"
-              viewBox="0 0 32 32"
-              fill="none"
-              className="text-cyan-glow/30"
-            >
-              <path
-                d="M16 2L2 9l14 7 14-7-14-7zM2 23l14 7 14-7M2 16l14 7 14-7"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </div>
-          <h2 className="mb-2 font-display text-lg font-semibold text-foreground/80">
-            Hi-Boss Control
-          </h2>
-          <p className="text-sm text-muted-foreground/50">
-            Select an agent to start a conversation
-          </p>
-        </div>
-      </div>
+      <EmptyState
+        icon={Terminal}
+        title="Hi-Boss Control"
+        description="Select an agent to start a conversation"
+      />
     );
   }
 
@@ -75,143 +213,96 @@ export function ChatView() {
         : "idle"
     : "unknown";
 
-  const address = selection.chatId
-    ? `agent:${selection.agentName}:${selection.chatId}`
-    : `agent:${selection.agentName}`;
-
-  const envelopes = state.envelopes[address] || [];
+  const envelopeKey = `agent:${selection.agentName}:${selection.chatId}`;
+  const envelopes = state.envelopes[envelopeKey] || [];
 
   return (
     <div className="flex flex-1 flex-col">
       {/* Chat header */}
-      <div className="flex h-14 items-center justify-between border-b border-white/[0.04] bg-[#080c16]/80 px-4 backdrop-blur-sm">
-        <div className="flex items-center gap-3">
-          <StatusIndicator state={agentState} size="md" />
-          <div>
-            <h2 className="text-sm font-semibold text-foreground">
-              {selection.agentName}
-            </h2>
-            {selection.chatId && (
-              <span className="text-[11px] font-mono text-muted-foreground/50">
-                {selection.chatId}
-              </span>
-            )}
-          </div>
-          {agent?.provider && (
-            <span className="rounded bg-white/[0.04] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/50">
-              {agent.provider}
-            </span>
-          )}
-        </div>
+      <ChatHeader
+        agentName={selection.agentName}
+        chatId={selection.chatId}
+        agentState={agentState}
+        provider={agent?.provider}
+        splitPane={state.splitPane}
+        interruptMode={interruptMode}
+        onToggleInterrupt={() => setInterruptMode((v) => !v)}
+        onNewChat={handleNewChat}
+        onToggleTerminal={() =>
+          dispatch({
+            type: "SET_SPLIT_PANE",
+            pane: state.splitPane === "terminal" ? null : "terminal",
+          })
+        }
+        onToggleCron={() =>
+          dispatch({
+            type: "SET_SPLIT_PANE",
+            pane: state.splitPane === "cron" ? null : "cron",
+          })
+        }
+        onToggleThread={() =>
+          dispatch({
+            type: "SET_SPLIT_PANE",
+            pane: state.splitPane === "thread" ? null : "thread",
+          })
+        }
+        onRefresh={handleRefresh}
+        onAbort={handleAbort}
+        isRunning={agentState === "running"}
+        agent={agent}
+        lastRunError={status?.lastRun?.error}
+        onOpenDetail={() => setDetailSheetOpen(true)}
+        relayOn={relayOn}
+        relayAvailable={relayAvailable}
+        onToggleRelay={handleToggleRelay}
+      />
 
-        <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 text-muted-foreground/50 hover:text-foreground"
-            onClick={() =>
-              dispatch({
-                type: "SELECT_CHAT",
-                selection: { agentName: selection.agentName, chatId: "new" },
-              })
-            }
-            title="New chat"
-          >
-            <Plus className="h-4 w-4" />
-          </Button>
+      <AgentDetailSheet
+        agent={agent ?? null}
+        open={detailSheetOpen}
+        onOpenChange={setDetailSheetOpen}
+      />
 
-          <Button
-            variant="ghost"
-            size="icon"
-            className={cn(
-              "h-8 w-8",
-              state.splitPane === "terminal"
-                ? "text-cyan-glow"
-                : "text-muted-foreground/50 hover:text-foreground"
-            )}
-            onClick={() =>
-              dispatch({
-                type: "SET_SPLIT_PANE",
-                pane: state.splitPane === "terminal" ? null : "terminal",
-              })
-            }
-            title="Toggle terminal"
-          >
-            <Terminal className="h-4 w-4" />
-          </Button>
-
-          <Button
-            variant="ghost"
-            size="icon"
-            className={cn(
-              "h-8 w-8",
-              state.splitPane === "cron"
-                ? "text-cyan-glow"
-                : "text-muted-foreground/50 hover:text-foreground"
-            )}
-            onClick={() =>
-              dispatch({
-                type: "SET_SPLIT_PANE",
-                pane: state.splitPane === "cron" ? null : "cron",
-              })
-            }
-            title="Toggle cron schedules"
-          >
-            <Clock className="h-4 w-4" />
-          </Button>
-
-          <div className="mx-1 h-4 w-px bg-white/[0.06]" />
-
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 text-muted-foreground/50 hover:text-foreground"
-            onClick={() => refreshAgent(selection.agentName)}
-            title="Refresh session"
-          >
-            <RefreshCw className="h-3.5 w-3.5" />
-          </Button>
-
-          {agentState === "running" && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-rose-alert/70 hover:text-rose-alert"
-              onClick={() => abortAgent(selection.agentName)}
-              title="Abort run"
-            >
-              <SquareSlash className="h-3.5 w-3.5" />
-            </Button>
-          )}
-
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 text-muted-foreground/50 hover:text-foreground"
-            title="Agent settings"
-          >
-            <Settings className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-      </div>
+      {/* Scheduled envelopes */}
+      {pendingEnvelopes.length > 0 && (
+        <ScheduledEnvelopes envelopes={pendingEnvelopes} />
+      )}
 
       {/* Message area */}
-      <MessageList envelopes={envelopes} currentAgent={selection.agentName} />
+      <MessageList
+        envelopes={envelopes}
+        currentAgent={selection.agentName}
+        onReply={handleReply}
+      />
 
       {/* Inline log preview when agent is running */}
       {agentState === "running" && state.agentLogLines[selection.agentName] && (
-        <div className="border-t border-amber-pulse/10 bg-amber-pulse/[0.03] px-4 py-2">
-          <p className="mx-auto max-w-3xl truncate font-mono text-[11px] text-amber-pulse/60">
+        <div className="border-t border-amber-pulse/20 bg-amber-pulse/5 px-4 py-2">
+          <p className="chat-content-shell truncate font-mono text-[11px] text-amber-pulse/80">
             <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-amber-pulse pulse-amber" />
             {state.agentLogLines[selection.agentName]}
           </p>
         </div>
       )}
 
+      {/* Reply preview */}
+      {replyTo && (
+        <ReplyPreview envelope={replyTo} onCancel={() => setReplyTo(null)} />
+      )}
+
       {/* Composer */}
       <MessageComposer
-        toAddress={address}
-        placeholder={`Message ${selection.agentName}...`}
+        onSend={(text, attachments) => handleSend(text, attachments)}
+        onScheduleSend={handleScheduleSend}
+        placeholder={
+          interruptMode
+            ? `Urgent message to ${selection.agentName}...`
+            : `Message ${selection.agentName}...`
+        }
+        draft={state.drafts[envelopeKey]}
+        onDraftChange={(text) =>
+          dispatch({ type: "SET_DRAFT", key: envelopeKey, text })
+        }
       />
     </div>
   );

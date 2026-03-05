@@ -19,9 +19,15 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { registerAgent } from "@/lib/api";
 import type { Provider, PermissionLevel, ReasoningEffort } from "@/lib/types";
-import { AlertCircle, Sparkles } from "lucide-react";
+import { AlertCircle, HelpCircle, Sparkles } from "lucide-react";
+import { PERMISSION_DESCRIPTIONS } from "./permission-descriptions";
 
 interface AgentCreateModalProps {
   open: boolean;
@@ -37,6 +43,11 @@ export function AgentCreateModal({ open, onOpenChange }: AgentCreateModalProps) 
   const [model, setModel] = useState("");
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>("medium");
   const [permissionLevel, setPermissionLevel] = useState<PermissionLevel>("standard");
+  const [dailyResetAt, setDailyResetAt] = useState("");
+  const [idleTimeout, setIdleTimeout] = useState("");
+  const [maxContextLength, setMaxContextLength] = useState("");
+  const [bindAdapterType, setBindAdapterType] = useState("");
+  const [bindAdapterToken, setBindAdapterToken] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [createdToken, setCreatedToken] = useState<string | null>(null);
@@ -49,6 +60,11 @@ export function AgentCreateModal({ open, onOpenChange }: AgentCreateModalProps) 
     setModel("");
     setReasoningEffort("medium");
     setPermissionLevel("standard");
+    setDailyResetAt("");
+    setIdleTimeout("");
+    setMaxContextLength("");
+    setBindAdapterType("");
+    setBindAdapterToken("");
     setError(null);
     setCreatedToken(null);
     setLoading(false);
@@ -63,6 +79,16 @@ export function AgentCreateModal({ open, onOpenChange }: AgentCreateModalProps) 
     setLoading(true);
     setError(null);
     try {
+      const sessionPolicy =
+        dailyResetAt || idleTimeout || maxContextLength
+          ? {
+              dailyResetAt: dailyResetAt || undefined,
+              idleTimeout: idleTimeout || undefined,
+              maxContextLength: maxContextLength
+                ? parseInt(maxContextLength, 10)
+                : undefined,
+            }
+          : undefined;
       const result = await registerAgent({
         name: name.trim(),
         description: description.trim() || undefined,
@@ -71,6 +97,9 @@ export function AgentCreateModal({ open, onOpenChange }: AgentCreateModalProps) 
         model: model.trim() || undefined,
         reasoningEffort,
         permissionLevel,
+        sessionPolicy,
+        bindAdapterType: bindAdapterType || undefined,
+        bindAdapterToken: bindAdapterToken.trim() || undefined,
       });
       setCreatedToken(result.token);
       await refreshAgents();
@@ -88,7 +117,7 @@ export function AgentCreateModal({ open, onOpenChange }: AgentCreateModalProps) 
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="border-white/[0.06] bg-[#0d1224] sm:max-w-lg">
+      <DialogContent className="border-border bg-card sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 font-display text-lg">
             <Sparkles className="h-5 w-5 text-cyan-glow" />
@@ -110,7 +139,7 @@ export function AgentCreateModal({ open, onOpenChange }: AgentCreateModalProps) 
               </div>
             </div>
             <DialogFooter>
-              <Button onClick={handleClose} className="bg-cyan-glow text-black hover:bg-cyan-glow/90">
+              <Button onClick={handleClose} className="bg-cyan-glow text-primary-foreground hover:bg-cyan-glow/90">
                 Done
               </Button>
             </DialogFooter>
@@ -125,40 +154,43 @@ export function AgentCreateModal({ open, onOpenChange }: AgentCreateModalProps) 
             )}
 
             <div className="space-y-2">
-              <label className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+              <label htmlFor="agent-name" className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
                 Name *
               </label>
               <Input
+                id="agent-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g. nex"
-                className="border-white/[0.06] bg-white/[0.03]"
+                className="border-border bg-input"
                 autoFocus
               />
             </div>
 
             <div className="space-y-2">
-              <label className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+              <label htmlFor="agent-description" className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
                 Description
               </label>
               <Textarea
+                id="agent-description"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="AI assistant for code review"
                 rows={2}
-                className="border-white/[0.06] bg-white/[0.03] resize-none"
+                className="border-border bg-input resize-none"
               />
             </div>
 
             <div className="space-y-2">
-              <label className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+              <label htmlFor="agent-workspace" className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
                 Workspace
               </label>
               <Input
+                id="agent-workspace"
                 value={workspace}
                 onChange={(e) => setWorkspace(e.target.value)}
                 placeholder="/path/to/project"
-                className="border-white/[0.06] bg-white/[0.03] font-mono text-sm"
+                className="border-border bg-input font-mono text-sm"
               />
             </div>
 
@@ -168,10 +200,10 @@ export function AgentCreateModal({ open, onOpenChange }: AgentCreateModalProps) 
                   Provider
                 </label>
                 <Select value={provider} onValueChange={(v) => setProvider(v as Provider)}>
-                  <SelectTrigger className="border-white/[0.06] bg-white/[0.03]">
+                  <SelectTrigger className="border-border bg-input">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="border-white/[0.06] bg-[#0d1224]">
+                  <SelectContent className="border-border bg-popover">
                     <SelectItem value="claude">Claude</SelectItem>
                     <SelectItem value="codex">Codex</SelectItem>
                   </SelectContent>
@@ -186,10 +218,10 @@ export function AgentCreateModal({ open, onOpenChange }: AgentCreateModalProps) 
                   value={reasoningEffort}
                   onValueChange={(v) => setReasoningEffort(v as ReasoningEffort)}
                 >
-                  <SelectTrigger className="border-white/[0.06] bg-white/[0.03]">
+                  <SelectTrigger className="border-border bg-input">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="border-white/[0.06] bg-[#0d1224]">
+                  <SelectContent className="border-border bg-popover">
                     <SelectItem value="none">None</SelectItem>
                     <SelectItem value="low">Low</SelectItem>
                     <SelectItem value="medium">Medium</SelectItem>
@@ -209,7 +241,7 @@ export function AgentCreateModal({ open, onOpenChange }: AgentCreateModalProps) 
                   value={model}
                   onChange={(e) => setModel(e.target.value)}
                   placeholder="Optional override"
-                  className="border-white/[0.06] bg-white/[0.03]"
+                  className="border-border bg-input"
                 />
               </div>
 
@@ -221,16 +253,81 @@ export function AgentCreateModal({ open, onOpenChange }: AgentCreateModalProps) 
                   value={permissionLevel}
                   onValueChange={(v) => setPermissionLevel(v as PermissionLevel)}
                 >
-                  <SelectTrigger className="border-white/[0.06] bg-white/[0.03]">
+                  <SelectTrigger className="border-border bg-input">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="border-white/[0.06] bg-[#0d1224]">
-                    <SelectItem value="restricted">Restricted</SelectItem>
-                    <SelectItem value="standard">Standard</SelectItem>
-                    <SelectItem value="privileged">Privileged</SelectItem>
-                    <SelectItem value="admin">Admin</SelectItem>
+                  <SelectContent className="border-border bg-popover">
+                    {(["restricted", "standard", "privileged", "admin"] as const).map((level) => (
+                      <SelectItem key={level} value={level}>
+                        <div className="flex items-center gap-2">
+                          <span className="capitalize">{level}</span>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <HelpCircle className="h-3 w-3 text-muted-foreground" />
+                            </TooltipTrigger>
+                            <TooltipContent side="right" className="max-w-48">
+                              {PERMISSION_DESCRIPTIONS[level]}
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
+              </div>
+            </div>
+
+            {/* Session Policy */}
+            <div className="space-y-2">
+              <label className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                Session Policy
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                <Input
+                  value={dailyResetAt}
+                  onChange={(e) => setDailyResetAt(e.target.value)}
+                  placeholder="Reset (04:00)"
+                  className="border-border bg-input text-xs"
+                  title="Daily reset time (HH:MM)"
+                />
+                <Input
+                  value={idleTimeout}
+                  onChange={(e) => setIdleTimeout(e.target.value)}
+                  placeholder="Idle (30m)"
+                  className="border-border bg-input text-xs"
+                  title="Idle timeout duration"
+                />
+                <Input
+                  value={maxContextLength}
+                  onChange={(e) => setMaxContextLength(e.target.value)}
+                  placeholder="Context max"
+                  type="number"
+                  className="border-border bg-input text-xs"
+                  title="Max context length"
+                />
+              </div>
+            </div>
+
+            {/* Adapter Binding */}
+            <div className="space-y-2">
+              <label className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                Adapter Binding (optional)
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                <Select value={bindAdapterType} onValueChange={setBindAdapterType}>
+                  <SelectTrigger className="border-border bg-input text-xs">
+                    <SelectValue placeholder="Type" />
+                  </SelectTrigger>
+                  <SelectContent className="border-border bg-popover">
+                    <SelectItem value="telegram">Telegram</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Input
+                  value={bindAdapterToken}
+                  onChange={(e) => setBindAdapterToken(e.target.value)}
+                  placeholder="Bot token"
+                  className="col-span-2 border-border bg-input text-xs"
+                />
               </div>
             </div>
 
@@ -246,7 +343,7 @@ export function AgentCreateModal({ open, onOpenChange }: AgentCreateModalProps) 
               <Button
                 type="submit"
                 disabled={loading}
-                className="bg-cyan-glow text-black hover:bg-cyan-glow/90 disabled:opacity-50"
+                className="bg-cyan-glow text-primary-foreground hover:bg-cyan-glow/90 disabled:opacity-50"
               >
                 {loading ? "Registering..." : "Register Agent"}
               </Button>

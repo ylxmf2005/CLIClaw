@@ -96,6 +96,8 @@ export async function executeOneShotPrompt(params: ExecuteOneShotPromptParams): 
       env[key] = value;
     }
   }
+  // Never pass host/session marker env vars to child CLIs.
+  delete env.CLAUDECODE;
   applyProviderReasoningEffortEnv({
     provider: params.provider,
     reasoningEffort: params.reasoningEffort,
