@@ -5,7 +5,7 @@
 ### Token Resolution
 
 - Most commands accept `--token`. If omitted, uses `HIBOSS_TOKEN`.
-- Admin tokens cannot perform agent-token operations like `hiboss envelope send` / `hiboss envelope list` / `hiboss envelope thread`.
+- Admin-token access is operation-specific. Some envelope operations are allowed for admin tokens with stricter constraints (for example admin `envelope.send` only allows agent destinations).
 
 ### Clearing Nullable Overrides
 
@@ -42,12 +42,12 @@ Default permission levels come from `DEFAULT_PERMISSION_POLICY`.
 | `hiboss daemon start` | Start daemon | Admin | admin |
 | `hiboss daemon stop` | Stop daemon | Admin | admin |
 | `hiboss daemon status` | Daemon status | Admin | admin |
-| `hiboss envelope send` | Send envelope | Agent | restricted |
-| `hiboss envelope list` | List envelopes | Agent | restricted |
-| `hiboss envelope thread` | Show thread | Agent | restricted |
+| `hiboss envelope send` | Send envelope | Agent/Admin (restricted for admin) | restricted |
+| `hiboss envelope list` | List envelopes | Agent/Admin (restricted for admin) | restricted |
+| `hiboss envelope thread` | Show thread | Agent/Admin | restricted |
 | `hiboss cron create` | Create cron | Agent | restricted |
 | `hiboss cron explain` | Preview cron | Optional | n/a |
-| `hiboss cron list` | List cron | Agent | restricted |
+| `hiboss cron list` | List cron | Agent/Admin | restricted |
 | `hiboss cron enable/disable/delete` | Manage cron | Agent | restricted |
 | `hiboss reaction set` | Set reaction | Agent | restricted |
 | `hiboss agent register` | Register agent | Admin | admin |
@@ -87,13 +87,18 @@ Bootstrap methods (no token): `setup.check`, `admin.verify`
 
 ### RPC Methods
 
-**Envelope:** `envelope.send`, `envelope.list`, `envelope.thread`
+**Envelope:** `envelope.send`, `envelope.list`, `envelope.thread`, `envelope.conversations`
 
 `envelope.send` notable params:
-- `interruptNow?: boolean` (agent only; mutually exclusive with `deliverAt`)
+- `interruptNow?: boolean` (single-agent only; mutually exclusive with `deliverAt`)
 - `parseMode?: "plain" | "markdownv2" | "html"` (channel only)
 - `replyToEnvelopeId?: string`
 - `origin?: "cli" | "internal"`
+- admin-specific rule: destination must be `agent:<name>:new` or `agent:<name>:<chat-id>`
+
+`envelope.list` admin note:
+- admin requests must provide `to` (not `from`)
+- admin list is read-only (no pending ACK side effect)
 
 **Reactions:** `reaction.set`
 
@@ -104,6 +109,8 @@ Bootstrap methods (no token): `setup.check`, `admin.verify`
 **Teams:** `team.register`, `team.set`, `team.add-member`, `team.remove-member`, `team.status`, `team.list`, `team.list-members`, `team.send`, `team.delete`
 
 **Daemon:** `daemon.status`, `daemon.ping`, `daemon.time`
+
+**Sessions / Chat State:** `session.list`, `chat.relay-toggle`
 
 **Setup:** `setup.check`
 

@@ -1,29 +1,96 @@
 # Web Frontend: WebSocket Events
 
-Events pushed from daemon to connected frontend clients.
+Daemon WebSocket endpoint: `/ws` (same port as HTTP API, default `3889`).
 
-## Event Types
+## Connection and Auth
 
-| Event | Payload | Trigger |
+- Client connects with query token: `ws://<host>:<port>/ws?token=<token>`
+- Upgrade auth currently accepts admin tokens only (`verifyAdminToken`)
+- Unauthorized upgrades are rejected with HTTP `401`
+
+## Message Envelope
+
+Server -> client messages use:
+
+```json
+{
+  "type": "event.type",
+  "payload": {},
+  "timestamp": 1730000000000
+}
+```
+
+`timestamp` is daemon-side `Date.now()` in unix ms.
+
+## Initial Snapshot
+
+On each successful connection, daemon sends a one-time `snapshot` event:
+
+```json
+{
+  "type": "snapshot",
+  "payload": {
+    "agents": [
+      {
+        "name": "nex",
+        "description": "optional",
+        "provider": "claude",
+        "relayMode": "default-off",
+        "bindings": ["telegram"]
+      }
+    ],
+    "agentStatuses": [
+      { "name": "nex", "agentState": "idle" }
+    ],
+    "daemon": {
+      "running": true,
+      "startTimeMs": 1730000000000,
+      "adapters": ["telegram"]
+    }
+  },
+  "timestamp": 1730000000000
+}
+```
+
+## Event Types (Server -> Client)
+
+| Event | Payload shape | Emitted by |
 |---|---|---|
-| `envelope.new` | Envelope data | New envelope created/delivered |
-| `envelope.done` | Envelope ID | Envelope marked done |
-| `agent.status` | Agent name + state | Agent state change (idle/running) |
-| `agent.registered` | Agent data | New agent registered |
-| `agent.deleted` | Agent name | Agent deleted |
-| `agent.log` | Agent name + chat ID + line | Provider CLI stdout/stderr line |
-| `session.started` | Session data | New session started |
-| `session.ended` | Session ID | Session closed |
-| `cron.fired` | Schedule ID + envelope ID | Cron schedule triggered |
-| `run.started` | Run data | Agent run started |
-| `run.completed` | Run data | Agent run completed/failed |
+| `envelope.new` | `{ envelope }` | router hook on envelope creation |
+| `envelope.done` | `{ id }` | router hook on envelope completion |
+| `agent.status` | `{ name, agentState, agentHealth, currentRun?, lastRun? }` | executor run lifecycle hooks |
+| `agent.registered` | `{ name, description?, provider? }` | `agent.register` handler |
+| `agent.deleted` | `{ name }` | `agent.delete` handler |
+| `run.started` | `{ runId, agentName, startedAt }` | executor run start |
+| `run.completed` | `{ runId, agentName, completedAt, status, error?, contextLength? }` | executor run finish |
+| `agent.pty.output` | `{ name, chatId?, data }` | relay broker worker stream |
+| `agent.log` | batched payload `{ lines: [{ name, chatId?, line }] }` | event-bus broadcast path (if emitted) |
+| `agent.pty.input` | `{ name, chatId?, data }` | rebroadcast when any client sends PTY input |
 
-## Daemon Changes Required
+Notes:
+- `agent.log` is specially batched per client (`max 10 lines` or `100ms` debounce).
+- Non-log events are broadcast immediately.
 
-1. **HTTP server** (`src/daemon/http/`): Express or native `http`, REST handlers (thin RPC wrappers), static file serving, CORS for dev, token validation middleware.
+## Client -> Server Messages
 
-2. **WebSocket server** (`src/daemon/ws/`): Connection management (auth on connect), event broadcasting, per-agent log streaming channel.
+Currently accepted inbound message:
 
-3. **Event emitter hooks**: Emit on envelope creation/completion, agent state changes, session lifecycle, cron fires.
+```json
+{
+  "type": "agent.pty.input",
+  "payload": {
+    "name": "nex",
+    "chatId": "optional-chat-scope",
+    "data": "raw terminal input"
+  }
+}
+```
 
-4. **Agent log capture**: Capture provider CLI stdout/stderr, buffer and stream to WS subscribers, associate with agent name + chat ID.
+Daemon emits this on the internal event bus and the relay broker forwards it to the corresponding PTY session.
+
+## Removed / Not Emitted
+
+The daemon does not currently emit:
+- `session.started`
+- `session.ended`
+- `cron.fired`

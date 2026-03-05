@@ -32,6 +32,7 @@ import { DemoTeamChat } from "./demo-team-chat";
 import { DemoDaemonStatus } from "./demo-daemon-status";
 import { DemoTerminal } from "./demo-split-panes";
 import { DemoCronPanel } from "./demo-split-panes";
+import { DemoAgentDetailSheet } from "./demo-agent-detail-sheet";
 
 // ─── Demo State ─────────────────────────────────────────────
 export interface DemoState {
@@ -51,6 +52,9 @@ export interface DemoState {
   terminalAgent: string | null;
   terminalLines: Record<string, string[]>;
   splitPane: "terminal" | "thread" | "cron" | null;
+  relayStates: Record<string, boolean>;
+  agentDetailSheet: string | null;
+  replyTo: { envelopeId: string; chatKey: string; senderName: string; preview: string } | null;
   loading: boolean;
 }
 
@@ -66,7 +70,12 @@ export type Action =
   | { type: "ADD_ENVELOPE"; to: string; chatId?: string; text: string }
   | { type: "MARK_READ"; agentName: string; chatId: string }
   | { type: "SET_DRAFT"; key: string; text: string }
-  | { type: "CLEAR_DRAFT"; key: string };
+  | { type: "CLEAR_DRAFT"; key: string }
+  | { type: "SET_RELAY"; key: string; on: boolean }
+  | { type: "SLASH_COMMAND"; agentName: string; command: string }
+  | { type: "SHOW_AGENT_DETAIL"; agentName: string | null }
+  | { type: "ADD_AGENT"; agent: Agent }
+  | { type: "SET_REPLY"; reply: DemoState["replyTo"] };
 
 function demoReducer(state: DemoState, action: Action): DemoState {
   switch (action.type) {
@@ -130,7 +139,7 @@ function demoReducer(state: DemoState, action: Action): DemoState {
         }
         return t;
       });
-      return { ...state, envelopes: updatedEnvelopes, conversations: updatedConversations, teams: updatedTeams };
+      return { ...state, envelopes: updatedEnvelopes, conversations: updatedConversations, teams: updatedTeams, replyTo: null };
     }
     case "MARK_READ": {
       const updatedConversations = state.conversations.map((c) => {
@@ -150,6 +159,24 @@ function demoReducer(state: DemoState, action: Action): DemoState {
       const { [action.key]: _, ...restDrafts } = state.drafts;
       return { ...state, drafts: restDrafts };
     }
+    case "SET_RELAY":
+      return { ...state, relayStates: { ...state.relayStates, [action.key]: action.on } };
+    case "SLASH_COMMAND": {
+      // Demo: slash commands are no-ops but show feedback via log lines
+      const cmdMap: Record<string, string> = {
+        interrupt: `[demo] Interrupt toggled for ${action.agentName}`,
+        abort: `[demo] Abort requested for ${action.agentName}`,
+        refresh: `[demo] Session refresh requested for ${action.agentName}`,
+      };
+      const line = cmdMap[action.command] ?? `[demo] Unknown command: /${action.command}`;
+      return { ...state, agentLogLines: { ...state.agentLogLines, [action.agentName]: line } };
+    }
+    case "SHOW_AGENT_DETAIL":
+      return { ...state, agentDetailSheet: action.agentName };
+    case "ADD_AGENT":
+      return { ...state, agents: [...state.agents, action.agent] };
+    case "SET_REPLY":
+      return { ...state, replyTo: action.reply };
     default:
       return state;
   }
@@ -180,6 +207,9 @@ function DemoProvider({ children }: { children: React.ReactNode }) {
     drafts: {},
     terminalAgent: null,
     terminalLines: MOCK_TERMINAL_LINES,
+    relayStates: {},
+    agentDetailSheet: null,
+    replyTo: null,
     view: "chat",
     activeTab: "chats",
     selectedChat: { agentName: "nex", chatId: "pr-review" },
@@ -202,6 +232,7 @@ function DemoShell() {
   return (
     <div className="flex h-screen overflow-hidden noise-overlay">
       <DemoLeftPanel />
+      <DemoAgentDetailSheet />
 
       <div className="flex flex-1 overflow-hidden">
         <div className="flex flex-1 flex-col overflow-hidden">

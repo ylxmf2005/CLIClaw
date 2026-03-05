@@ -13,6 +13,11 @@ import type { AttachmentFile } from "./attachment-bar";
 
 export type { AttachmentFile } from "./attachment-bar";
 
+export interface SlashCommand {
+  command: string;
+  description: string;
+}
+
 export interface MessageComposerProps {
   onSend: (text: string, attachments?: AttachmentFile[]) => void;
   placeholder?: string;
@@ -22,6 +27,8 @@ export interface MessageComposerProps {
   draft?: string;
   /** Called when draft text changes (debounced internally at 500ms). */
   onDraftChange?: (text: string) => void;
+  /** Slash commands available for autocomplete. */
+  slashCommands?: SlashCommand[];
 }
 
 // ── Constants ──────────────────────────────────────────────────────
@@ -76,12 +83,15 @@ export function MessageComposer({
   onScheduleSend,
   draft,
   onDraftChange,
+  slashCommands,
 }: MessageComposerProps) {
   const [text, setText] = useState(draft ?? "");
   const [attachments, setAttachments] = useState<AttachmentFile[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(false);
+  const [slashFilter, setSlashFilter] = useState<string | null>(null);
+  const [slashIndex, setSlashIndex] = useState(0);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -122,6 +132,33 @@ export function MessageComposer({
     const t = setTimeout(() => setError(null), 4000);
     return () => clearTimeout(t);
   }, [error]);
+
+  // ── Slash command autocomplete ──────────────────────────────────
+
+  const filteredCommands = slashCommands && slashFilter !== null
+    ? slashCommands.filter((sc) => sc.command.startsWith(slashFilter))
+    : [];
+  const showSlash = filteredCommands.length > 0;
+
+  const updateSlashState = useCallback((value: string) => {
+    if (!slashCommands || slashCommands.length === 0) {
+      setSlashFilter(null);
+      return;
+    }
+    // Only trigger slash autocomplete if text starts with "/" and has no space yet
+    if (value.startsWith("/") && !value.includes(" ")) {
+      setSlashFilter(value.slice(1).toLowerCase());
+      setSlashIndex(0);
+    } else {
+      setSlashFilter(null);
+    }
+  }, [slashCommands]);
+
+  const acceptSlashCommand = useCallback((command: string) => {
+    setText(`/${command}`);
+    setSlashFilter(null);
+    textareaRef.current?.focus();
+  }, []);
 
   // ── Attachment helpers ────────────────────────────────────────
 
@@ -187,12 +224,34 @@ export function MessageComposer({
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (showSlash) {
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          setSlashIndex((i) => (i + 1) % filteredCommands.length);
+          return;
+        }
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          setSlashIndex((i) => (i - 1 + filteredCommands.length) % filteredCommands.length);
+          return;
+        }
+        if (e.key === "Enter" || e.key === "Tab") {
+          e.preventDefault();
+          acceptSlashCommand(filteredCommands[slashIndex].command);
+          return;
+        }
+        if (e.key === "Escape") {
+          e.preventDefault();
+          setSlashFilter(null);
+          return;
+        }
+      }
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         handleSend();
       }
     },
-    [handleSend]
+    [handleSend, showSlash, filteredCommands, slashIndex, acceptSlashCommand]
   );
 
   // ── Auto-resize ───────────────────────────────────────────────
@@ -201,10 +260,11 @@ export function MessageComposer({
     const value = e.target.value;
     setText(value);
     saveDraft(value);
+    updateSlashState(value);
     const el = e.target;
     el.style.height = "auto";
     el.style.height = Math.min(el.scrollHeight, 160) + "px";
-  }, [saveDraft]);
+  }, [saveDraft, updateSlashState]);
 
   // ── Clipboard paste ───────────────────────────────────────────
 
@@ -337,6 +397,31 @@ export function MessageComposer({
 
         {/* Attachment preview bar */}
         {attachments.length > 0 && <AttachmentBar attachments={attachments} onRemove={removeAttachment} />}
+
+        {/* Slash command autocomplete popup */}
+        {showSlash && (
+          <div className="mb-1 overflow-hidden rounded-lg border border-border bg-background shadow-lg">
+            {filteredCommands.map((sc, i) => (
+              <button
+                key={sc.command}
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  acceptSlashCommand(sc.command);
+                }}
+                className={cn(
+                  "flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition-colors",
+                  i === slashIndex
+                    ? "bg-accent text-foreground"
+                    : "text-foreground/80 hover:bg-accent/50"
+                )}
+              >
+                <span className="font-mono font-medium text-cyan-glow">/{sc.command}</span>
+                <span className="text-xs text-muted-foreground">{sc.description}</span>
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Main input row */}
         <div

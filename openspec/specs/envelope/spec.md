@@ -38,11 +38,12 @@ Scheduling is "not-before delivery". See Scheduler section below.
 Envelopes are **at-most-once**: once acknowledged as read/delivered they are terminalized and not retried.
 
 - To an agent (agent run): marked `done` immediately after read (`src/agent/executor.ts`).
-- To an agent (manual read): listing incoming pending envelopes is treated as an ACK.
+- To an agent (manual read): for agent-token reads, listing incoming pending envelopes is treated as an ACK.
 - To a channel: marked `done` after an adapter send attempt; failures are terminal and recorded in `metadata.lastDeliveryError`.
 
 Permission note:
 - Sending to `channel:<adapter>:...` is only allowed if the sending agent is bound to that adapter type.
+- Admin-token `envelope.send` is limited to agent-chat destinations (`agent:<name>:new` or `agent:<name>:<chat-id>`); team/channel destinations are rejected.
 
 Interrupt-now note:
 - `hiboss envelope send --interrupt-now --to agent:<name>:new|<chat-id>` interrupts the target agent's current/queued work with higher queue priority.
@@ -149,7 +150,7 @@ On daemon start, `EnvelopeScheduler.start()` immediately runs a tick.
 Each tick:
 1. **Deliver due channel envelopes**: `db.listDueChannelEnvelopes(limit)`, router delivers each, failures are terminal.
 2. **Trigger agents with due envelopes**: `db.listAgentNamesWithDueEnvelopes()`, calls `executor.checkAndRun(agent, db)`.
-   - Orphan cleanup: envelopes to missing/deleted agents are marked `done` (terminal) with `last-delivery-error-*`. Batched (100), capped per tick (2000).
+   - Orphan cleanup: envelopes to missing/deleted agents are marked `done` (terminal) with `metadata.lastDeliveryError`. Batched (100), capped per tick (2000).
 
 ### Wake-up Algorithm
 

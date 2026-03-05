@@ -47,6 +47,7 @@ The daemon authorizes token-authenticated operations using `config.permission_po
 | `metadata.providerCli.<provider>.env` | Per-agent env overrides | String env map |
 | `permissionLevel` | Authorization for CLI/RPC ops | `restricted`, `standard`, `privileged`, `admin` |
 | `sessionPolicy` | Session refresh policy | See `openspec/specs/agent/sessions.md` |
+| `relayMode` | Default interactive relay behavior for new chats | `default-on`, `default-off` |
 
 ### Provider Homes
 

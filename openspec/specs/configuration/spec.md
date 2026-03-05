@@ -25,7 +25,7 @@ Overrides root directory (default: `~/hiboss`). Must be absolute or start with `
 
 ### `HIBOSS_UI_LOCALE`
 
-UI/system-message locale for fixed non-AI text. Supported: `en` (default), `zh-CN` (also accepts `zh` / `zh_cn`).
+UI/system-message locale for fixed non-AI text. Supported: `en` (default), `zh-CN` (also accepts `zh` / `zh_cn` / `en-us`).
 
 Scope: Telegram slash-command descriptions and fixed system messages. Overrides `config.ui_locale` when present. Parseable CLI output keys remain stable English kebab-case.
 `config.ui_locale` is a legacy/optional runtime cache key (not sourced from `settings.json` in current flow). If neither env nor that key is set, locale falls back to `en`.
@@ -73,6 +73,7 @@ Key fields:
 - `timezone` — valid IANA timezone for displayed timestamps
 - `permission-policy` — operation → permission-level map
 - `tokens[]` — each: `name`, `token` (32 hex), `role` (`admin`/`user`), optional `agents[]`, optional `bindings[]`
+- `agents[].relay-mode` (optional) — `default-on` or `default-off` (default `default-off`)
 - `runtime.session-concurrency.per-agent` (default `4`)
 - `runtime.session-concurrency.global` (default `16`, must be `>= per-agent`)
 - `runtime.session-summary.recent-days` (default `3`)
@@ -112,7 +113,7 @@ Token-centric: `role: admin` → all agents, `role: user` → `agents[]` scoped.
 
 DB: `{{HIBOSS_DIR}}/.daemon/hiboss.db`. Schema source: `src/daemon/db/schema.ts`.
 
-Tables: `config`, `agents`, `teams`, `team_members`, `agent_bindings`, `envelopes`, `cron_schedules`, `agent_runs`, `agent_sessions`, `channel_session_bindings`, `channel_session_links`, `channel_user_auth`
+Tables: `config`, `agents`, `teams`, `team_members`, `agent_bindings`, `envelopes`, `cron_schedules`, `agent_runs`, `agent_sessions`, `channel_session_bindings`, `channel_session_links`, `channel_user_auth`, `chat_state`
 
 ### `config` keys (selected)
 

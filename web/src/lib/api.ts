@@ -128,6 +128,7 @@ export async function updateAgent(
     reasoningEffort?: ReasoningEffort | null;
     permissionLevel?: string;
     sessionPolicy?: SessionPolicy | null;
+    relayMode?: "default-on" | "default-off" | null;
     metadata?: Record<string, unknown> | null;
     bindAdapterType?: string;
     bindAdapterToken?: string;

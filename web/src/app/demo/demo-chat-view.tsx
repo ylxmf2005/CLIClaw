@@ -3,6 +3,7 @@
 import { useDemoContext } from "./page";
 import { generateChatId, formatMessageTime } from "@/lib/utils";
 import { getSenderColor } from "@/lib/colors";
+import { cn } from "@/lib/utils";
 import { MessageContent } from "@/components/shared/message-content";
 import { DemoComposer } from "./demo-composer";
 
@@ -28,6 +29,12 @@ export function DemoChatView() {
     ? status.agentHealth === "error" ? "error"
     : status.agentState === "running" ? "running" : "idle"
     : "unknown";
+
+  const scheduledKey = `agent:${sel.agentName}:${sel.chatId}:scheduled`;
+  const scheduledEnvelopes = state.envelopes[scheduledKey] || [];
+
+  const relayKey = `${sel.agentName}:${sel.chatId}`;
+  const relayOn = state.relayStates[relayKey] ?? false;
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
@@ -59,7 +66,28 @@ export function DemoChatView() {
             </span>
           )}
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-2">
+          {/* Relay toggle */}
+          <button
+            role="switch"
+            aria-checked={relayOn}
+            aria-label="Toggle relay mode"
+            title={relayOn ? "Relay ON (interactive terminal)" : "Relay OFF (read-only)"}
+            onClick={() => dispatch({ type: "SET_RELAY", key: relayKey, on: !relayOn })}
+            className={cn(
+              "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus-visible:ring-2 focus-visible:ring-cyan-400/50 focus-visible:outline-none",
+              relayOn ? "bg-emerald-signal/30" : "bg-accent"
+            )}
+          >
+            <span className={cn(
+              "inline-block h-3.5 w-3.5 rounded-full transition-transform",
+              relayOn ? "translate-x-[18px] bg-emerald-signal" : "translate-x-[3px] bg-muted-foreground/40"
+            )} />
+          </button>
+
+          <div className="mx-1 h-5 w-px bg-border" />
+
+          {/* Action buttons */}
           {[
             {
               icon: "M12 5v14M5 12h14",
@@ -100,8 +128,52 @@ export function DemoChatView() {
               </svg>
             </button>
           ))}
+
+          <div className="mx-1 h-5 w-px bg-border" />
+
+          {/* Agent details */}
+          <button
+            onClick={() => dispatch({ type: "SHOW_AGENT_DETAIL", agentName: sel.agentName })}
+            title="Agent details"
+            aria-label="Agent details"
+            className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-cyan-400/50 focus-visible:outline-none"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10" />
+              <path d="M12 16v-4M12 8h.01" />
+            </svg>
+          </button>
         </div>
       </div>
+
+      {/* Scheduled envelopes */}
+      {scheduledEnvelopes.length > 0 && (
+        <div className="border-b border-amber-pulse/10 bg-amber-pulse/[0.03] px-4 py-2">
+          <div className="chat-content-shell">
+            <div className="mb-1 flex items-center gap-1.5">
+              <svg className="h-3 w-3 text-amber-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-pulse">
+                Scheduled ({scheduledEnvelopes.length})
+              </span>
+            </div>
+            <div className="space-y-1">
+              {scheduledEnvelopes.map((env) => (
+                <div key={env.id} className="flex items-start gap-2 rounded-md bg-amber-pulse/5 px-2.5 py-1.5">
+                  <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-pulse pulse-amber" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs text-foreground/80">{env.content.text}</p>
+                    <p className="text-[10px] text-muted-foreground">
+                      Delivers {env.deliverAt ? new Date(env.deliverAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "soon"}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Messages */}
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
@@ -120,9 +192,28 @@ export function DemoChatView() {
           {envelopes.map((env, i) => {
             const from = parseAddr(env.from);
             const isSameSender = i > 0 && parseAddr(envelopes[i - 1].from).name === from.name;
+            const chatKey = `agent:${sel.agentName}:${sel.chatId}`;
 
             return (
               <div key={env.id} className={`group relative rounded-lg px-4 py-2 transition-colors hover:bg-accent/50 ${!isSameSender && i > 0 ? "mt-3" : ""}`}>
+                {/* Reply hover action */}
+                <button
+                  onClick={() => dispatch({
+                    type: "SET_REPLY",
+                    reply: {
+                      envelopeId: env.id,
+                      chatKey,
+                      senderName: from.name,
+                      preview: (env.content.text ?? "").slice(0, 80),
+                    },
+                  })}
+                  title="Reply"
+                  className="absolute right-2 top-1 hidden h-6 w-6 items-center justify-center rounded-md bg-background text-muted-foreground shadow-sm transition-colors hover:text-foreground group-hover:flex"
+                >
+                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path d="M3 10h10a5 5 0 015 5v6M3 10l6 6M3 10l6-6" />
+                  </svg>
+                </button>
                 {!isSameSender && (
                   <div className="mb-1 flex items-center gap-2">
                     <span className="flex h-6 w-6 items-center justify-center rounded-md bg-accent">
@@ -159,6 +250,26 @@ export function DemoChatView() {
         </div>
       )}
 
+      {/* Reply preview */}
+      {state.replyTo && state.replyTo.chatKey === `agent:${sel.agentName}:${sel.chatId}` && (
+        <div className="flex items-center gap-2 border-t border-cyan-glow/20 bg-cyan-glow/5 px-4 py-2">
+          <div className="h-8 w-0.5 rounded-full bg-cyan-glow" />
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] font-semibold text-cyan-glow">{state.replyTo.senderName}</p>
+            <p className="truncate text-xs text-muted-foreground">{state.replyTo.preview}</p>
+          </div>
+          <button
+            onClick={() => dispatch({ type: "SET_REPLY", reply: null })}
+            title="Cancel reply"
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      )}
+
       {/* Composer */}
       <DemoComposer
         placeholder={`Message ${sel.agentName}...`}
@@ -169,6 +280,9 @@ export function DemoChatView() {
         draft={state.drafts[`agent:${sel.agentName}:${sel.chatId}`]}
         onDraftChange={(text) =>
           dispatch({ type: "SET_DRAFT", key: `agent:${sel.agentName}:${sel.chatId}`, text })
+        }
+        onSlashCommand={(command) =>
+          dispatch({ type: "SLASH_COMMAND", command, agentName: sel.agentName })
         }
       />
     </div>

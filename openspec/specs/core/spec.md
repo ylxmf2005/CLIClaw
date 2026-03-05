@@ -66,7 +66,7 @@ It aims to support customizable, long-running assistants that can:
 
 - **Daemon owns state**: the CLI is a client; the daemon is the authority.
 - **Envelope persistence**: envelopes live in SQLite and are the durable queue.
-- **Token-gated envelope operations**: envelope RPC requires an agent token (see `openspec/specs/cli/spec.md`).
+- **Token-gated envelope operations**: envelope RPC requires authentication; agent tokens are primary, and admin tokens are allowed for specific envelope operations with stricter constraints (see `openspec/specs/cli/spec.md`).
 - **Scheduling is delivery-time, not execution-time**: `--deliver-at` controls *when* an envelope becomes due.
 - **Stable parseable outputs**: CLI output keys and agent instruction keys remain kebab-case and stable (see `openspec/specs/core/definitions.md`).
 

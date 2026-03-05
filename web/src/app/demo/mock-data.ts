@@ -259,6 +259,28 @@ export const MOCK_ENVELOPES: Record<string, Envelope[]> = {
       createdAt: NOW - 120000,
     },
   ],
+  "agent:nex:pr-review:scheduled": [
+    {
+      id: "env00006",
+      from: "channel:web:boss",
+      to: "agent:nex",
+      fromBoss: true,
+      content: { text: "Follow up on the rate limiter implementation" },
+      status: "pending",
+      deliverAt: NOW + 3600000,
+      createdAt: NOW - 60000,
+    },
+    {
+      id: "env00007",
+      from: "channel:web:boss",
+      to: "agent:nex",
+      fromBoss: true,
+      content: { text: "Check if the WS auth fix is deployed to staging" },
+      status: "pending",
+      deliverAt: NOW + 7200000,
+      createdAt: NOW - 30000,
+    },
+  ],
   "agent:nex:cors-debug": [
     {
       id: "env00010",

@@ -12,6 +12,8 @@ Cross-cutting naming, boss-marker, and short-id conventions are canonical in `op
 - `envelope.priority` → SQLite `priority` → `--interrupt-now` (when `1`)
 - `envelope.createdAt` → SQLite `created_at` → `created-at:`
 - `envelope.fromBoss` → SQLite `from_boss` → `[boss]` suffix in rendered sender lines
+- `agent.relayMode` → SQLite `agents.relay_mode` → `settings.agents[].relay-mode`
+- `chatState.relayOn` → SQLite `chat_state.relay_on` → RPC `chat.relay-toggle`
 - `config.bossTimezone` → SQLite `config.boss_timezone` → setup `boss-timezone` → `boss-timezone:`
 - `config.uiLocale` (legacy optional cache key) → SQLite `config.ui_locale` → env override `HIBOSS_UI_LOCALE`
 - `config.userPermissionPolicy` → SQLite `config.user_permission_policy` → `settings.tokens[]`
@@ -65,7 +67,7 @@ Table: `envelopes` (see `src/daemon/db/schema.ts`)
 
 Status semantics:
 - `pending`: not yet fully processed (waiting for deliver-at, agent read, or channel delivery).
-- `done`: terminal (successful delivery/read, or terminal delivery failure with `last-delivery-error-*`).
+- `done`: terminal (successful delivery/read, or terminal delivery failure with `metadata.lastDeliveryError`).
 
 ---
 
@@ -130,6 +132,20 @@ Unique key: `(adapter_type, channel_user_id)`.
 
 ---
 
+## Chat State
+
+Table: `chat_state` (see `src/daemon/db/schema.ts`)
+
+| Code (TypeScript) | SQLite column | Notes |
+|-------------------|-------------|-------|
+| `chatState.agentName` | `agent_name` | Owner agent |
+| `chatState.chatId` | `chat_id` | Session/chat scope key |
+| `chatState.relayOn` | `relay_on` | `0/1` boolean; interactive relay mode toggle |
+
+Unique key: `(agent_name, chat_id)`.
+
+---
+
 ## Agent
 
 Table: `agents` (see `src/daemon/db/schema.ts`)
@@ -145,6 +161,7 @@ Table: `agents` (see `src/daemon/db/schema.ts`)
 | `agent.reasoningEffort` | `reasoning_effort` | Nullable (`NULL` = provider default) |
 | `agent.permissionLevel` | `permission_level` | `restricted`, `standard`, `privileged`, `admin` |
 | `agent.sessionPolicy` | `session_policy` | JSON (nullable) |
+| `agent.relayMode` | `relay_mode` | `default-on` or `default-off` (`default-off` when unset) |
 | `agent.createdAt` | `created_at` | Unix epoch ms (UTC) |
 | `agent.lastSeenAt` | `last_seen_at` | Unix epoch ms (nullable) |
 | `agent.metadata` | `metadata` | JSON (nullable) |

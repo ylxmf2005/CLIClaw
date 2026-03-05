@@ -274,7 +274,7 @@ function reducer(state: AppState, action: Action): AppState {
           ...state.conversations,
           [action.agentName]: convos.map((c) =>
             c.chatId === action.chatId
-              ? { ...c, unreadCount: (c.unreadCount ?? 0) + action.delta }
+              ? { ...c, unreadCount: action.delta === 0 ? 0 : (c.unreadCount ?? 0) + action.delta }
               : c
           ),
         },
@@ -377,8 +377,10 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           status: "done",
           limit: 50,
         });
+        // API returns newest-first; reverse for chronological chat display
+        const sorted = [...envelopes].reverse();
         const key = chatId ? `${address}:${chatId}` : address;
-        dispatch({ type: "SET_ENVELOPES", key, envelopes });
+        dispatch({ type: "SET_ENVELOPES", key, envelopes: sorted });
       } catch {
         // silent
       }
@@ -389,7 +391,9 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const loadConversations = useCallback(async (agentName: string) => {
     try {
       const { conversations } = await api.getConversations(agentName);
-      dispatch({ type: "SET_CONVERSATIONS", agentName, conversations });
+      // API returns conversations without agentName — inject it
+      const withAgent = conversations.map((c) => ({ ...c, agentName }));
+      dispatch({ type: "SET_CONVERSATIONS", agentName, conversations: withAgent });
     } catch {
       // silent
     }

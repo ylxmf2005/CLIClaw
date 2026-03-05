@@ -98,7 +98,8 @@ Output: `success:`, `agent-name:`, `cancelled-run:`, `cleared-pending-count:`
 Flags: `--to` (required), `--text`/`--text -`/`--text-file`, `--attachment` (repeatable), `--reply-to`, `--interrupt-now`, `--parse-mode`, `--deliver-at`
 
 Notes:
-- Sender identity from authenticated agent token. Admin tokens cannot send.
+- Agent token: sender is the authenticated agent.
+- Admin token: sender is boss (`fromBoss=true`) and destination must be agent chat (`agent:<name>:new` or `agent:<name>:<chat-id>`).
 - Bare `agent:<name>` rejected; use `:new` or `:<chat-id>`.
 - `--interrupt-now` only for single-agent destinations, mutually exclusive with `--deliver-at`.
 
@@ -108,7 +109,9 @@ Output: `id:` (short id). Team broadcast: multiple `id:` lines. With `--interrup
 
 Flags: `--to`/`--from` (exactly one), `--status` (required), `--created-after`, `--created-before`, `-n/--limit` (default 10, max 50)
 
-Notes: `--from <address> --status pending` is an ACK read (marks returned envelopes `done`).
+Notes:
+- Agent token: `--from <address> --status pending` is an ACK read (marks returned envelopes `done`).
+- Admin token: must use `--to` (not `--from`) and listing is read-only (no ACK side effect).
 
 Empty: `no-envelopes: true`
 
@@ -143,6 +146,10 @@ Output: `cron:`, `timezone:`, `count:`, `evaluated-at:`, `next-run-1:` ... `next
 ### `hiboss cron list`
 
 Output (per schedule): canonical cron output keys (see `openspec/specs/core/definitions.md`). Empty: `no-crons: true`
+
+Notes:
+- Agent token: lists schedules owned by that agent.
+- Admin token: lists all schedules.
 
 ### `hiboss cron enable/disable/delete`
 

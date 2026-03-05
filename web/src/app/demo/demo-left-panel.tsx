@@ -3,12 +3,13 @@
 import { useState } from "react";
 import { useDemoContext } from "./page";
 import type { BottomTab } from "@/lib/types";
-import { User, Users, MessageCircle, Settings, Plus, ChevronDown, ChevronRight, Sun, Moon } from "lucide-react";
+import { User, Users, MessageCircle, Settings, Plus, ChevronDown, ChevronRight, Sun, Moon, Wifi } from "lucide-react";
 import { useTheme } from "@/providers/theme-provider";
 import { cn, generateChatId } from "@/lib/utils";
 import { getAvatarColor, getInitials } from "@/lib/colors";
 import { ChatListItem } from "@/components/chats/chat-list-item";
 import type { AgentState } from "@/components/shared/status-indicator";
+import { DemoAgentCreate } from "./demo-agent-create";
 
 // ─── Demo Bottom Tab Bar ────────────────────────────────────
 const TABS: { id: BottomTab; label: string; icon: typeof User }[] = [
@@ -160,6 +161,7 @@ function DemoChatList() {
 function DemoAgentList() {
   const { state, dispatch } = useDemoContext();
   const [expandedAgents, setExpandedAgents] = useState<Set<string>>(new Set());
+  const [showCreate, setShowCreate] = useState(false);
 
   return (
     <div className="flex flex-col">
@@ -167,7 +169,29 @@ function DemoAgentList() {
         <h3 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/70">
           Agents <span className="ml-1.5 text-muted-foreground">{state.agents.length}</span>
         </h3>
+        <button
+          onClick={() => setShowCreate(true)}
+          title="Create agent"
+          aria-label="Create agent"
+          className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-cyan-400/50 focus-visible:outline-none"
+        >
+          <Plus className="h-3.5 w-3.5" />
+        </button>
       </div>
+      <DemoAgentCreate
+        open={showCreate}
+        onOpenChange={setShowCreate}
+        onCreate={(data) => {
+          dispatch({
+            type: "ADD_AGENT",
+            agent: {
+              ...data,
+              bindings: [],
+              createdAt: Date.now(),
+            },
+          });
+        }}
+      />
       <div className="animate-stagger space-y-0.5 px-1.5">
         {state.agents.map((agent) => {
           const status = state.agentStatuses[agent.name];
@@ -350,11 +374,12 @@ function DemoSettingsPanel() {
   return (
     <div className="flex flex-col gap-2 p-3">
       <div className="flex items-center gap-2.5 rounded-lg border border-emerald-signal/20 bg-emerald-signal/5 p-3">
-        <span className="h-2.5 w-2.5 rounded-full bg-emerald-signal pulse-emerald" />
-        <div>
-          <p className="text-xs font-medium text-foreground">Connected</p>
-          <p className="text-[10px] text-muted-foreground">WebSocket connected (demo)</p>
+        <Wifi className="h-4 w-4 text-emerald-signal" />
+        <div className="flex-1">
+          <p className="text-xs font-medium text-foreground">Connected (demo)</p>
+          <p className="text-[10px] text-muted-foreground">WebSocket active</p>
         </div>
+        <span className="h-2 w-2 rounded-full bg-emerald-signal pulse-emerald" />
       </div>
       <button
         onClick={toggleTheme}
