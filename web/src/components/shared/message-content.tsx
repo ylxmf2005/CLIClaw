@@ -38,8 +38,7 @@ interface MessageContentProps {
 }
 
 /** Highlight @mentions in a text string, returning React nodes */
-function highlightMentions(text: string, mentions: string[]): React.ReactNode {
-  if (mentions.length === 0) return text;
+function highlightMentions(text: string, _mentions?: string[]): React.ReactNode {
   const mentionRe = /@(\w[\w-]*)/g;
   const parts: React.ReactNode[] = [];
   let lastIndex = 0;
@@ -109,11 +108,8 @@ export function MessageContent({ text, mentions = [] }: MessageContentProps) {
     },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     p({ children }: any) {
-      if (mentions.length === 0) {
-        return <p className="mb-2 last:mb-0">{children}</p>;
-      }
       const processed = React.Children.map(children, (child: React.ReactNode) => {
-        if (typeof child === "string") return highlightMentions(child, mentions);
+        if (typeof child === "string") return highlightMentions(child);
         return child;
       });
       return <p className="mb-2 last:mb-0">{processed}</p>;
@@ -154,7 +150,7 @@ export function MessageContent({ text, mentions = [] }: MessageContentProps) {
     blockquote({ children }: any) {
       return <blockquote className="my-2 border-l-2 border-cyan-glow/30 pl-3 text-muted-foreground">{children}</blockquote>;
     },
-  }), [mentions, codeStyle]);
+  }), [codeStyle]);
 
   return (
     <div className="message-content break-words">

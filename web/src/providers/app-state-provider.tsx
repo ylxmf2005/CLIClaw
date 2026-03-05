@@ -9,6 +9,7 @@ import React, {
 } from "react";
 import type {
   Agent,
+  AgentSession,
   AgentStatus,
   BottomTab,
   ChatConversation,
@@ -32,6 +33,7 @@ interface AppState {
   agentLogLines: Record<string, string>; // agentName -> last log line
   envelopes: Record<string, Envelope[]>; // "agent:name:chatId" -> envelopes
   conversations: Record<string, ChatConversation[]>; // agentName -> conversations
+  sessions: Record<string, AgentSession[]>; // agentName -> sessions
   relayStates: Record<string, boolean>; // "agentName:chatId" -> relay on/off
   ptyOutput: Record<string, string[]>; // agentName -> pty output lines
   teams: Team[];
@@ -52,6 +54,7 @@ const initialState: AppState = {
   agentLogLines: {},
   envelopes: {},
   conversations: {},
+  sessions: {},
   relayStates: {},
   ptyOutput: {},
   teams: [],
@@ -90,7 +93,8 @@ type Action =
   | { type: "SET_RELAY_STATE"; key: string; relayOn: boolean }
   | { type: "UPDATE_UNREAD"; agentName: string; chatId: string; delta: number }
   | { type: "PTY_OUTPUT"; agentName: string; data: string }
-  | { type: "UPDATE_ENVELOPE"; envelope: Envelope };
+  | { type: "UPDATE_ENVELOPE"; envelope: Envelope }
+  | { type: "SET_SESSIONS"; agentName: string; sessions: AgentSession[] };
 
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
@@ -299,6 +303,14 @@ function reducer(state: AppState, action: Action): AppState {
       }
       return { ...state, envelopes: updated };
     }
+    case "SET_SESSIONS":
+      return {
+        ...state,
+        sessions: {
+          ...state.sessions,
+          [action.agentName]: action.sessions,
+        },
+      };
     default:
       return state;
   }
@@ -314,6 +326,7 @@ interface AppContextValue {
   refreshDaemonStatus: () => Promise<void>;
   loadEnvelopes: (address: string, chatId?: string) => Promise<void>;
   loadConversations: (agentName: string) => Promise<void>;
+  loadSessions: (agentName: string) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -335,6 +348,9 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
             status: s.status,
           });
         });
+        api.getAgentSessions(agent.name).then(({ sessions }) => {
+          dispatch({ type: "SET_SESSIONS", agentName: agent.name, sessions });
+        }).catch(() => {});
       }
     } catch {
       // silent on initial load
@@ -387,6 +403,15 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     },
     []
   );
+
+  const loadSessions = useCallback(async (agentName: string) => {
+    try {
+      const { sessions } = await api.getAgentSessions(agentName);
+      dispatch({ type: "SET_SESSIONS", agentName, sessions });
+    } catch {
+      // silent
+    }
+  }, []);
 
   const loadConversations = useCallback(async (agentName: string) => {
     try {
@@ -451,13 +476,26 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           break;
         }
         case "envelope.done": {
-          // envelope.done only provides { id }, not a full envelope – skip update for now
-          // (The envelope list will refresh on next load)
+          const p = event.payload as { id?: string; envelope?: { id: string } };
+          const envId = p.id || p.envelope?.id;
+          if (envId) {
+            dispatch({
+              type: "UPDATE_ENVELOPE",
+              envelope: { id: envId, status: "done" } as Envelope,
+            });
+          }
           break;
         }
         case "agent.pty.output": {
           const pty = event.payload as { name: string; data: string };
           dispatch({ type: "PTY_OUTPUT", agentName: pty.name, data: pty.data });
+          break;
+        }
+        case "console.message": {
+          const p = event.payload as { chatId: string; content: { text?: string }; envelope?: Envelope };
+          if (p.envelope) {
+            dispatch({ type: "ADD_ENVELOPE", envelope: p.envelope });
+          }
           break;
         }
         default:
@@ -477,6 +515,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         refreshDaemonStatus,
         loadEnvelopes,
         loadConversations,
+        loadSessions,
       }}
     >
       {children}

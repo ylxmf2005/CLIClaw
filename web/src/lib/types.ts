@@ -164,6 +164,7 @@ export type WsEventType =
   | "cron.fired"
   | "run.started"
   | "run.completed"
+  | "console.message"
   | "snapshot";
 
 export interface WsEvent {
@@ -190,6 +191,20 @@ export interface ChatConversation {
 export interface ChatSelection {
   agentName: string;
   chatId: string;
+}
+
+export interface AgentSession {
+  id: string;
+  agentName: string;
+  createdAt: number;
+  lastActivityAt?: number;
+  bindings: SessionBinding[];
+}
+
+export interface SessionBinding {
+  adapterType: string;
+  chatId: string;
+  createdAt: number;
 }
 
 export interface TeamSelection {

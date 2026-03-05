@@ -31,10 +31,7 @@ The web console SHALL provide a way to create new console-native chat sessions w
 - **THEN** the console navigates to the new chat view
 
 ### Requirement: Session binding management UI
-The web console SHALL provide UI to manage session bindings. From a chat view, the boss SHALL be able to:
-- View all bindings for the current session
-- Add a binding (link to another adapter's chat)
-- Remove a binding (unlink an adapter's chat)
+The web console SHALL provide UI to manage session bindings from the chat header or settings. The boss SHALL be able to view, add, and remove bindings.
 
 #### Scenario: View session bindings
 - **WHEN** boss opens a chat that has both Telegram and console bindings
@@ -46,9 +43,48 @@ The web console SHALL provide UI to manage session bindings. From a chat view, t
 - **THEN** the chat now shows both Telegram and console badges
 
 ### Requirement: Receive console adapter messages via WebSocket
-The web console SHALL listen for `console.message` WebSocket events and display them in real-time in the appropriate chat view.
+The web console SHALL listen for `console.message` WebSocket events and display them in real-time.
 
 #### Scenario: Real-time message from agent reply
 - **WHEN** an agent replies and the router fans out to the console adapter
 - **THEN** the console receives a `console.message` WebSocket event
 - **THEN** the message appears in the chat view without page refresh
+
+### Requirement: Slash commands work end-to-end
+The web console slash commands (/abort, /refresh, /interrupt) SHALL call the correct daemon API endpoints and produce the expected side effects.
+
+#### Scenario: Abort command
+- **WHEN** boss types /abort in the composer
+- **THEN** the frontend calls `POST /api/agents/:name/abort`
+- **THEN** the agent's running process is terminated
+
+#### Scenario: Interrupt command
+- **WHEN** boss types /interrupt in the composer
+- **THEN** the frontend sends an envelope with `interruptNow: true`
+- **THEN** the agent receives it as a priority message
+
+### Requirement: Relay mode PTY end-to-end
+When relay mode is enabled for a chat, the terminal SHALL be bidirectional. Boss keystrokes flow to the agent's PTY, and PTY output flows to the terminal.
+
+#### Scenario: Interactive terminal with relay on
+- **WHEN** relay mode is toggled on for a chat
+- **THEN** the terminal becomes interactive
+- **THEN** boss keystrokes are sent via `agent.pty.input` WS messages
+- **THEN** PTY output arrives via `agent.pty.output` WS messages and renders in xterm.js
+
+#### Scenario: Relay unavailable
+- **WHEN** relay broker binary is not installed
+- **THEN** the relay toggle is disabled with a tooltip explaining the missing dependency
+
+## MODIFIED Requirements
+
+### Requirement: Production app loads real data on mount
+The `AppStateProvider` SHALL fetch real data from the daemon HTTP API on mount: agents via `GET /api/agents`, agent statuses, daemon status, and sessions via `GET /api/agents/:name/sessions`. Loading state SHALL be shown while fetching.
+
+#### Scenario: Initial data load
+- **WHEN** the authenticated user's `AppStateProvider` mounts
+- **THEN** it SHALL fetch agents, statuses, daemon status, and sessions from the real API
+
+#### Scenario: API unreachable on mount
+- **WHEN** the daemon API is unreachable during initial load
+- **THEN** the frontend SHALL show an error state with a retry option

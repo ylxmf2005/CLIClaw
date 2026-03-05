@@ -11,6 +11,7 @@ import { resolveEnvelopeIdInput } from "./resolve-envelope-id.js";
 
 export interface EnvelopeSendCoreInput {
   to: string;
+  from?: string;
   text?: string;
   attachments?: EnvelopeSendParams["attachments"];
   deliverAt?: string;
@@ -358,7 +359,26 @@ export async function sendEnvelopeFromBoss(params: {
   let to: string;
   let deliverAt: number | undefined;
   let interruptNow = false;
-  const from = "channel:web:boss";
+  let fromBoss = true;
+
+  // Allow admin to specify a custom `from` address (channel address only).
+  // This enables "send-as-adapter" from the web console.
+  let from = "channel:web:boss";
+  if (typeof p.from === "string" && p.from.trim()) {
+    const fromInput = p.from.trim();
+    let fromParsed: ReturnType<typeof parseAddress>;
+    try {
+      fromParsed = parseAddress(fromInput);
+    } catch (err) {
+      rpcError(RPC_ERRORS.INVALID_PARAMS, err instanceof Error ? err.message : "Invalid from");
+    }
+    if (fromParsed.type !== "channel") {
+      rpcError(RPC_ERRORS.INVALID_PARAMS, "Custom from must be a channel address (channel:<adapter>:<chatId>)");
+    }
+    from = fromInput;
+    fromBoss = false;
+    metadata.origin = "console";
+  }
 
   if (destination.type === "agent-new-chat") {
     const chatId = createNewAgentChatId();
@@ -381,13 +401,16 @@ export async function sendEnvelopeFromBoss(params: {
     interruptNow = p.interruptNow;
   }
 
-  if (p.origin !== undefined) {
-    if (p.origin !== "cli" && p.origin !== "internal") {
-      rpcError(RPC_ERRORS.INVALID_PARAMS, "Invalid origin");
+  // Only set origin from params if not already set by custom `from` (console origin).
+  if (metadata.origin === undefined) {
+    if (p.origin !== undefined) {
+      if (p.origin !== "cli" && p.origin !== "internal") {
+        rpcError(RPC_ERRORS.INVALID_PARAMS, "Invalid origin");
+      }
+      metadata.origin = p.origin;
+    } else {
+      metadata.origin = "cli";
     }
-    metadata.origin = p.origin;
-  } else {
-    metadata.origin = "cli";
   }
 
   if (interruptNow && p.deliverAt !== undefined) {
@@ -426,7 +449,7 @@ export async function sendEnvelopeFromBoss(params: {
     const envelope = await params.ctx.router.routeEnvelope({
       from,
       to,
-      fromBoss: true,
+      fromBoss,
       content: {
         text: p.text,
         attachments: p.attachments,

@@ -8,9 +8,10 @@ import { Search, ChevronDown, ChevronRight, Plus } from "lucide-react";
 import { cn, generateChatId, resolveDefaultChatId, formatTime } from "@/lib/utils";
 import type { AgentState } from "@/components/shared/status-indicator";
 import { Avatar } from "@/components/shared/avatar";
+import * as api from "@/lib/api";
 
 export function ChatListPanel() {
-  const { state, dispatch, loadConversations } = useAppState();
+  const { state, dispatch, loadConversations, loadSessions } = useAppState();
   const [search, setSearch] = useState("");
   const [expandedAgents, setExpandedAgents] = useState<Set<string>>(new Set());
 
@@ -34,13 +35,14 @@ export function ChatListPanel() {
           next.delete(agentName);
         } else {
           next.add(agentName);
-          // Load conversations on first expand
+          // Load conversations and sessions on first expand
           loadConversations(agentName);
+          loadSessions(agentName);
         }
         return next;
       });
     },
-    [loadConversations]
+    [loadConversations, loadSessions]
   );
 
   const handleAgentClick = useCallback(
@@ -60,15 +62,26 @@ export function ChatListPanel() {
   );
 
   const handleNewChat = useCallback(
-    (agentName: string, e: React.MouseEvent) => {
+    async (agentName: string, e: React.MouseEvent) => {
       e.stopPropagation();
-      const chatId = generateChatId();
-      dispatch({
-        type: "SELECT_CHAT",
-        selection: { agentName, chatId },
-      });
+      try {
+        const result = await api.createAgentSession(agentName, { adapterType: "console" });
+        const chatId = result.chatId;
+        loadSessions(agentName);
+        dispatch({
+          type: "SELECT_CHAT",
+          selection: { agentName, chatId },
+        });
+      } catch {
+        // Fallback to local generation
+        const chatId = generateChatId();
+        dispatch({
+          type: "SELECT_CHAT",
+          selection: { agentName, chatId },
+        });
+      }
     },
-    [dispatch]
+    [dispatch, loadSessions]
   );
 
   const handleConversationClick = useCallback(
@@ -180,26 +193,37 @@ export function ChatListPanel() {
               {/* Expanded conversations */}
               {isExpanded && convos.length > 0 && (
                 <div className="ml-4 space-y-0.5 border-l border-border/50 pl-2">
-                  {convos.map((convo) => (
-                    <ChatListItem
-                      key={convo.chatId}
-                      kind="agent"
-                      name={agent.name}
-                      chatLabel={convo.label || convo.chatId}
-                      subtitle={convo.lastMessage}
-                      lastMessage={convo.lastMessage}
-                      lastMessageAt={convo.lastMessageAt}
-                      agentState={agentState}
-                      unreadCount={convo.unreadCount}
-                      isSelected={
-                        state.selectedChat?.agentName === agent.name &&
-                        state.selectedChat?.chatId === convo.chatId
-                      }
-                      onClick={() =>
-                        handleConversationClick(agent.name, convo.chatId)
-                      }
-                    />
-                  ))}
+                  {convos.map((convo) => {
+                    // Find adapter types from session bindings
+                    const sessions = state.sessions[agent.name] || [];
+                    const session = sessions.find((s) =>
+                      s.bindings.some((b) => b.chatId === convo.chatId)
+                    );
+                    const adapterTypes = session
+                      ? session.bindings.map((b) => b.adapterType)
+                      : [];
+                    return (
+                      <ChatListItem
+                        key={convo.chatId}
+                        kind="agent"
+                        name={agent.name}
+                        chatLabel={convo.label || convo.chatId}
+                        subtitle={convo.lastMessage}
+                        lastMessage={convo.lastMessage}
+                        lastMessageAt={convo.lastMessageAt}
+                        agentState={agentState}
+                        unreadCount={convo.unreadCount}
+                        adapterTypes={adapterTypes}
+                        isSelected={
+                          state.selectedChat?.agentName === agent.name &&
+                          state.selectedChat?.chatId === convo.chatId
+                        }
+                        onClick={() =>
+                          handleConversationClick(agent.name, convo.chatId)
+                        }
+                      />
+                    );
+                  })}
                 </div>
               )}
             </div>

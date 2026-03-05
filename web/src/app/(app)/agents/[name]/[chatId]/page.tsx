@@ -8,8 +8,9 @@ import { getSenderColor } from "@/lib/colors";
 import { MessageContent } from "@/components/shared/message-content";
 import { MessageComposer } from "@/components/chat/message-composer";
 import type { SlashCommand } from "@/components/chat/message-composer";
-import type { Envelope } from "@/lib/types";
+import type { Envelope, EnvelopeAttachment } from "@/lib/types";
 import * as api from "@/lib/api";
+import { useWebSocket } from "@/providers/ws-provider";
 
 const SLASH_COMMANDS: SlashCommand[] = [
   { command: "interrupt", description: "Toggle interrupt mode for urgent messages" },
@@ -33,10 +34,13 @@ interface ReplyTo {
 export default function AgentChatPage() {
   const { name, chatId } = useParams<{ name: string; chatId: string }>();
   const router = useRouter();
-  const { state, dispatch, loadEnvelopes, loadConversations } = useAppState();
+  const { state, dispatch, loadEnvelopes, loadConversations, loadSessions } = useAppState();
+  const { send } = useWebSocket();
   const [splitPane, setSplitPane] = useState<"terminal" | "cron" | null>(null);
   const [replyTo, setReplyTo] = useState<ReplyTo | null>(null);
   const [scheduledEnvelopes, setScheduledEnvelopes] = useState<Envelope[]>([]);
+  const [showBindings, setShowBindings] = useState(false);
+  const [pendingAttachments, setPendingAttachments] = useState<EnvelopeAttachment[]>([]);
 
   const agent = state.agents.find((a) => a.name === name);
   const status = state.agentStatuses[name];
@@ -53,39 +57,68 @@ export default function AgentChatPage() {
 
   const relayKey = `${name}:${chatId}`;
   const relayOn = state.relayStates[relayKey] ?? false;
+  const relayAvailable = state.daemonStatus?.relayAvailable ?? false;
 
   // Load envelopes, conversations, and scheduled envelopes on mount / param change
   useEffect(() => {
     loadEnvelopes(`agent:${name}`, chatId);
     loadConversations(name);
+    loadSessions(name);
     // Reset unread
     dispatch({ type: "UPDATE_UNREAD", agentName: name, chatId, delta: 0 });
     // Load scheduled/pending envelopes
     api.listEnvelopes({ to: `agent:${name}`, chatId, status: "pending", limit: 20 })
       .then(({ envelopes }) => setScheduledEnvelopes(envelopes))
       .catch(() => {});
-  }, [name, chatId, loadEnvelopes, loadConversations, dispatch]);
+  }, [name, chatId, loadEnvelopes, loadConversations, loadSessions, dispatch]);
 
   const handleSend = useCallback(
     async (text: string) => {
       if (!text.trim()) return;
       try {
-        await api.sendEnvelope({ to: `agent:${name}:${chatId}`, text });
+        // Determine from address based on session binding
+        let from: string | undefined;
+        const sessions = state.sessions[name] || [];
+        for (const session of sessions) {
+          const binding = session.bindings.find((b) => b.chatId === chatId);
+          if (binding && binding.adapterType !== "console") {
+            from = `channel:${binding.adapterType}:${binding.chatId}`;
+            break;
+          }
+        }
+        await api.sendEnvelope({
+          to: `agent:${name}:${chatId}`,
+          text,
+          from,
+          attachments: pendingAttachments.length > 0 ? pendingAttachments : undefined,
+        });
+        setPendingAttachments([]);
         loadEnvelopes(`agent:${name}`, chatId);
       } catch {
         // TODO: show error toast
       }
     },
-    [name, chatId, loadEnvelopes]
+    [name, chatId, loadEnvelopes, state.sessions, pendingAttachments]
   );
 
   const handleScheduleSend = useCallback(
     async (text: string, scheduledAt: Date) => {
       if (!text.trim()) return;
       try {
+        // Determine from address based on session binding
+        let from: string | undefined;
+        const sessions = state.sessions[name] || [];
+        for (const session of sessions) {
+          const binding = session.bindings.find((b) => b.chatId === chatId);
+          if (binding && binding.adapterType !== "console") {
+            from = `channel:${binding.adapterType}:${binding.chatId}`;
+            break;
+          }
+        }
         await api.sendEnvelope({
           to: `agent:${name}:${chatId}`,
           text,
+          from,
           deliverAt: scheduledAt.toISOString(),
         });
         // Refresh scheduled envelopes
@@ -96,7 +129,7 @@ export default function AgentChatPage() {
         // TODO: show error toast
       }
     },
-    [name, chatId]
+    [name, chatId, state.sessions]
   );
 
   const handleSlashCommand = useCallback(
@@ -106,15 +139,52 @@ export default function AgentChatPage() {
       } else if (cmd === "refresh") {
         api.refreshAgent(name).catch(() => {});
       } else if (cmd === "interrupt") {
+        // Determine from address based on session binding
+        let from: string | undefined;
+        const sessions = state.sessions[name] || [];
+        for (const session of sessions) {
+          const binding = session.bindings.find((b) => b.chatId === chatId);
+          if (binding && binding.adapterType !== "console") {
+            from = `channel:${binding.adapterType}:${binding.chatId}`;
+            break;
+          }
+        }
         api.sendEnvelope({
           to: `agent:${name}:${chatId}`,
           text: "Interrupt",
           interruptNow: true,
+          from,
         }).then(() => loadEnvelopes(`agent:${name}`, chatId));
       }
     },
-    [name, chatId, loadEnvelopes]
+    [name, chatId, loadEnvelopes, state.sessions]
   );
+
+  // Task 9.2: Relay toggle handler that also calls the backend API
+  const handleRelayToggle = useCallback(async () => {
+    const newState = !relayOn;
+    dispatch({ type: "SET_RELAY_STATE", key: relayKey, relayOn: newState });
+    try {
+      await api.toggleRelay(name, chatId, newState);
+    } catch {
+      // Revert on failure
+      dispatch({ type: "SET_RELAY_STATE", key: relayKey, relayOn: !newState });
+    }
+  }, [relayOn, relayKey, name, chatId, dispatch]);
+
+  // Task 10.3: File drop handler for the messages area
+  const handleFileDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault();
+    const files = Array.from(e.dataTransfer.files);
+    for (const file of files) {
+      try {
+        const { path } = await api.uploadFile(file);
+        setPendingAttachments((prev) => [...prev, { source: path, filename: file.name }]);
+      } catch {
+        // ignore upload errors
+      }
+    }
+  }, []);
 
   return (
     <div className="flex flex-1 overflow-hidden">
@@ -147,17 +217,38 @@ export default function AgentChatPage() {
                 {agent.provider}
               </span>
             )}
+            {/* Adapter badges from session bindings */}
+            {(() => {
+              const sessions = state.sessions[name] || [];
+              const session = sessions.find((s) => s.bindings.some((b) => b.chatId === chatId));
+              if (!session) return null;
+              return (
+                <div className="flex items-center gap-1">
+                  {session.bindings.map((b) => (
+                    <span
+                      key={`${b.adapterType}:${b.chatId}`}
+                      className="rounded bg-accent px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider text-muted-foreground"
+                      title={`${b.adapterType}: ${b.chatId}`}
+                    >
+                      {b.adapterType}
+                    </span>
+                  ))}
+                </div>
+              );
+            })()}
           </div>
           <div className="flex items-center gap-2">
-            {/* Relay toggle */}
+            {/* Relay toggle - Task 9.2: wired to backend API, Task 9.3: disabled when unavailable */}
             <button
               role="switch"
               aria-checked={relayOn}
               aria-label="Toggle relay mode"
-              title={relayOn ? "Relay ON" : "Relay OFF"}
-              onClick={() => dispatch({ type: "SET_RELAY_STATE", key: relayKey, relayOn: !relayOn })}
+              title={!relayAvailable ? "Relay not available" : relayOn ? "Relay ON" : "Relay OFF"}
+              disabled={!relayAvailable}
+              onClick={handleRelayToggle}
               className={cn(
                 "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus-visible:ring-2 focus-visible:ring-cyan-400/50 focus-visible:outline-none",
+                !relayAvailable ? "cursor-not-allowed opacity-40" : "",
                 relayOn ? "bg-emerald-signal/30" : "bg-accent"
               )}
             >
@@ -174,9 +265,17 @@ export default function AgentChatPage() {
               {
                 icon: "M12 5v14M5 12h14",
                 label: "New chat",
-                action: () => {
-                  const newChatId = generateChatId();
-                  router.push(`/agents/${name}/${newChatId}`);
+                action: async () => {
+                  try {
+                    const result = await api.createAgentSession(name, { adapterType: "console" });
+                    const newChatId = result.chatId;
+                    loadSessions(name);
+                    router.push(`/agents/${name}/${newChatId}`);
+                  } catch {
+                    // Fallback to local generation
+                    const newChatId = generateChatId();
+                    router.push(`/agents/${name}/${newChatId}`);
+                  }
                 },
               },
               {
@@ -210,6 +309,22 @@ export default function AgentChatPage() {
 
             <div className="mx-1 h-5 w-px bg-border" />
 
+            {/* Session bindings */}
+            <button
+              onClick={() => setShowBindings(!showBindings)}
+              title="Session bindings"
+              aria-label="Session bindings"
+              className={cn(
+                "flex h-8 w-8 items-center justify-center rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-cyan-400/50 focus-visible:outline-none",
+                showBindings ? "text-cyan-glow" : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+              </svg>
+            </button>
+
             {/* Agent details */}
             <button
               onClick={() => {
@@ -226,6 +341,73 @@ export default function AgentChatPage() {
             </button>
           </div>
         </div>
+
+        {/* Session bindings panel */}
+        {showBindings && (() => {
+          const sessions = state.sessions[name] || [];
+          const session = sessions.find((s) => s.bindings.some((b) => b.chatId === chatId));
+          return (
+            <div className="border-b border-border bg-accent/30 px-4 py-3">
+              <div className="chat-content-shell">
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Session Bindings
+                  </span>
+                  <button
+                    onClick={async () => {
+                      const adapterType = prompt("Adapter type (e.g., telegram, console):");
+                      if (!adapterType) return;
+                      const bindChatId = prompt("Chat ID:");
+                      if (!bindChatId || !session) return;
+                      try {
+                        await api.addSessionBinding(name, session.id, { adapterType, chatId: bindChatId });
+                        loadSessions(name);
+                      } catch (err) {
+                        alert(err instanceof Error ? err.message : "Failed to add binding");
+                      }
+                    }}
+                    disabled={!session}
+                    className="text-[10px] font-medium text-cyan-glow hover:text-cyan-glow/80 disabled:opacity-50"
+                  >
+                    + Link adapter
+                  </button>
+                </div>
+                {session ? (
+                  <div className="space-y-1">
+                    {session.bindings.map((b) => (
+                      <div key={`${b.adapterType}:${b.chatId}`} className="flex items-center justify-between rounded-md bg-background/50 px-3 py-1.5">
+                        <div className="flex items-center gap-2">
+                          <span className="rounded bg-accent px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider text-muted-foreground">
+                            {b.adapterType}
+                          </span>
+                          <span className="font-mono text-xs text-foreground/80">{b.chatId}</span>
+                        </div>
+                        {session.bindings.length > 1 && (
+                          <button
+                            onClick={async () => {
+                              if (!confirm(`Remove ${b.adapterType}:${b.chatId} binding?`)) return;
+                              try {
+                                await api.removeSessionBinding(name, session.id, b.adapterType, b.chatId);
+                                loadSessions(name);
+                              } catch (err) {
+                                alert(err instanceof Error ? err.message : "Failed to remove binding");
+                              }
+                            }}
+                            className="text-[10px] text-rose-alert/60 hover:text-rose-alert"
+                          >
+                            Unlink
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground/50">No session found for this chat.</p>
+                )}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Scheduled envelopes */}
         {scheduledEnvelopes.length > 0 && (
@@ -256,8 +438,12 @@ export default function AgentChatPage() {
           </div>
         )}
 
-        {/* Messages */}
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+        {/* Messages - Task 10.3: drag-drop file upload */}
+        <div
+          className="min-h-0 flex-1 overflow-y-auto px-4 py-3"
+          onDrop={handleFileDrop}
+          onDragOver={(e) => e.preventDefault()}
+        >
           <div className="chat-content-shell space-y-1">
             {envelopes.length === 0 && (
               <div className="flex flex-col items-center justify-center py-16 text-center">
@@ -306,6 +492,12 @@ export default function AgentChatPage() {
                         <span className="rounded bg-amber-pulse/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-pulse">boss</span>
                       )}
                       <span className="text-[11px] text-muted-foreground">{formatMessageTime(env.createdAt)}</span>
+                      {/* Task 10.2: Envelope origin indicator */}
+                      {env.origin && env.origin !== "cli" && (
+                        <span className="rounded bg-accent/80 px-1 py-0.5 text-[8px] font-medium uppercase tracking-wider text-muted-foreground/70">
+                          {env.origin}
+                        </span>
+                      )}
                     </div>
                   )}
                   <div className="pl-8 text-sm leading-relaxed text-foreground/90">
@@ -347,6 +539,35 @@ export default function AgentChatPage() {
           </div>
         )}
 
+        {/* Pending attachments preview - Task 10.3 */}
+        {pendingAttachments.length > 0 && (
+          <div className="flex items-center gap-2 border-t border-border bg-accent/30 px-4 py-2">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Attachments ({pendingAttachments.length})
+            </span>
+            <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto">
+              {pendingAttachments.map((att, idx) => (
+                <span key={idx} className="inline-flex items-center gap-1 rounded bg-background px-2 py-0.5 text-xs text-foreground/80">
+                  {att.filename ?? att.source}
+                  <button
+                    onClick={() => setPendingAttachments((prev) => prev.filter((_, j) => j !== idx))}
+                    className="ml-0.5 text-muted-foreground hover:text-foreground"
+                  >
+                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M18 6L6 18M6 6l12 12" /></svg>
+                  </button>
+                </span>
+              ))}
+            </div>
+            <button
+              onClick={() => setPendingAttachments([])}
+              title="Clear all"
+              className="text-[10px] text-muted-foreground hover:text-foreground"
+            >
+              Clear
+            </button>
+          </div>
+        )}
+
         {/* Composer */}
         <MessageComposer
           placeholder={`Message ${name}...`}
@@ -374,16 +595,36 @@ export default function AgentChatPage() {
         />
       </div>
 
-      {/* Split pane */}
+      {/* Split pane - Task 9.2 & 9.3: interactive terminal with PTY input */}
       {splitPane === "terminal" && (
         <div className="flex w-[420px] shrink-0 flex-col border-l border-border bg-background">
           <div className="flex h-10 items-center justify-between border-b border-border px-3">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Terminal</span>
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Terminal {relayOn ? "(interactive)" : "(read-only)"}
+            </span>
             <button onClick={() => setSplitPane(null)} className="text-muted-foreground hover:text-foreground">
               <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M18 6L6 18M6 6l12 12" /></svg>
             </button>
           </div>
-          <div className="flex-1 overflow-y-auto p-3 font-mono text-xs leading-relaxed text-foreground/70">
+          <div
+            className={cn(
+              "flex-1 overflow-y-auto p-3 font-mono text-xs leading-relaxed text-foreground/70",
+              relayOn && "cursor-text outline-none ring-1 ring-emerald-signal/20"
+            )}
+            tabIndex={relayOn ? 0 : undefined}
+            onKeyDown={relayOn ? (e) => {
+              e.preventDefault();
+              const key = e.key === "Enter" ? "\r"
+                : e.key === "Backspace" ? "\x7f"
+                : e.key === "Tab" ? "\t"
+                : e.key === "Escape" ? "\x1b"
+                : e.key.length === 1 ? e.key
+                : "";
+              if (key) {
+                send({ type: "agent.pty.input", payload: { name, data: key } });
+              }
+            } : undefined}
+          >
             {(state.ptyOutput[name] || []).map((line, i) => (
               <div key={i} className="whitespace-pre-wrap">{line}</div>
             ))}

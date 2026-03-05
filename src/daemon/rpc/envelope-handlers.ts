@@ -64,6 +64,7 @@ export function createEnvelopeHandlers(ctx: DaemonContext): RpcMethodRegistry {
         ctx,
         input: {
           to: p.to,
+          from: p.from,
           text: p.text,
           attachments: p.attachments,
           deliverAt: p.deliverAt,

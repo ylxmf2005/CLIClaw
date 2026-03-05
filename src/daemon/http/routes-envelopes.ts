@@ -17,6 +17,7 @@ export function registerEnvelopeRoutes(router: HttpRouter, rpc: RpcMethodRegistr
     return rpc["envelope.send"]!({
       token,
       to: body.to,
+      from: body.from,
       text: body.text,
       attachments: body.attachments,
       deliverAt: body.deliverAt,

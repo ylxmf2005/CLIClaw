@@ -58,6 +58,7 @@ import {
   createAdapterForBinding as createAdapterForBindingHelper,
   removeAdapter as removeAdapterHelper,
 } from "./adapter-management.js";
+import { ConsoleAdapter } from "../adapters/console.adapter.js";
 
 export { isDaemonRunning, isSocketAcceptingConnections };
 /**
@@ -286,6 +287,11 @@ export class Daemon {
 
       // Set up command handler for /new etc.
       this.setupCommandHandler();
+
+      // Register the console adapter (web management console).
+      // Registered by type so any agent can deliver to channel:console:<chatId> without a per-agent binding.
+      const consoleAdapter = new ConsoleAdapter({ eventBus: this.eventBus });
+      this.router.registerAdapterByType("console", consoleAdapter);
 
       // Load bindings and create adapters
       await this.loadBindings();

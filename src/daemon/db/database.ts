@@ -2384,6 +2384,37 @@ export class HiBossDatabase {
     return row ? this.rowToChannelSessionBinding(row) : null;
   }
 
+  /**
+   * Get all channel session bindings for a given session ID.
+   */
+  getCoBindingsForSession(sessionId: string): ChannelSessionBinding[] {
+    const stmt = this.db.prepare(
+      "SELECT * FROM channel_session_bindings WHERE session_id = ?"
+    );
+    const rows = stmt.all(sessionId) as ChannelSessionBindingRow[];
+    return rows.map((row) => this.rowToChannelSessionBinding(row));
+  }
+
+  countBindingsForSession(sessionId: string): number {
+    const stmt = this.db.prepare(
+      "SELECT COUNT(*) as cnt FROM channel_session_bindings WHERE session_id = ?"
+    );
+    const row = stmt.get(sessionId) as { cnt: number };
+    return row.cnt;
+  }
+
+  deleteChannelSessionBinding(
+    agentName: string,
+    adapterType: string,
+    chatId: string
+  ): boolean {
+    const stmt = this.db.prepare(
+      "DELETE FROM channel_session_bindings WHERE agent_name = ? AND adapter_type = ? AND chat_id = ?"
+    );
+    const result = stmt.run(agentName, adapterType, chatId);
+    return result.changes > 0;
+  }
+
   private upsertChannelSessionLink(input: {
     agentName: string;
     adapterType: string;

@@ -2,6 +2,7 @@
 
 import type {
   Agent,
+  AgentSession,
   AgentStatus,
   ChatConversation,
   CronSchedule,
@@ -9,6 +10,7 @@ import type {
   Envelope,
   Provider,
   ReasoningEffort,
+  SessionBinding,
   SessionPolicy,
   SetupCheck,
   Team,
@@ -168,6 +170,7 @@ export async function refreshAgent(
 // Envelopes
 export async function sendEnvelope(params: {
   to: string;
+  from?: string;
   text?: string;
   attachments?: EnvelopeAttachment[];
   deliverAt?: string;
@@ -364,4 +367,44 @@ export async function deleteCronSchedule(
   return apiFetch(`/api/cron/${encodeURIComponent(id)}`, {
     method: "DELETE",
   });
+}
+
+// Sessions
+export async function getAgentSessions(
+  agentName: string
+): Promise<{ sessions: AgentSession[] }> {
+  return apiFetch(`/api/agents/${encodeURIComponent(agentName)}/sessions`);
+}
+
+export async function createAgentSession(
+  agentName: string,
+  params: { adapterType: string; chatId?: string }
+): Promise<{ session: { id: string; agentName: string; bindings: SessionBinding[] }; chatId: string }> {
+  return apiFetch(`/api/agents/${encodeURIComponent(agentName)}/sessions`, {
+    method: "POST",
+    body: JSON.stringify(params),
+  });
+}
+
+export async function addSessionBinding(
+  agentName: string,
+  sessionId: string,
+  params: { adapterType: string; chatId: string }
+): Promise<{ session: { id: string; agentName: string; bindings: SessionBinding[] } }> {
+  return apiFetch(
+    `/api/agents/${encodeURIComponent(agentName)}/sessions/${encodeURIComponent(sessionId)}/bindings`,
+    { method: "POST", body: JSON.stringify(params) }
+  );
+}
+
+export async function removeSessionBinding(
+  agentName: string,
+  sessionId: string,
+  adapterType: string,
+  chatId: string
+): Promise<{ session: { id: string; agentName: string; bindings: SessionBinding[] } }> {
+  return apiFetch(
+    `/api/agents/${encodeURIComponent(agentName)}/sessions/${encodeURIComponent(sessionId)}/bindings/${encodeURIComponent(adapterType)}/${encodeURIComponent(chatId)}`,
+    { method: "DELETE" }
+  );
 }

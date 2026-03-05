@@ -8,6 +8,7 @@
 
 import { EventEmitter } from "node:events";
 import type { Envelope } from "../../envelope/types.js";
+import type { MessageContent, SendMessageOptions } from "../../adapters/types.js";
 
 // ==================== Event Payload Types ====================
 
@@ -77,6 +78,13 @@ export interface AgentPtyInputPayload {
   data: string;
 }
 
+export interface ConsoleMessagePayload {
+  chatId: string;
+  content: MessageContent;
+  options?: SendMessageOptions;
+  envelope?: Envelope;
+}
+
 // ==================== Event Map ====================
 
 export interface DaemonEventMap {
@@ -90,6 +98,7 @@ export interface DaemonEventMap {
   "run.completed": RunCompletedPayload;
   "agent.pty.output": AgentPtyOutputPayload;
   "agent.pty.input": AgentPtyInputPayload;
+  "console.message": ConsoleMessagePayload;
 }
 
 export type DaemonEventType = keyof DaemonEventMap;
@@ -145,6 +154,7 @@ export class DaemonEventBus {
       "run.completed",
       "agent.pty.output",
       "agent.pty.input",
+      "console.message",
     ];
 
     const listeners = new Map<string, (...args: unknown[]) => void>();

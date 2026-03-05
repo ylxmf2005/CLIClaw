@@ -15,6 +15,7 @@ interface ChatListItemProps {
   pendingCount?: number;
   memberCount?: number;
   unreadCount?: number;
+  adapterTypes?: string[];
   isSelected: boolean;
   onClick: () => void;
 }
@@ -30,6 +31,7 @@ export function ChatListItem({
   pendingCount,
   memberCount,
   unreadCount,
+  adapterTypes,
   isSelected,
   onClick,
 }: ChatListItemProps) {
@@ -75,6 +77,18 @@ export function ChatListItem({
                 isUnread && !isSelected ? "text-muted-foreground font-medium" : "text-muted-foreground/70"
               )}>
                 / {chatLabel}
+              </span>
+            )}
+            {adapterTypes && adapterTypes.length > 0 && (
+              <span className="flex items-center gap-0.5">
+                {adapterTypes.map((at) => (
+                  <span
+                    key={at}
+                    className="rounded bg-accent/80 px-1 py-0.5 text-[8px] font-medium uppercase tracking-wider text-muted-foreground/70"
+                  >
+                    {at === "telegram" ? "TG" : at === "console" ? "WEB" : at.slice(0, 3).toUpperCase()}
+                  </span>
+                ))}
               </span>
             )}
           </span>

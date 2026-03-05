@@ -21,6 +21,7 @@ export interface MessageRouterOptions {
  */
 export class MessageRouter {
   private adaptersByToken: Map<string, ChatAdapter> = new Map();
+  private adaptersByType: Map<string, ChatAdapter> = new Map();
   private agentHandlers: Map<string, EnvelopeHandler> = new Map();
   private onEnvelopeCreated?: EnvelopeHandler;
   private onEnvelopeDone?: EnvelopeHandler;
@@ -37,6 +38,13 @@ export class MessageRouter {
     if (token) {
       this.adaptersByToken.set(token, adapter);
     }
+  }
+
+  /**
+   * Register a chat adapter by type (e.g. "console") for fan-out delivery.
+   */
+  registerAdapterByType(type: string, adapter: ChatAdapter): void {
+    this.adaptersByType.set(type, adapter);
   }
 
   /**
@@ -215,46 +223,51 @@ export class MessageRouter {
       });
     }
 
-    // Get the sender's binding for this adapter type
-    const binding = this.db.getAgentBindingByType(sender.agentName, adapterType);
-    if (!binding) {
-      const msg = `Agent '${sender.agentName}' is not bound to adapter '${adapterType}'`;
-      this.recordDeliveryError(envelope, {
-        kind: "no-binding",
-        message: msg,
-        adapterType,
-        chatId,
-        senderAgentName: sender.agentName,
-      });
-      this.markEnvelopeDoneBestEffort(envelope, "router-no-binding");
-      this.throwDeliveryFailed(msg, {
-        envelopeId: envelope.id,
-        adapterType,
-        chatId,
-        senderAgentName: sender.agentName,
-        reason: "no-binding",
-      });
-    }
+    // Resolve adapter: try binding-based lookup first, then type-based fallback (e.g. console).
+    let adapter: ChatAdapter | undefined;
 
-    // Get the adapter by token
-    const adapter = this.adaptersByToken.get(binding.adapterToken);
-    if (!adapter) {
-      const msg = `No adapter loaded for adapter-type '${adapterType}' (binding exists but adapter token is not loaded)`;
-      this.recordDeliveryError(envelope, {
-        kind: "adapter-not-loaded",
-        message: msg,
-        adapterType,
-        chatId,
-        senderAgentName: sender.agentName,
-      });
-      this.markEnvelopeDoneBestEffort(envelope, "router-adapter-not-loaded");
-      this.throwDeliveryFailed(msg, {
-        envelopeId: envelope.id,
-        adapterType,
-        chatId,
-        senderAgentName: sender.agentName,
-        reason: "adapter-not-loaded",
-      });
+    const binding = this.db.getAgentBindingByType(sender.agentName, adapterType);
+    if (binding) {
+      adapter = this.adaptersByToken.get(binding.adapterToken);
+      if (!adapter) {
+        const msg = `No adapter loaded for adapter-type '${adapterType}' (binding exists but adapter token is not loaded)`;
+        this.recordDeliveryError(envelope, {
+          kind: "adapter-not-loaded",
+          message: msg,
+          adapterType,
+          chatId,
+          senderAgentName: sender.agentName,
+        });
+        this.markEnvelopeDoneBestEffort(envelope, "router-adapter-not-loaded");
+        this.throwDeliveryFailed(msg, {
+          envelopeId: envelope.id,
+          adapterType,
+          chatId,
+          senderAgentName: sender.agentName,
+          reason: "adapter-not-loaded",
+        });
+      }
+    } else {
+      // Fallback: type-based adapter (e.g. console adapter registered globally)
+      adapter = this.adaptersByType.get(adapterType);
+      if (!adapter) {
+        const msg = `Agent '${sender.agentName}' is not bound to adapter '${adapterType}'`;
+        this.recordDeliveryError(envelope, {
+          kind: "no-binding",
+          message: msg,
+          adapterType,
+          chatId,
+          senderAgentName: sender.agentName,
+        });
+        this.markEnvelopeDoneBestEffort(envelope, "router-no-binding");
+        this.throwDeliveryFailed(msg, {
+          envelopeId: envelope.id,
+          adapterType,
+          chatId,
+          senderAgentName: sender.agentName,
+          reason: "no-binding",
+        });
+      }
     }
 
     const parseMode = this.getOutgoingParseMode(envelope);
@@ -288,6 +301,16 @@ export class MessageRouter {
           });
         }
       }
+
+      // Fan-out: deliver to co-bindings in the same session
+      try {
+        this.fanOutToCoBindings(sender.agentName, adapterType, chatId, envelope);
+      } catch (err) {
+        logEvent("error", "router-fanout-failed", {
+          "envelope-id": envelope.id,
+          error: errorMessage(err),
+        });
+      }
     } catch (err) {
       const details = this.extractAdapterErrorDetails(adapterType, err);
       const msg = `Delivery to ${adapterType}:${chatId} failed: ${details.summary}`;
@@ -317,6 +340,66 @@ export class MessageRouter {
         adapterError: details,
         reason: "send-failed",
       });
+    }
+  }
+
+  private fanOutToCoBindings(
+    agentName: string,
+    primaryAdapterType: string,
+    primaryChatId: string,
+    envelope: Envelope
+  ): void {
+    const binding = this.db.getChannelSessionBinding(agentName, primaryAdapterType, primaryChatId);
+    if (!binding) return;
+
+    const coBindings = this.db.getCoBindingsForSession(binding.sessionId);
+    for (const co of coBindings) {
+      // Skip the primary binding
+      if (co.adapterType === primaryAdapterType && co.chatId === primaryChatId) continue;
+
+      try {
+        // Try to find adapter: first by agent_bindings token, then by type
+        let coAdapter: ChatAdapter | undefined;
+        const agentBinding = this.db.getAgentBindingByType(co.agentName, co.adapterType);
+        if (agentBinding) {
+          coAdapter = this.adaptersByToken.get(agentBinding.adapterToken);
+        }
+        if (!coAdapter) {
+          coAdapter = this.adaptersByType.get(co.adapterType);
+        }
+        if (!coAdapter) {
+          logEvent("warn", "router-fanout-no-adapter", {
+            "envelope-id": envelope.id,
+            "adapter-type": co.adapterType,
+            "chat-id": co.chatId,
+          });
+          continue;
+        }
+
+        // Fire-and-forget: we don't await here to avoid blocking
+        coAdapter.sendMessage(co.chatId, {
+          text: envelope.content.text,
+          attachments: envelope.content.attachments?.map((a) => ({
+            source: a.source,
+            filename: a.filename,
+            telegramFileId: a.telegramFileId,
+          })),
+        }).catch((err) => {
+          logEvent("error", "router-fanout-send-failed", {
+            "envelope-id": envelope.id,
+            "adapter-type": co.adapterType,
+            "chat-id": co.chatId,
+            error: errorMessage(err),
+          });
+        });
+      } catch (err) {
+        logEvent("error", "router-fanout-cobinding-failed", {
+          "envelope-id": envelope.id,
+          "adapter-type": co.adapterType,
+          "chat-id": co.chatId,
+          error: errorMessage(err),
+        });
+      }
     }
   }
 
