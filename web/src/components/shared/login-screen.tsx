@@ -93,13 +93,6 @@ export function LoginScreen() {
             {isLoading ? "Connecting..." : "Connect to Daemon"}
           </Button>
         </form>
-
-        <p className="mt-6 text-center text-[11px] text-muted-foreground">
-          Token from{" "}
-          <code className="rounded bg-accent px-1.5 py-0.5 font-mono text-[10px]">
-            hiboss setup
-          </code>
-        </p>
       </div>
     </div>
   );
