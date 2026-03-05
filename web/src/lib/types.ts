@@ -72,7 +72,7 @@ export interface Envelope {
   priority?: number;
   deliverAt?: number;
   status: EnvelopeStatus;
-  origin?: "cli" | "channel" | "cron" | "internal";
+  origin?: "cli" | "channel" | "cron" | "internal" | "console";
   createdAt: number;
   replyToEnvelopeId?: string;
   metadata?: Record<string, unknown>;

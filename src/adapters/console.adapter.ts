@@ -43,10 +43,16 @@ export class ConsoleAdapter implements ChatAdapter {
     content: MessageContent,
     options?: SendMessageOptions,
   ): Promise<void> {
+    if (!options?.envelope) {
+      // Console real-time delivery expects the originating envelope.
+      // Skip emitting partial payloads to avoid inconsistent UI state.
+      return;
+    }
     this.eventBus.emit("console.message", {
       chatId,
       content,
       options,
+      envelope: options.envelope,
     });
   }
 

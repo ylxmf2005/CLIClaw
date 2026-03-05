@@ -5,7 +5,6 @@ import { useWebSocket } from "@/providers/ws-provider";
 import { BottomTabBar } from "./bottom-tab-bar";
 import { AgentList } from "@/components/agents/agent-list";
 import { TeamList } from "@/components/teams/team-list";
-import { ChatListPanel } from "@/components/chats/chat-list-panel";
 import { SettingsPanel } from "@/components/settings/settings-panel";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ChatListItemSkeleton } from "@/components/shared/skeleton";
@@ -76,7 +75,6 @@ export function LeftPanel({ onCreateAgent, onCreateTeam }: LeftPanelProps) {
             </div>
           ) : (
             <>
-              {state.activeTab === "chats" && <ChatListPanel />}
               {state.activeTab === "agents" && (
                 <AgentList onCreateAgent={onCreateAgent} />
               )}

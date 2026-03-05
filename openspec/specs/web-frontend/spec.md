@@ -167,6 +167,14 @@ The `(app)` route group SHALL provide authentication gating, WebSocket connectio
 - **WHEN** user navigates to `/teams/research`
 - **THEN** the app renders the team chat view for team "research", with left panel visible
 
+### Team chat @ routing
+- **WHEN** boss sends a message starting with `@nex` in `/teams/research`
+- **THEN** the message is routed only to agent `nex` in chat scope `team:research`
+- **THEN** it is not routed to other team members
+
+- **WHEN** boss sends a message starting with `@all` in `/teams/research`
+- **THEN** the message is routed to all team members in chat scope `team:research`
+
 ### Admin URL
 - **WHEN** user navigates to `/admin`
 - **THEN** the app renders the daemon status dashboard
@@ -195,13 +203,13 @@ The `(app)` route group SHALL provide authentication gating, WebSocket connectio
 
 The frontend SHALL use a Telegram-style layout with a persistent left panel (320px) containing a bottom tab bar. The left panel SHALL be rendered in the `(app)/layout.tsx` and persist across all route navigations. The main content area SHALL be filled by the current route's page component.
 
-The left panel bottom tabs (Agents, Teams, Chats, Settings) SHALL control which list is shown in the left panel. Tab selection SHALL NOT change the URL or the main content area. However, when navigating via URL, the active tab SHALL auto-derive from the pathname (`/agents/*` or `/teams/*` -> Chats, `/admin` -> Settings).
+The left panel bottom tabs (Agents, Teams, Settings) SHALL control which list is shown in the left panel. Tab selection SHALL NOT change the URL or the main content area. However, when navigating via URL, the active tab SHALL auto-derive from the pathname (`/agents/*` -> Agents, `/teams/*` -> Teams, `/admin` -> Settings).
 
 Modals (AgentCreateModal, team create) SHALL be hosted in `(app)/layout.tsx` and triggered from left panel "+" buttons.
 
 ### Tab switch preserves main content
-- **WHEN** user is viewing `/agents/nex/default` and switches the bottom tab from "Chats" to "Agents"
-- **THEN** the left panel shows the agent list, but the main content area continues to show the nex/default chat
+- **WHEN** user is viewing `/agents/nex/default` and switches the bottom tab from "Agents" to "Teams"
+- **THEN** the left panel shows the team list, but the main content area continues to show the nex/default chat
 
 ### Navigation from left panel
 - **WHEN** user clicks an agent conversation in the left panel
@@ -209,11 +217,11 @@ Modals (AgentCreateModal, team create) SHALL be hosted in `(app)/layout.tsx` and
 
 ### Tab auto-switch on deep link
 - **WHEN** user navigates directly to `/teams/research`
-- **THEN** the left panel's active tab switches to "Chats" and highlights the research team
+- **THEN** the left panel's active tab switches to "Teams" and highlights the research team
 
 ### Active item highlighting across tabs
 - **WHEN** the URL is `/agents/nex/pr-review` and the user is on any tab
-- **THEN** if the Chats tab is shown, the nex/pr-review entry is highlighted
+- **THEN** if the Agents tab is shown, the nex/pr-review entry is highlighted
 
 ## State Management
 
@@ -325,7 +333,7 @@ The demo reducer SHALL support an `ADD_ENVELOPE` action that:
 The demo page SHALL display a fully functional team group chat view with mock messages from multiple senders, a toggleable member panel, and a demo-mode composer.
 
 ### Team chat shows mock messages
-- **WHEN** user selects a team in the demo Chats or Teams tab
+- **WHEN** user selects a team in the demo Teams tab
 - **THEN** the team chat view SHALL render mock envelopes using the shared `MessageList` component, showing messages from multiple agents (e.g., nex, shieru, codex-worker) with correct sender colors and timestamps
 
 ### Member panel toggle
@@ -336,9 +344,9 @@ The demo page SHALL display a fully functional team group chat view with mock me
 - **WHEN** the team chat view is displayed
 - **THEN** the composer SHALL show a placeholder text mentioning @mention (e.g., "Message team... Use @name to mention") and SHALL be read-only (no actual send capability)
 
-### Team entries in Chats tab show last message
+### Team entries in Teams tab show last message
 - **WHEN** mock team envelopes exist in `MOCK_ENVELOPES`
-- **THEN** team entries in the Chats tab SHALL display `lastMessage` and `lastMessageAt` computed from the most recent team envelope, and entries SHALL be sorted by recency alongside agent chats
+- **THEN** team entries in the Teams tab SHALL display `lastMessage` and `lastMessageAt` computed from the most recent team envelope, and entries SHALL be sorted by recency
 
 ## Mock Team Data
 
@@ -346,7 +354,7 @@ The demo page SHALL display a fully functional team group chat view with mock me
 The mock data module SHALL include team envelopes keyed by `team:<name>` containing messages from multiple senders, including an @all broadcast message and @mention messages.
 
 ### Mock team conversations
-The mock data module SHALL include team entries in `MOCK_CONVERSATIONS` so teams appear in the Chats tab sorted list.
+The mock data module SHALL include team entries in `MOCK_CONVERSATIONS` so teams appear in the Teams tab list.
 
 ## Frontend Runtime Notes
 

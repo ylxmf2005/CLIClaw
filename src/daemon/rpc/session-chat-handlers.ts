@@ -81,12 +81,32 @@ export function createSessionChatHandlers(ctx: DaemonContext): RpcMethodRegistry
         rpcError(RPC_ERRORS.NOT_FOUND, "Agent not found");
       }
 
-      ctx.db.setChatRelayState(agent.name, p.chatId.trim(), p.relayOn);
+      const chatId = p.chatId.trim();
+
+      if (p.relayOn) {
+        if (!ctx.relayAvailable || !ctx.relayExecutor) {
+          rpcError(RPC_ERRORS.INVALID_PARAMS, "Relay broker is not available");
+        }
+        const result = await ctx.relayExecutor.enableRelay({
+          agentName: agent.name,
+          chatId,
+          provider: agent.provider ?? "claude",
+          workspace: agent.workspace,
+          model: agent.model,
+        });
+        if (!result.success) {
+          rpcError(RPC_ERRORS.DELIVERY_FAILED, result.error ?? "Failed to enable relay mode");
+        }
+      } else if (ctx.relayExecutor) {
+        await ctx.relayExecutor.disableRelay(agent.name, chatId);
+      } else {
+        ctx.db.setChatRelayState(agent.name, chatId, false);
+      }
 
       return {
         success: true,
         agentName: agent.name,
-        chatId: p.chatId.trim(),
+        chatId,
         relayOn: p.relayOn,
       };
     },

@@ -3,7 +3,7 @@
 ### Requirement: Outbound Flow (Agent -> Channel)
 
 1. Agent sends envelope to `channel:<adapter>:<chat-id>`.
-2. Router validates binding and resolves adapter.
+2. Router resolves adapter from sender binding when present; for globally registered adapters (like `console`) it resolves by adapter type.
 3. Router looks up the session for this binding via `channel_session_bindings`.
 4. Router queries all other bindings for the same session (fan-out lookup).
 5. For each bound adapter (including the originally addressed one):

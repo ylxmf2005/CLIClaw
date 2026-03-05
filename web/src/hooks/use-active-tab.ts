@@ -16,7 +16,7 @@ export function useActiveTab(): [BottomTab, (tab: BottomTab) => void] {
     if (p.startsWith("/admin")) return "settings";
     if (p.startsWith("/agents")) return "agents";
     if (p.startsWith("/teams")) return "teams";
-    return "chats";
+    return "agents";
   }
 
   const derived = deriveTab(pathname);

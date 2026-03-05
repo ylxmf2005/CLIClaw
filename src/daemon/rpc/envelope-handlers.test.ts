@@ -198,6 +198,59 @@ test("envelope.send rejects interruptNow for channel destinations", async () => 
   );
 });
 
+test("envelope.send rejects channel send for unbound non-console adapter", async () => {
+  const sender = makeAgent("sender");
+  const ctx = makeContext({ sender, boundAdapterTypes: [] });
+  const handlers = createEnvelopeHandlers(ctx);
+
+  await assertRpcError(
+    () =>
+      handlers["envelope.send"]({
+        token: sender.token,
+        to: "channel:telegram:123",
+        text: "hello",
+      }),
+    RPC_ERRORS.UNAUTHORIZED,
+    "not bound to adapter 'telegram'"
+  );
+});
+
+test("envelope.send allows channel send to console without per-agent binding", async () => {
+  const sender = makeAgent("sender");
+  let routedInput: CreateEnvelopeInput | null = null;
+  const ctx = makeContext({
+    sender,
+    boundAdapterTypes: [],
+    routeEnvelope: async (input) => {
+      routedInput = input;
+      return {
+        id: "env-console",
+        from: input.from,
+        to: input.to,
+        fromBoss: false,
+        content: input.content,
+        priority: input.priority,
+        status: "pending",
+        createdAt: Date.now(),
+        metadata: input.metadata,
+      };
+    },
+  });
+  const handlers = createEnvelopeHandlers(ctx);
+
+  const result = (await handlers["envelope.send"]({
+    token: sender.token,
+    to: "channel:console:console-chat-1",
+    text: "hello console",
+  })) as { id: string };
+
+  assert.equal(result.id, "env-console");
+  assert.notEqual(routedInput, null);
+  const routed = routedInput as unknown as CreateEnvelopeInput;
+  assert.equal(routed.from, "agent:sender");
+  assert.equal(routed.to, "channel:console:console-chat-1");
+});
+
 test("envelope.send interruptNow aborts work and creates priority envelope", async () => {
   const sender = makeAgent("sender");
   const target = makeAgent("target");

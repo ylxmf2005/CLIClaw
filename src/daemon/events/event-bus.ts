@@ -82,7 +82,7 @@ export interface ConsoleMessagePayload {
   chatId: string;
   content: MessageContent;
   options?: SendMessageOptions;
-  envelope?: Envelope;
+  envelope: Envelope;
 }
 
 // ==================== Event Map ====================

@@ -284,6 +284,7 @@ export class MessageRouter {
       }, {
         parseMode,
         replyToMessageId,
+        envelope,
       });
       this.db.updateEnvelopeStatus(envelope.id, "done", {
         reason: "channel-delivered",
@@ -384,6 +385,8 @@ export class MessageRouter {
             filename: a.filename,
             telegramFileId: a.telegramFileId,
           })),
+        }, {
+          envelope,
         }).catch((err) => {
           logEvent("error", "router-fanout-send-failed", {
             "envelope-id": envelope.id,

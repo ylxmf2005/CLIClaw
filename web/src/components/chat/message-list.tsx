@@ -57,6 +57,12 @@ function OriginIcon({ origin }: { origin?: string }) {
           <Cpu className="h-3 w-3" />
         </span>
       );
+    case "console":
+      return (
+        <span title="Sent via console" className="text-muted-foreground/50">
+          <TerminalSquare className="h-3 w-3" />
+        </span>
+      );
     default:
       return null;
   }

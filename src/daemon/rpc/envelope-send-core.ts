@@ -246,12 +246,16 @@ export async function sendEnvelopeFromAgent(params: {
   }
 
   if (destination.type === "channel") {
-    const binding = params.ctx.db.getAgentBindingByType(params.senderAgent.name, destination.adapter);
-    if (!binding) {
-      rpcError(
-        RPC_ERRORS.UNAUTHORIZED,
-        `Agent '${params.senderAgent.name}' is not bound to adapter '${destination.adapter}'`
-      );
+    // Console adapter is globally registered by type and does not require
+    // a per-agent token binding.
+    if (destination.adapter !== "console") {
+      const binding = params.ctx.db.getAgentBindingByType(params.senderAgent.name, destination.adapter);
+      if (!binding) {
+        rpcError(
+          RPC_ERRORS.UNAUTHORIZED,
+          `Agent '${params.senderAgent.name}' is not bound to adapter '${destination.adapter}'`
+        );
+      }
     }
   }
 

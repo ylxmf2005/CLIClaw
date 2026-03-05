@@ -1,6 +1,6 @@
 "use client";
 
-import { User, Users, MessageCircle, Settings } from "lucide-react";
+import { User, Users, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { BottomTab } from "@/lib/types";
 
@@ -12,7 +12,6 @@ interface BottomTabBarProps {
 const TABS: { id: BottomTab; label: string; icon: typeof User }[] = [
   { id: "agents", label: "Agents", icon: User },
   { id: "teams", label: "Teams", icon: Users },
-  { id: "chats", label: "Chats", icon: MessageCircle },
   { id: "settings", label: "Settings", icon: Settings },
 ];
 

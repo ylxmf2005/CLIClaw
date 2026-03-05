@@ -3,14 +3,16 @@
 import { useParams, useRouter } from "next/navigation";
 import { useAppState } from "@/providers/app-state-provider";
 import { useEffect, useState, useCallback } from "react";
-import { cn, formatMessageTime, generateChatId } from "@/lib/utils";
+import { cn, formatMessageTime } from "@/lib/utils";
 import { getSenderColor } from "@/lib/colors";
+import { deriveMention } from "@/lib/mention-utils";
 import { MessageContent } from "@/components/shared/message-content";
 import { MessageComposer } from "@/components/chat/message-composer";
-import type { SlashCommand } from "@/components/chat/message-composer";
+import { AgentTerminalPane } from "@/components/terminal/agent-terminal-pane";
+import type { AttachmentFile, SlashCommand } from "@/components/chat/message-composer";
 import type { Envelope, EnvelopeAttachment } from "@/lib/types";
 import * as api from "@/lib/api";
-import { useWebSocket } from "@/providers/ws-provider";
+import { useToast } from "@/providers/toast-provider";
 
 const SLASH_COMMANDS: SlashCommand[] = [
   { command: "interrupt", description: "Toggle interrupt mode for urgent messages" },
@@ -31,16 +33,25 @@ interface ReplyTo {
   preview: string;
 }
 
+interface SlashExecution {
+  id: string;
+  command: string;
+  status: "running" | "success" | "error";
+  at: number;
+  detail?: string;
+}
+
 export default function AgentChatPage() {
   const { name, chatId } = useParams<{ name: string; chatId: string }>();
   const router = useRouter();
   const { state, dispatch, loadEnvelopes, loadConversations, loadSessions } = useAppState();
-  const { send } = useWebSocket();
+  const { toast } = useToast();
   const [splitPane, setSplitPane] = useState<"terminal" | "cron" | null>(null);
   const [replyTo, setReplyTo] = useState<ReplyTo | null>(null);
   const [scheduledEnvelopes, setScheduledEnvelopes] = useState<Envelope[]>([]);
   const [showBindings, setShowBindings] = useState(false);
   const [pendingAttachments, setPendingAttachments] = useState<EnvelopeAttachment[]>([]);
+  const [slashExecutions, setSlashExecutions] = useState<SlashExecution[]>([]);
 
   const agent = state.agents.find((a) => a.name === name);
   const status = state.agentStatuses[name];
@@ -59,6 +70,25 @@ export default function AgentChatPage() {
   const relayOn = state.relayStates[relayKey] ?? false;
   const relayAvailable = state.daemonStatus?.relayAvailable ?? false;
 
+  const resolveFromAddress = useCallback((): string => {
+    const sessions = state.sessions[name] || [];
+    const session = sessions.find((s) => s.bindings.some((b) => b.chatId === chatId));
+    if (!session || session.bindings.length === 0) {
+      return `channel:console:${chatId}`;
+    }
+    const currentBinding =
+      session.bindings.find((b) => b.chatId === chatId) ??
+      session.bindings.find((b) => b.adapterType !== "console") ??
+      session.bindings[0];
+    if (!currentBinding) {
+      return `channel:console:${chatId}`;
+    }
+    if (currentBinding.adapterType === "internal") {
+      return `channel:console:${chatId}`;
+    }
+    return `channel:${currentBinding.adapterType}:${currentBinding.chatId}`;
+  }, [state.sessions, name, chatId]);
+
   // Load envelopes, conversations, and scheduled envelopes on mount / param change
   useEffect(() => {
     loadEnvelopes(`agent:${name}`, chatId);
@@ -72,92 +102,132 @@ export default function AgentChatPage() {
       .catch(() => {});
   }, [name, chatId, loadEnvelopes, loadConversations, loadSessions, dispatch]);
 
+  useEffect(() => {
+    let cancelled = false;
+    api.getRelayState(name, chatId)
+      .then((result) => {
+        if (!cancelled) {
+          dispatch({ type: "SET_RELAY_STATE", key: relayKey, relayOn: result.relayOn });
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [name, chatId, relayKey, dispatch]);
+
   const handleSend = useCallback(
-    async (text: string) => {
+    async (text: string, composerAttachments?: AttachmentFile[]) => {
       if (!text.trim()) return;
       try {
-        // Determine from address based on session binding
-        let from: string | undefined;
-        const sessions = state.sessions[name] || [];
-        for (const session of sessions) {
-          const binding = session.bindings.find((b) => b.chatId === chatId);
-          if (binding && binding.adapterType !== "console") {
-            from = `channel:${binding.adapterType}:${binding.chatId}`;
-            break;
+        const uploadedAttachments: EnvelopeAttachment[] = [];
+        if (composerAttachments && composerAttachments.length > 0) {
+          for (const att of composerAttachments) {
+            const { path } = await api.uploadFile(att.file);
+            uploadedAttachments.push({ source: path, filename: att.file.name });
           }
         }
+        const from = resolveFromAddress();
+        const attachments = [...pendingAttachments, ...uploadedAttachments];
         await api.sendEnvelope({
           to: `agent:${name}:${chatId}`,
           text,
           from,
-          attachments: pendingAttachments.length > 0 ? pendingAttachments : undefined,
+          attachments: attachments.length > 0 ? attachments : undefined,
+          replyToEnvelopeId: replyTo?.envelopeId,
         });
         setPendingAttachments([]);
+        setReplyTo(null);
         loadEnvelopes(`agent:${name}`, chatId);
-      } catch {
-        // TODO: show error toast
+      } catch (err) {
+        toast({
+          title: "Send failed",
+          description: err instanceof Error ? err.message : "Could not send message",
+          variant: "error",
+        });
       }
     },
-    [name, chatId, loadEnvelopes, state.sessions, pendingAttachments]
+    [name, chatId, loadEnvelopes, pendingAttachments, replyTo, resolveFromAddress, toast]
   );
 
   const handleScheduleSend = useCallback(
     async (text: string, scheduledAt: Date) => {
       if (!text.trim()) return;
       try {
-        // Determine from address based on session binding
-        let from: string | undefined;
-        const sessions = state.sessions[name] || [];
-        for (const session of sessions) {
-          const binding = session.bindings.find((b) => b.chatId === chatId);
-          if (binding && binding.adapterType !== "console") {
-            from = `channel:${binding.adapterType}:${binding.chatId}`;
-            break;
-          }
-        }
+        const from = resolveFromAddress();
         await api.sendEnvelope({
           to: `agent:${name}:${chatId}`,
           text,
           from,
           deliverAt: scheduledAt.toISOString(),
+          replyToEnvelopeId: replyTo?.envelopeId,
         });
+        setReplyTo(null);
         // Refresh scheduled envelopes
         api.listEnvelopes({ to: `agent:${name}`, chatId, status: "pending", limit: 20 })
           .then(({ envelopes }) => setScheduledEnvelopes(envelopes))
           .catch(() => {});
-      } catch {
-        // TODO: show error toast
+      } catch (err) {
+        toast({
+          title: "Schedule failed",
+          description: err instanceof Error ? err.message : "Could not schedule message",
+          variant: "error",
+        });
       }
     },
-    [name, chatId, state.sessions]
+    [name, chatId, replyTo, resolveFromAddress, toast]
   );
 
   const handleSlashCommand = useCallback(
-    (cmd: string) => {
-      if (cmd === "abort") {
-        api.abortAgent(name).catch(() => {});
-      } else if (cmd === "refresh") {
-        api.refreshAgent(name).catch(() => {});
-      } else if (cmd === "interrupt") {
-        // Determine from address based on session binding
-        let from: string | undefined;
-        const sessions = state.sessions[name] || [];
-        for (const session of sessions) {
-          const binding = session.bindings.find((b) => b.chatId === chatId);
-          if (binding && binding.adapterType !== "console") {
-            from = `channel:${binding.adapterType}:${binding.chatId}`;
-            break;
-          }
+    async (cmd: string) => {
+      const commandText = `/${cmd}`;
+      const executionId = `slash-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const runningExecution: SlashExecution = {
+        id: executionId,
+        command: commandText,
+        status: "running",
+        at: Date.now(),
+      };
+      setSlashExecutions((prev) => [runningExecution, ...prev].slice(0, 4));
+
+      try {
+        if (cmd === "abort") {
+          await api.abortAgent(name);
+        } else if (cmd === "refresh") {
+          await api.refreshAgent(name);
+        } else if (cmd === "interrupt") {
+          const from = resolveFromAddress();
+          await api.sendEnvelope({
+            to: `agent:${name}:${chatId}`,
+            text: "Interrupt",
+            interruptNow: true,
+            from,
+          });
+          await loadEnvelopes(`agent:${name}`, chatId);
+        } else {
+          throw new Error(`Unsupported slash command: ${commandText}`);
         }
-        api.sendEnvelope({
-          to: `agent:${name}:${chatId}`,
-          text: "Interrupt",
-          interruptNow: true,
-          from,
-        }).then(() => loadEnvelopes(`agent:${name}`, chatId));
+
+        setSlashExecutions((prev) => prev.map((item) =>
+          item.id === executionId ? { ...item, status: "success" as const } : item
+        ));
+        toast({
+          description: `${commandText} executed`,
+          variant: "success",
+        });
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : "Unknown error";
+        setSlashExecutions((prev) => prev.map((item) =>
+          item.id === executionId ? { ...item, status: "error" as const, detail } : item
+        ));
+        toast({
+          title: `${commandText} failed`,
+          description: detail,
+          variant: "error",
+        });
       }
     },
-    [name, chatId, loadEnvelopes, state.sessions]
+    [name, chatId, loadEnvelopes, resolveFromAddress, toast]
   );
 
   // Task 9.2: Relay toggle handler that also calls the backend API
@@ -268,13 +338,10 @@ export default function AgentChatPage() {
                 action: async () => {
                   try {
                     const result = await api.createAgentSession(name, { adapterType: "console" });
-                    const newChatId = result.chatId;
-                    loadSessions(name);
-                    router.push(`/agents/${name}/${newChatId}`);
+                    await loadSessions(name);
+                    router.push(`/agents/${name}/${result.chatId}`);
                   } catch {
-                    // Fallback to local generation
-                    const newChatId = generateChatId();
-                    router.push(`/agents/${name}/${newChatId}`);
+                    // TODO: show error toast
                   }
                 },
               },
@@ -459,6 +526,13 @@ export default function AgentChatPage() {
             {envelopes.map((env, i) => {
               const from = parseAddr(env.from);
               const isSameSender = i > 0 && parseAddr(envelopes[i - 1].from).name === from.name;
+              const mention = deriveMention(env, name);
+              const lastDeliveryError =
+                env.metadata &&
+                typeof env.metadata === "object" &&
+                (env.metadata as Record<string, unknown>).lastDeliveryError;
+              const hasOriginBadge = typeof env.origin === "string" && env.origin !== "cli";
+              const hasDeliveryError = Boolean(lastDeliveryError);
 
               return (
                 <div key={env.id} className={`group relative rounded-lg px-4 py-2 transition-colors hover:bg-accent/50 ${!isSameSender && i > 0 ? "mt-3" : ""}`}>
@@ -493,15 +567,30 @@ export default function AgentChatPage() {
                       )}
                       <span className="text-[11px] text-muted-foreground">{formatMessageTime(env.createdAt)}</span>
                       {/* Task 10.2: Envelope origin indicator */}
-                      {env.origin && env.origin !== "cli" && (
+                      {hasOriginBadge && (
                         <span className="rounded bg-accent/80 px-1 py-0.5 text-[8px] font-medium uppercase tracking-wider text-muted-foreground/70">
-                          {env.origin}
+                          {String(env.origin)}
+                        </span>
+                      )}
+                      {hasDeliveryError && (
+                        <span className="rounded bg-rose-alert/15 px-1 py-0.5 text-[8px] font-medium uppercase tracking-wider text-rose-alert">
+                          failed
                         </span>
                       )}
                     </div>
                   )}
+                  {mention && (
+                    <div className="mb-0.5 pl-8">
+                      <span className="inline-flex items-center gap-1 rounded bg-cyan-glow/10 px-1.5 py-0.5 text-[11px] font-medium text-cyan-glow">
+                        @{mention.target}
+                      </span>
+                    </div>
+                  )}
                   <div className="pl-8 text-sm leading-relaxed text-foreground/90">
                     <MessageContent text={env.content.text ?? ""} />
+                    {hasDeliveryError && (
+                      <p className="mt-1 text-[11px] text-rose-alert/90">Delivery failed</p>
+                    )}
                   </div>
                 </div>
               );
@@ -568,20 +657,54 @@ export default function AgentChatPage() {
           </div>
         )}
 
+        {/* Slash command execution feedback */}
+        {slashExecutions.length > 0 && (
+          <div className="border-t border-cyan-glow/20 bg-cyan-glow/5 px-4 py-2">
+            <div className="chat-content-shell space-y-1">
+              {slashExecutions.map((item) => (
+                <div key={item.id} className="rounded-md bg-background/40 px-2 py-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="font-mono text-xs text-foreground">{item.command}</span>
+                      <span
+                        className={cn(
+                          "rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider",
+                          item.status === "running" && "bg-amber-pulse/15 text-amber-pulse",
+                          item.status === "success" && "bg-emerald-signal/15 text-emerald-signal",
+                          item.status === "error" && "bg-rose-alert/15 text-rose-alert"
+                        )}
+                      >
+                        {item.status}
+                      </span>
+                    </div>
+                    <span className="shrink-0 text-[10px] text-muted-foreground">
+                      {formatMessageTime(item.at)}
+                    </span>
+                  </div>
+                  {item.detail && (
+                    <p className="mt-1 truncate text-[10px] text-rose-alert/90">{item.detail}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Composer */}
         <MessageComposer
           placeholder={`Message ${name}...`}
-          onSend={(text) => {
+          onSend={(text, attachments) => {
             if (!text) return;
             // Check for slash command
             if (text.startsWith("/")) {
               const cmd = text.slice(1).split(/\s/)[0].toLowerCase();
               if (SLASH_COMMANDS.some((sc) => sc.command === cmd)) {
-                handleSlashCommand(cmd);
+                void handleSlashCommand(cmd);
+                dispatch({ type: "CLEAR_DRAFT", key: envelopeKey });
                 return;
               }
             }
-            handleSend(text);
+            handleSend(text, attachments);
             dispatch({ type: "CLEAR_DRAFT", key: envelopeKey });
           }}
           onScheduleSend={(text, scheduledAt) => {
@@ -597,42 +720,15 @@ export default function AgentChatPage() {
 
       {/* Split pane - Task 9.2 & 9.3: interactive terminal with PTY input */}
       {splitPane === "terminal" && (
-        <div className="flex w-[420px] shrink-0 flex-col border-l border-border bg-background">
-          <div className="flex h-10 items-center justify-between border-b border-border px-3">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Terminal {relayOn ? "(interactive)" : "(read-only)"}
-            </span>
-            <button onClick={() => setSplitPane(null)} className="text-muted-foreground hover:text-foreground">
-              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M18 6L6 18M6 6l12 12" /></svg>
-            </button>
-          </div>
-          <div
-            className={cn(
-              "flex-1 overflow-y-auto p-3 font-mono text-xs leading-relaxed text-foreground/70",
-              relayOn && "cursor-text outline-none ring-1 ring-emerald-signal/20"
-            )}
-            tabIndex={relayOn ? 0 : undefined}
-            onKeyDown={relayOn ? (e) => {
-              e.preventDefault();
-              const key = e.key === "Enter" ? "\r"
-                : e.key === "Backspace" ? "\x7f"
-                : e.key === "Tab" ? "\t"
-                : e.key === "Escape" ? "\x1b"
-                : e.key.length === 1 ? e.key
-                : "";
-              if (key) {
-                send({ type: "agent.pty.input", payload: { name, data: key } });
-              }
-            } : undefined}
-          >
-            {(state.ptyOutput[name] || []).map((line, i) => (
-              <div key={i} className="whitespace-pre-wrap">{line}</div>
-            ))}
-            {(!state.ptyOutput[name] || state.ptyOutput[name].length === 0) && (
-              <p className="text-muted-foreground/50">No terminal output yet.</p>
-            )}
-          </div>
-        </div>
+        <AgentTerminalPane
+          agentName={name}
+          chatId={chatId}
+          relayOn={relayOn}
+          initialPtyOutput={state.ptyOutput[relayKey] || state.ptyOutput[name] || []}
+          initialLogLine={state.agentLogLines[name]}
+          onClose={() => setSplitPane(null)}
+          className="w-[420px] shrink-0"
+        />
       )}
       {splitPane === "cron" && (
         <div className="flex w-[420px] shrink-0 flex-col border-l border-border bg-background">

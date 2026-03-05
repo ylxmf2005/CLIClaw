@@ -1,21 +1,3 @@
-# Hi-Boss: Developer / Agent Guide
-
-Hi-Boss is a local daemon + `hiboss` CLI for routing durable messages ("envelopes") between agents and chat channels (e.g., Telegram).
-
-## Global rules (source of truth)
-
-- `openspec/specs/` is canonical. If behavior and spec disagree, update the spec first (or fix the code to match).
-- Prefer PRs as the normal development flow; avoid direct pushes to `main`.
-- Keep CLI flags, CLI output keys, and agent instruction keys **stable and parseable** (kebab-case).
-- If you change CLI surface/output/DB fields, update the relevant spec under `openspec/specs/` in the same PR.
-- Don't bump the npm version ahead of today's date (local time). Avoid zero-padded segments (use `2026.2.5`, not `2026.02.05`).
-- Npm version scheme (dist-tags; "option A"):
-  - Stable daily: `YYYY.M.D` (published with dist-tag `latest`)
-  - Preview daily: `YYYY.M.D-rc.N` (published with dist-tag `next`)
-  - Same-day follow-up stable: `YYYY.M.D-rev.N` (dist-tag `latest`)
-  - Same-day follow-up preview: `YYYY.M.D-rev.N-rc.N` (dist-tag `next`)
-- For each file, LOC should be less than 500 lines, split it if needed.
-
 ## Specs (start here)
 
 All specs live under `openspec/specs/`:
@@ -130,24 +112,6 @@ Real provider verification policy (required for provider/dependency/runtime chan
   - `npm run verify:token-usage:real -- --provider both --session-mode continuous --turns 2`
   - Run one isolated daemon-level smoke flow (setup/start/register/send/list) in the temp `HIBOSS_DIR` and confirm both provider-backed agents complete at least one run.
 
-## Versioning & publishing
-
-Terminology:
-- `rc` = release candidate (preview build that may become stable)
-- Stable installs use `latest`; preview installs use `next`
-- `CHANGELOG.md` is retired; GitHub Releases are the canonical changelog surface.
-
-Routine:
-1. Bump `package.json#version` (and `package-lock.json`) to the exact version string.
-2. Publish to npm:
-   - Preview: `npm publish --tag next`
-   - Stable: `npm publish --tag latest`
-3. Create a GitHub release with the same version tag (`v<version>`):
-   - Preview release: changelog body is optional/minimal.
-   - Stable release: include changelog/release notes in the GitHub release body.
-
-Suggestion helper:
-- `npm run version:suggest -- --type preview` (or `stable`) prints a suggested version for today's date.
 
 ## Repo layout (what lives where)
 

@@ -35,7 +35,7 @@ interface AppState {
   conversations: Record<string, ChatConversation[]>; // agentName -> conversations
   sessions: Record<string, AgentSession[]>; // agentName -> sessions
   relayStates: Record<string, boolean>; // "agentName:chatId" -> relay on/off
-  ptyOutput: Record<string, string[]>; // agentName -> pty output lines
+  ptyOutput: Record<string, string[]>; // "agentName:chatId" -> pty output lines
   teams: Team[];
   cronSchedules: CronSchedule[];
   daemonStatus: DaemonStatus | null;
@@ -46,6 +46,7 @@ interface AppState {
   selectedTeam: TeamSelection | null;
   splitPane: "terminal" | "thread" | "cron" | null;
   loading: boolean;
+  initialLoadError: string | null;
 }
 
 const initialState: AppState = {
@@ -62,11 +63,12 @@ const initialState: AppState = {
   daemonStatus: null,
   drafts: {},
   view: "chat",
-  activeTab: "chats",
+  activeTab: "agents",
   selectedChat: null,
   selectedTeam: null,
   splitPane: null,
   loading: true,
+  initialLoadError: null,
 };
 
 // ─── Actions ─────────────────────────────────────────────────
@@ -87,12 +89,13 @@ type Action =
   | { type: "SET_SPLIT_PANE"; pane: AppState["splitPane"] }
   | { type: "SET_TAB"; tab: BottomTab }
   | { type: "SET_LOADING"; loading: boolean }
+  | { type: "SET_INITIAL_LOAD_ERROR"; error: string | null }
   | { type: "SET_DRAFT"; key: string; text: string }
   | { type: "CLEAR_DRAFT"; key: string }
   | { type: "SET_CONVERSATIONS"; agentName: string; conversations: ChatConversation[] }
   | { type: "SET_RELAY_STATE"; key: string; relayOn: boolean }
   | { type: "UPDATE_UNREAD"; agentName: string; chatId: string; delta: number }
-  | { type: "PTY_OUTPUT"; agentName: string; data: string }
+  | { type: "PTY_OUTPUT"; agentName: string; chatId?: string; data: string }
   | { type: "UPDATE_ENVELOPE"; envelope: Envelope }
   | { type: "SET_SESSIONS"; agentName: string; sessions: AgentSession[] };
 
@@ -165,6 +168,25 @@ function reducer(state: AppState, action: Action): AppState {
       }
       if (!newEnvelopes[rawKey].some((e) => e.id === env.id)) {
         newEnvelopes[rawKey] = [...newEnvelopes[rawKey], env];
+      }
+
+      // Keep team chat timeline updated when envelopes are part of a team scope
+      // or when a reply lands on the team's console channel.
+      const teamKeys = new Set<string>();
+      if (typeof env.metadata?.chatScope === "string" && env.metadata.chatScope.startsWith("team:")) {
+        teamKeys.add(env.metadata.chatScope);
+      }
+      if (env.to.startsWith("channel:console:team-chat-")) {
+        const teamName = env.to.slice("channel:console:team-chat-".length);
+        if (teamName) {
+          teamKeys.add(`team:${teamName}`);
+        }
+      }
+      for (const teamKey of teamKeys) {
+        const existing = newEnvelopes[teamKey] || [];
+        if (!existing.some((e) => e.id === env.id)) {
+          newEnvelopes[teamKey] = [...existing, env];
+        }
       }
 
       // Update conversation preview and unread counts
@@ -248,6 +270,8 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, activeTab: action.tab };
     case "SET_LOADING":
       return { ...state, loading: action.loading };
+    case "SET_INITIAL_LOAD_ERROR":
+      return { ...state, initialLoadError: action.error };
     case "SET_DRAFT":
       return {
         ...state,
@@ -285,12 +309,13 @@ function reducer(state: AppState, action: Action): AppState {
       };
     }
     case "PTY_OUTPUT": {
-      const existing = state.ptyOutput[action.agentName] || [];
+      const key = action.chatId ? `${action.agentName}:${action.chatId}` : action.agentName;
+      const existing = state.ptyOutput[key] || [];
       return {
         ...state,
         ptyOutput: {
           ...state.ptyOutput,
-          [action.agentName]: [...existing, action.data],
+          [key]: [...existing, action.data],
         },
       };
     }
@@ -320,6 +345,7 @@ function reducer(state: AppState, action: Action): AppState {
 interface AppContextValue {
   state: AppState;
   dispatch: React.Dispatch<Action>;
+  retryInitialLoad: () => Promise<void>;
   refreshAgents: () => Promise<void>;
   refreshTeams: () => Promise<void>;
   refreshCron: () => Promise<void>;
@@ -336,52 +362,74 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const { subscribe } = useWebSocket();
 
   const refreshAgents = useCallback(async () => {
-    try {
-      const { agents } = await api.listAgents();
-      dispatch({ type: "SET_AGENTS", agents });
-      // Fetch status for each agent
-      for (const agent of agents) {
-        api.getAgentStatus(agent.name).then((s) => {
-          dispatch({
-            type: "SET_AGENT_STATUS",
-            name: agent.name,
-            status: s.status,
-          });
+    const { agents } = await api.listAgents();
+    dispatch({ type: "SET_AGENTS", agents });
+
+    const statusResults = await Promise.allSettled(
+      agents.map((agent) => api.getAgentStatus(agent.name))
+    );
+    const sessionsResults = await Promise.allSettled(
+      agents.map((agent) => api.getAgentSessions(agent.name))
+    );
+    const conversationsResults = await Promise.allSettled(
+      agents.map((agent) => api.getConversations(agent.name))
+    );
+
+    let firstError: Error | null = null;
+
+    for (let i = 0; i < agents.length; i++) {
+      const agent = agents[i];
+      const statusResult = statusResults[i];
+      if (statusResult?.status === "fulfilled") {
+        dispatch({
+          type: "SET_AGENT_STATUS",
+          name: agent.name,
+          status: statusResult.value.status,
         });
-        api.getAgentSessions(agent.name).then(({ sessions }) => {
-          dispatch({ type: "SET_SESSIONS", agentName: agent.name, sessions });
-        }).catch(() => {});
+      } else if (!firstError && statusResult?.status === "rejected") {
+        firstError = statusResult.reason instanceof Error
+          ? statusResult.reason
+          : new Error(String(statusResult.reason));
       }
-    } catch {
-      // silent on initial load
+
+      const sessionsResult = sessionsResults[i];
+      if (sessionsResult?.status === "fulfilled") {
+        dispatch({ type: "SET_SESSIONS", agentName: agent.name, sessions: sessionsResult.value.sessions });
+      } else if (!firstError && sessionsResult?.status === "rejected") {
+        firstError = sessionsResult.reason instanceof Error
+          ? sessionsResult.reason
+          : new Error(String(sessionsResult.reason));
+      }
+
+      const conversationsResult = conversationsResults[i];
+      if (conversationsResult?.status === "fulfilled") {
+        const withAgent = conversationsResult.value.conversations.map((c) => ({ ...c, agentName: agent.name }));
+        dispatch({ type: "SET_CONVERSATIONS", agentName: agent.name, conversations: withAgent });
+      } else if (!firstError && conversationsResult?.status === "rejected") {
+        firstError = conversationsResult.reason instanceof Error
+          ? conversationsResult.reason
+          : new Error(String(conversationsResult.reason));
+      }
+    }
+
+    if (firstError) {
+      throw firstError;
     }
   }, []);
 
   const refreshTeams = useCallback(async () => {
-    try {
-      const { teams } = await api.listTeams();
-      dispatch({ type: "SET_TEAMS", teams });
-    } catch {
-      // silent
-    }
+    const { teams } = await api.listTeams();
+    dispatch({ type: "SET_TEAMS", teams });
   }, []);
 
   const refreshCron = useCallback(async () => {
-    try {
-      const { schedules } = await api.listCronSchedules();
-      dispatch({ type: "SET_CRON", schedules });
-    } catch {
-      // silent
-    }
+    const { schedules } = await api.listCronSchedules();
+    dispatch({ type: "SET_CRON", schedules });
   }, []);
 
   const refreshDaemonStatus = useCallback(async () => {
-    try {
-      const status = await api.getDaemonStatus();
-      dispatch({ type: "SET_DAEMON_STATUS", status });
-    } catch {
-      // silent
-    }
+    const status = await api.getDaemonStatus();
+    dispatch({ type: "SET_DAEMON_STATUS", status });
   }, []);
 
   const loadEnvelopes = useCallback(
@@ -424,16 +472,17 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // Initial data load
-  useEffect(() => {
-    async function init() {
+  const retryInitialLoad = useCallback(async () => {
+    dispatch({ type: "SET_LOADING", loading: true });
+    dispatch({ type: "SET_INITIAL_LOAD_ERROR", error: null });
+    try {
       await Promise.all([
         refreshAgents(),
         refreshTeams(),
         refreshCron(),
         refreshDaemonStatus(),
       ]);
-      // Set boss timezone for timestamp display
+
       try {
         const timeInfo = await api.getDaemonTime();
         if (timeInfo.bossTimezone) {
@@ -442,10 +491,20 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       } catch {
         // Fall back to browser timezone
       }
+    } catch (err) {
+      dispatch({
+        type: "SET_INITIAL_LOAD_ERROR",
+        error: err instanceof Error ? err.message : "Unable to connect to daemon API",
+      });
+    } finally {
       dispatch({ type: "SET_LOADING", loading: false });
     }
-    init();
   }, [refreshAgents, refreshTeams, refreshCron, refreshDaemonStatus]);
+
+  // Initial data load
+  useEffect(() => {
+    retryInitialLoad();
+  }, [retryInitialLoad]);
 
   // Handle WebSocket events
   useEffect(() => {
@@ -461,8 +520,29 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           });
           break;
         case "agent.status": {
-          const p = event.payload as { name: string; status: AgentStatus["status"] };
-          dispatch({ type: "SET_AGENT_STATUS", name: p.name, status: p.status });
+          const p = event.payload as {
+            name?: string;
+            status?: AgentStatus["status"];
+            agentState?: AgentStatus["status"]["agentState"];
+            agentHealth?: AgentStatus["status"]["agentHealth"];
+            currentRun?: AgentStatus["status"]["currentRun"];
+            lastRun?: AgentStatus["status"]["lastRun"];
+            pendingCount?: number;
+          };
+          if (typeof p.name !== "string") break;
+          const status = p.status ?? (
+            p.agentState && p.agentHealth
+              ? {
+                  agentState: p.agentState,
+                  agentHealth: p.agentHealth,
+                  pendingCount: typeof p.pendingCount === "number" ? p.pendingCount : 0,
+                  currentRun: p.currentRun,
+                  lastRun: p.lastRun,
+                }
+              : undefined
+          );
+          if (!status) break;
+          dispatch({ type: "SET_AGENT_STATUS", name: p.name, status });
           break;
         }
         case "agent.log": {
@@ -487,15 +567,25 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           break;
         }
         case "agent.pty.output": {
-          const pty = event.payload as { name: string; data: string };
-          dispatch({ type: "PTY_OUTPUT", agentName: pty.name, data: pty.data });
+          const pty = event.payload as { name: string; chatId?: string; data: string };
+          dispatch({ type: "PTY_OUTPUT", agentName: pty.name, chatId: pty.chatId, data: pty.data });
           break;
         }
         case "console.message": {
-          const p = event.payload as { chatId: string; content: { text?: string }; envelope?: Envelope };
-          if (p.envelope) {
-            dispatch({ type: "ADD_ENVELOPE", envelope: p.envelope });
+          const p = event.payload as { chatId: string; envelope: Envelope };
+          const metadata = p.envelope.metadata && typeof p.envelope.metadata === "object"
+            ? { ...p.envelope.metadata }
+            : {};
+          if (typeof metadata.chatScope !== "string" || !metadata.chatScope) {
+            metadata.chatScope = p.chatId;
           }
+          dispatch({
+            type: "ADD_ENVELOPE",
+            envelope: {
+              ...p.envelope,
+              metadata,
+            },
+          });
           break;
         }
         default:
@@ -509,6 +599,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       value={{
         state,
         dispatch,
+        retryInitialLoad,
         refreshAgents,
         refreshTeams,
         refreshCron,

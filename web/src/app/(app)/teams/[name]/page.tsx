@@ -7,27 +7,126 @@ import { MessageList } from "@/components/chat/message-list";
 import { MessageComposer } from "@/components/chat/message-composer";
 import { Button } from "@/components/ui/button";
 import { Users, UserPlus, Settings, X } from "lucide-react";
-import { sendEnvelope, listTeamMembers } from "@/lib/api";
-import type { TeamMember } from "@/lib/types";
+import * as api from "@/lib/api";
+import { resolveTeamRecipients } from "@/lib/team-mentions";
+import type { Envelope, TeamMember } from "@/lib/types";
+import { useToast } from "@/providers/toast-provider";
 
 export default function TeamChatPage() {
   const { name } = useParams<{ name: string }>();
-  const { state, dispatch, loadEnvelopes } = useAppState();
+  const { state, dispatch } = useAppState();
+  const { toast } = useToast();
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [showMembers, setShowMembers] = useState(false);
 
   const team = state.teams.find((t) => t.name === name);
   const address = `team:${name}`;
+  const teamChatScope = `team:${name}`;
+  const teamConsoleAddress = `channel:console:team-chat-${name}`;
   const envelopes = state.envelopes[address] || [];
 
+  const loadTeamEnvelopes = useCallback(async (memberNames: string[]) => {
+    if (memberNames.length === 0) {
+      dispatch({ type: "SET_ENVELOPES", key: address, envelopes: [] });
+      return;
+    }
+
+    try {
+      const results = await Promise.all([
+        api.listEnvelopes({
+          to: teamConsoleAddress,
+          status: "done",
+          limit: 100,
+        }),
+        ...memberNames.map((agentName) =>
+          api.listEnvelopes({
+            to: `agent:${agentName}`,
+            chatId: teamChatScope,
+            status: "done",
+            limit: 100,
+          })
+        ),
+      ]);
+
+      const merged = new Map<string, Envelope>();
+      for (const result of results) {
+        for (const env of result.envelopes) {
+          merged.set(env.id, env);
+        }
+      }
+
+      const sorted = [...merged.values()].sort((a, b) => a.createdAt - b.createdAt);
+      dispatch({ type: "SET_ENVELOPES", key: address, envelopes: sorted });
+    } catch {
+      // silent
+    }
+  }, [address, dispatch, teamConsoleAddress, teamChatScope]);
+
   useEffect(() => {
-    loadEnvelopes(address);
-    listTeamMembers(name).then((r) => setMembers(r.members)).catch(() => {});
-  }, [name, address, loadEnvelopes]);
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const result = await api.listTeamMembers(name);
+        if (cancelled) return;
+        setMembers(result.members);
+        await loadTeamEnvelopes(result.members.map((m) => m.agentName));
+      } catch {
+        if (!cancelled) {
+          setMembers([]);
+          dispatch({ type: "SET_ENVELOPES", key: address, envelopes: [] });
+        }
+      }
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [name, address, dispatch, loadTeamEnvelopes]);
 
   const handleSent = useCallback(() => {
-    loadEnvelopes(address);
-  }, [address, loadEnvelopes]);
+    void loadTeamEnvelopes(members.map((m) => m.agentName));
+  }, [loadTeamEnvelopes, members]);
+
+  const sendToTeamRecipients = useCallback(
+    async (messageText: string, deliverAt?: string) => {
+      const memberNames = members.map((m) => m.agentName);
+      const resolution = resolveTeamRecipients(messageText, memberNames);
+
+      if (resolution.kind === "unknown") {
+        toast({
+          title: "Unknown team member",
+          description: `@${resolution.mentioned} is not in team ${name}`,
+          variant: "error",
+        });
+        return;
+      }
+
+      if (resolution.recipients.length === 0) {
+        return;
+      }
+
+      try {
+        await Promise.all(
+          resolution.recipients.map((agentName) =>
+            api.sendEnvelope({
+              to: `agent:${agentName}:${teamChatScope}`,
+              from: teamConsoleAddress,
+              text: resolution.text,
+              ...(deliverAt ? { deliverAt } : {}),
+            }),
+          ),
+        );
+        handleSent();
+      } catch (err) {
+        toast({
+          title: "Team message failed",
+          description: err instanceof Error ? err.message : "Failed to send team message",
+          variant: "error",
+        });
+      }
+    },
+    [members, name, teamChatScope, teamConsoleAddress, handleSent, toast],
+  );
 
   if (!team) {
     return (
@@ -69,13 +168,13 @@ export default function TeamChatPage() {
           <MessageComposer
             onSend={(text) => {
               if (text) {
-                sendEnvelope({ to: address, text }).then(() => handleSent());
+                void sendToTeamRecipients(text);
               }
               dispatch({ type: "CLEAR_DRAFT", key: address });
             }}
             onScheduleSend={(text, scheduledAt) => {
               if (text) {
-                sendEnvelope({ to: address, text, deliverAt: scheduledAt.toISOString() }).then(() => handleSent());
+                void sendToTeamRecipients(text, scheduledAt.toISOString());
               }
               dispatch({ type: "CLEAR_DRAFT", key: address });
             }}

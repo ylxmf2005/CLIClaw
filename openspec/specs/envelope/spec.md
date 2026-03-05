@@ -42,7 +42,7 @@ Envelopes are **at-most-once**: once acknowledged as read/delivered they are ter
 - To a channel: marked `done` after an adapter send attempt; failures are terminal and recorded in `metadata.lastDeliveryError`.
 
 Permission note:
-- Sending to `channel:<adapter>:...` is only allowed if the sending agent is bound to that adapter type.
+- Sending to `channel:<adapter>:...` requires the sending agent to be bound to that adapter type, except adapters registered globally by type (currently `console`).
 - Admin-token `envelope.send` is limited to agent-chat destinations (`agent:<name>:new` or `agent:<name>:<chat-id>`); team/channel destinations are rejected.
 
 Interrupt-now note:
@@ -112,7 +112,7 @@ Execution: same session id => serial; different session ids => parallel (subject
 ### Outbound Flow (Agent -> Channel)
 
 1. Agent sends envelope to `channel:<adapter>:<chat-id>`.
-2. Router validates binding and resolves adapter.
+2. Router resolves adapter by sender binding when available; for globally-registered adapters (for example `console`) it falls back to adapter-type lookup.
 3. For Telegram, optional quote/reply resolution uses `replyToEnvelopeId`.
 4. Adapter sends platform message; envelope marked `done` on success.
 

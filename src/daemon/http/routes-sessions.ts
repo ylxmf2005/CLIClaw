@@ -9,6 +9,7 @@ import { rpcError } from "../rpc/context.js";
 import { RPC_ERRORS } from "../ipc/types.js";
 import { requireTokenFromCtx } from "./route-helpers.js";
 import { generateUUID } from "../../shared/uuid.js";
+import { isKnownAdapterType } from "../../shared/adapter-types.js";
 
 /**
  * Register session and chat-state routes.
@@ -114,10 +115,13 @@ export function registerSessionRoutes(
     if (!adapterType) {
       rpcError(RPC_ERRORS.INVALID_PARAMS, "adapterType is required");
     }
+    if (!isKnownAdapterType(adapterType)) {
+      rpcError(RPC_ERRORS.INVALID_PARAMS, `Unknown adapter type: ${adapterType}`);
+    }
 
     const chatId = typeof body.chatId === "string" && body.chatId.trim()
       ? body.chatId.trim()
-      : generateUUID();
+      : `${adapterType}-chat-${generateUUID()}`;
 
     const provider = agent.provider ?? "claude";
     const result = daemonCtx.db.getOrCreateChannelSession({
@@ -169,6 +173,9 @@ export function registerSessionRoutes(
     const chatId = typeof body.chatId === "string" ? body.chatId.trim() : "";
     if (!adapterType || !chatId) {
       rpcError(RPC_ERRORS.INVALID_PARAMS, "adapterType and chatId are required");
+    }
+    if (!isKnownAdapterType(adapterType)) {
+      rpcError(RPC_ERRORS.INVALID_PARAMS, `Unknown adapter type: ${adapterType}`);
     }
 
     // Use getOrCreateChannelSession to upsert the binding for this session's chat
@@ -223,6 +230,15 @@ export function registerSessionRoutes(
     const session = daemonCtx.db.getAgentSessionById(sessionId);
     if (!session || session.agentName !== agent.name) {
       rpcError(RPC_ERRORS.NOT_FOUND, "Session not found");
+    }
+
+    if (!isKnownAdapterType(adapterType)) {
+      rpcError(RPC_ERRORS.INVALID_PARAMS, `Unknown adapter type: ${adapterType}`);
+    }
+
+    const binding = daemonCtx.db.getChannelSessionBinding(agent.name, adapterType, chatId);
+    if (!binding || binding.sessionId !== session.id) {
+      rpcError(RPC_ERRORS.NOT_FOUND, "Binding not found");
     }
 
     const bindingCount = daemonCtx.db.countBindingsForSession(session.id);

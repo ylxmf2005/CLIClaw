@@ -17,6 +17,7 @@ import { RPC_ERRORS } from "../ipc/types.js";
 import type { PermissionLevel, PermissionPolicy } from "../../shared/permissions.js";
 import type { DaemonConfig } from "../daemon.js";
 import type { DaemonEventBus } from "../events/event-bus.js";
+import type { RelayExecutor } from "../../agent/executor-relay.js";
 
 /**
  * Principal type representing the authenticated caller.
@@ -59,6 +60,7 @@ export interface DaemonContext {
 
   // Relay availability
   readonly relayAvailable?: boolean;
+  readonly relayExecutor?: RelayExecutor | null;
 }
 
 /**

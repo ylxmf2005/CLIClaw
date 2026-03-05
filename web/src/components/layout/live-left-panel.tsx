@@ -8,10 +8,11 @@ import { useActiveTab } from "@/hooks/use-active-tab";
 import { useWebSocket } from "@/providers/ws-provider";
 import { useAuth } from "@/providers/auth-provider";
 import { useTheme } from "@/providers/theme-provider";
+import * as api from "@/lib/api";
 import { ChatListItem } from "@/components/chats/chat-list-item";
 import type { BottomTab } from "@/lib/types";
 import type { AgentState } from "@/components/shared/status-indicator";
-import { cn, generateChatId } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { getAvatarColor, getInitials } from "@/lib/colors";
 import {
   User,
@@ -34,7 +35,6 @@ import type { Agent } from "@/lib/types";
 const TABS: { id: BottomTab; label: string; icon: typeof User }[] = [
   { id: "agents", label: "Agents", icon: User },
   { id: "teams", label: "Teams", icon: Users },
-  { id: "chats", label: "Chats", icon: MessageCircle },
   { id: "settings", label: "Settings", icon: Settings },
 ];
 
@@ -71,7 +71,6 @@ export function LiveLeftPanel({ onCreateAgent, onCreateTeam }: LiveLeftPanelProp
 
       {/* Tab content */}
       <div className="flex-1 overflow-y-auto py-2">
-        {activeTab === "chats" && <LiveChatList />}
         {activeTab === "agents" && <LiveAgentList onCreateAgent={onCreateAgent} />}
         {activeTab === "teams" && <LiveTeamList onCreateTeam={onCreateTeam} />}
         {activeTab === "settings" && <LiveSettingsPanel />}
@@ -110,33 +109,56 @@ function LiveChatList() {
   const router = useRouter();
   const { agentName: selAgent, chatId: selChat, teamName: selTeam } = useRouteSelection();
 
-  // Build entries from conversations + teams, sorted by recency
+  const sessionEntries = Object.entries(state.sessions).flatMap(([agentName, sessions]) => {
+    const convos = state.conversations[agentName] || [];
+    const status = state.agentStatuses[agentName];
+    const agentState: AgentState = status
+      ? status.agentHealth === "error" ? "error"
+      : status.agentState === "running" ? "running" : "idle"
+      : "unknown";
+
+    return sessions
+      .filter((session) => (session.bindings || []).some((b) => b.adapterType !== "internal"))
+      .map((session) => {
+      const bindings = (session.bindings || []).filter((b) => b.adapterType !== "internal");
+      const primaryBinding =
+        bindings.find((b) => b.adapterType !== "console") ??
+        bindings[0];
+      const routeChatId = primaryBinding?.chatId ?? session.id;
+      const convo =
+        convos.find((c) => bindings.some((b) => b.chatId === c.chatId)) ??
+        convos.find((c) => c.chatId === routeChatId);
+      const adapterTypes = Array.from(new Set(bindings.map((b) => b.adapterType)));
+
+      return {
+        kind: "agent" as const,
+        id: session.id,
+        name: agentName,
+        chatId: routeChatId,
+        chatLabel: routeChatId,
+        subtitle: convo?.lastMessage,
+        lastMessage: convo?.lastMessage,
+        lastMessageAt: convo?.lastMessageAt ?? session.lastActivityAt ?? session.createdAt,
+        agentState,
+        pendingCount: status?.pendingCount,
+        unreadCount: convo?.unreadCount,
+        adapterTypes,
+        hasSelectedBinding:
+          selAgent === agentName &&
+          !!selChat &&
+          bindings.some((b) => b.chatId === selChat),
+      };
+    });
+  });
+
+  // Build entries from session chats + teams, sorted by recency
   const entries = [
-    ...Object.values(state.conversations)
-      .flat()
-      .map((convo) => {
-        const status = state.agentStatuses[convo.agentName];
-        const agentState: AgentState = status
-          ? status.agentHealth === "error" ? "error"
-          : status.agentState === "running" ? "running" : "idle"
-          : "unknown";
-        return {
-          kind: "agent" as const,
-          name: convo.agentName,
-          chatId: convo.chatId,
-          chatLabel: convo.label,
-          subtitle: convo.label,
-          lastMessage: convo.lastMessage,
-          lastMessageAt: convo.lastMessageAt,
-          agentState,
-          pendingCount: status?.pendingCount,
-          unreadCount: convo.unreadCount,
-        };
-      }),
+    ...sessionEntries,
     ...state.teams.map((team) => {
       const meta = team.metadata as { lastMessage?: string; lastMessageAt?: number } | undefined;
       return {
         kind: "team" as const,
+        id: `team:${team.name}`,
         name: team.name,
         chatId: undefined as string | undefined,
         chatLabel: undefined as string | undefined,
@@ -152,7 +174,7 @@ function LiveChatList() {
     <div className="space-y-0.5 px-1.5">
       {entries.map((entry) => (
         <ChatListItem
-          key={`${entry.kind}:${entry.name}:${entry.chatId ?? ""}`}
+          key={`${entry.kind}:${entry.id}`}
           kind={entry.kind}
           name={entry.name}
           chatLabel={entry.chatLabel}
@@ -163,9 +185,10 @@ function LiveChatList() {
           pendingCount={"pendingCount" in entry ? entry.pendingCount : undefined}
           memberCount={"memberCount" in entry ? entry.memberCount : undefined}
           unreadCount={"unreadCount" in entry ? entry.unreadCount : undefined}
+          adapterTypes={"adapterTypes" in entry ? entry.adapterTypes : undefined}
           isSelected={
             entry.kind === "agent"
-              ? selAgent === entry.name && selChat === entry.chatId
+              ? ("hasSelectedBinding" in entry && entry.hasSelectedBinding) || (selAgent === entry.name && selChat === entry.chatId)
               : selTeam === entry.name
           }
           onClick={() => {
@@ -183,7 +206,7 @@ function LiveChatList() {
 
 // ─── Agent List (Agents tab) ───────────────────────────────
 function LiveAgentList({ onCreateAgent }: { onCreateAgent?: () => void }) {
-  const { state } = useAppState();
+  const { state, loadSessions } = useAppState();
   const router = useRouter();
   const { agentName: selAgent, chatId: selChat } = useRouteSelection();
   const [expandedAgents, setExpandedAgents] = useState<Set<string>>(new Set());
@@ -327,9 +350,14 @@ function LiveAgentList({ onCreateAgent }: { onCreateAgent?: () => void }) {
                       );
                     })}
                   <button
-                    onClick={() => {
-                      const chatId = generateChatId();
-                      router.push(`/agents/${agent.name}/${chatId}`);
+                    onClick={async () => {
+                      try {
+                        const created = await api.createAgentSession(agent.name, { adapterType: "console" });
+                        await loadSessions(agent.name);
+                        router.push(`/agents/${agent.name}/${created.chatId}`);
+                      } catch {
+                        // silent
+                      }
                     }}
                     className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-muted-foreground transition-colors hover:bg-sidebar-accent"
                   >

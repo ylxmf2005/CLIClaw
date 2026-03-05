@@ -15,19 +15,12 @@
 import type { BrokerManager } from "../daemon/relay/broker-manager.js";
 import type { HiBossDatabase } from "../daemon/db/database.js";
 import { logEvent, errorMessage } from "../shared/daemon-log.js";
+import { buildRelaySessionName } from "../daemon/relay/relay-session-name.js";
 
 export interface RelayExecutorOptions {
   broker: BrokerManager;
   db: HiBossDatabase;
   hibossDir: string;
-}
-
-/**
- * Generates the relay agent name for a specific agent + chat combination.
- * This ensures each chat gets its own PTY session.
- */
-function relayAgentName(agentName: string, chatId: string): string {
-  return `hiboss-${agentName}-${chatId}`;
 }
 
 /**
@@ -88,7 +81,7 @@ export class RelayExecutor {
       this.activeSessions.delete(key);
     }
 
-    const relayName = relayAgentName(params.agentName, params.chatId);
+    const relayName = buildRelaySessionName(params.agentName, params.chatId);
 
     const result = await this.broker.spawnAgent({
       name: relayName,

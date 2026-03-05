@@ -12,6 +12,7 @@
 
 import type { DaemonEventBus } from "../events/event-bus.js";
 import { logEvent, errorMessage } from "../../shared/daemon-log.js";
+import { buildRelaySessionName, parseRelaySessionName } from "./relay-session-name.js";
 
 // Dynamic import to handle missing SDK gracefully
 let RelayAdapterClass: typeof import("@agent-relay/sdk").RelayAdapter | null = null;
@@ -86,8 +87,10 @@ export class BrokerManager {
       // Subscribe to broker events for PTY output
       this.eventUnsubscribe = this.adapter.onEvent((event) => {
         if (event.kind === "worker_stream") {
+          const parsed = parseRelaySessionName(event.name);
           this.eventBus.emit("agent.pty.output", {
-            name: event.name,
+            name: parsed?.agentName ?? event.name,
+            chatId: parsed?.chatId,
             data: event.chunk,
           });
         }
@@ -110,11 +113,12 @@ export class BrokerManager {
    * Subscribe to agent.pty.input events and forward to relay adapter.
    */
   private subscribeToPtyInput(): () => void {
-    const handler = (payload: { name: string; data: string }) => {
+    const handler = (payload: { name: string; chatId?: string; data: string }) => {
       if (!this.adapter) return;
-      this.adapter.sendInput(payload.name, payload.data).catch((err) => {
+      const relayName = payload.chatId ? buildRelaySessionName(payload.name, payload.chatId) : payload.name;
+      this.adapter.sendInput(relayName, payload.data).catch((err) => {
         logEvent("error", "relay-pty-input-failed", {
-          name: payload.name,
+          name: relayName,
           error: errorMessage(err),
         });
       });

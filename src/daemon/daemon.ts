@@ -238,6 +238,9 @@ export class Daemon {
       get relayAvailable() {
         return daemon.brokerManager.isAvailable();
       },
+      get relayExecutor() {
+        return daemon.relayExecutor;
+      },
     };
   }
 

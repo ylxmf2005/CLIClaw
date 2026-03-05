@@ -19,10 +19,10 @@ export interface SlashCommand {
 }
 
 export interface MessageComposerProps {
-  onSend: (text: string, attachments?: AttachmentFile[]) => void;
+  onSend: (text: string, attachments?: AttachmentFile[]) => void | Promise<void>;
   placeholder?: string;
   disabled?: boolean;
-  onScheduleSend?: (text: string, scheduledAt: Date) => void;
+  onScheduleSend?: (text: string, scheduledAt: Date) => void | Promise<void>;
   /** Current draft text for this conversation (from parent state). */
   draft?: string;
   /** Called when draft text changes (debounced internally at 500ms). */
@@ -98,14 +98,27 @@ export function MessageComposer({
   const composerRef = useRef<HTMLDivElement>(null);
   const dragCounterRef = useRef(0);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const textRef = useRef(draft ?? "");
+  const attachmentsRef = useRef<AttachmentFile[]>([]);
+  const sendLockedRef = useRef(false);
 
   // Sync text when draft prop changes (conversation switch)
   useEffect(() => {
-    setText(draft ?? "");
+    const nextText = draft ?? "";
+    textRef.current = nextText;
+    setText(nextText);
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
   }, [draft]);
+
+  useEffect(() => {
+    textRef.current = text;
+  }, [text]);
+
+  useEffect(() => {
+    attachmentsRef.current = attachments;
+  }, [attachments]);
 
   // Debounce draft saving
   const saveDraft = useCallback(
@@ -155,7 +168,9 @@ export function MessageComposer({
   }, [slashCommands]);
 
   const acceptSlashCommand = useCallback((command: string) => {
-    setText(`/${command}`);
+    const nextText = `/${command}`;
+    textRef.current = nextText;
+    setText(nextText);
     setSlashFilter(null);
     textareaRef.current?.focus();
   }, []);
@@ -191,33 +206,66 @@ export function MessageComposer({
 
   const hasContent = text.trim().length > 0 || attachments.length > 0;
 
-  const handleSend = useCallback(() => {
-    if (!hasContent || disabled) return;
-    onSend(text.trim(), attachments.length > 0 ? attachments : undefined);
+  const resetComposerState = useCallback(() => {
+    textRef.current = "";
+    attachmentsRef.current = [];
     setText("");
     setAttachments([]);
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
     onDraftChange?.("");
     setShowPreview(false);
+    setSlashFilter(null);
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
-  }, [text, attachments, hasContent, disabled, onSend, onDraftChange]);
+  }, [onDraftChange]);
+
+  const releaseSendLock = useCallback(() => {
+    requestAnimationFrame(() => {
+      sendLockedRef.current = false;
+    });
+  }, []);
+
+  const handleSend = useCallback(() => {
+    const currentText = textRef.current;
+    const currentAttachments = attachmentsRef.current;
+    const hasCurrentContent = currentText.trim().length > 0 || currentAttachments.length > 0;
+    if (!hasCurrentContent || disabled || sendLockedRef.current) return;
+    sendLockedRef.current = true;
+
+    const textToSend = currentText.trim();
+    const attachmentsToSend = currentAttachments.length > 0 ? currentAttachments : undefined;
+
+    resetComposerState();
+
+    try {
+      Promise.resolve(onSend(textToSend, attachmentsToSend)).finally(releaseSendLock);
+    } catch {
+      releaseSendLock();
+    }
+  }, [disabled, onSend, resetComposerState, releaseSendLock]);
 
   const handleSchedule = useCallback(
     (date: Date) => {
-      if (!hasContent || disabled) return;
-      if (onScheduleSend) {
-        onScheduleSend(text.trim(), date);
-      }
-      setText("");
-      setAttachments([]);
-      onDraftChange?.("");
-      setShowPreview(false);
-      if (textareaRef.current) {
-        textareaRef.current.style.height = "auto";
+      const currentText = textRef.current;
+      const currentAttachments = attachmentsRef.current;
+      const hasCurrentContent = currentText.trim().length > 0 || currentAttachments.length > 0;
+      if (!hasCurrentContent || disabled || sendLockedRef.current || !onScheduleSend) return;
+      sendLockedRef.current = true;
+
+      const textToSend = currentText.trim();
+      resetComposerState();
+
+      try {
+        Promise.resolve(onScheduleSend(textToSend, date)).finally(releaseSendLock);
+      } catch {
+        releaseSendLock();
       }
     },
-    [text, hasContent, disabled, onScheduleSend, onDraftChange]
+    [disabled, onScheduleSend, resetComposerState, releaseSendLock]
   );
 
   // ── Keyboard ──────────────────────────────────────────────────
@@ -237,7 +285,15 @@ export function MessageComposer({
         }
         if (e.key === "Enter" || e.key === "Tab") {
           e.preventDefault();
-          acceptSlashCommand(filteredCommands[slashIndex].command);
+          const selected = filteredCommands[slashIndex];
+          const normalized = text.trim().toLowerCase();
+          const isExactCommand = normalized === `/${selected.command}`;
+          // Enter sends immediately when the full slash command is already typed.
+          if (e.key === "Enter" && isExactCommand) {
+            handleSend();
+            return;
+          }
+          acceptSlashCommand(selected.command);
           return;
         }
         if (e.key === "Escape") {
@@ -251,13 +307,14 @@ export function MessageComposer({
         handleSend();
       }
     },
-    [handleSend, showSlash, filteredCommands, slashIndex, acceptSlashCommand]
+    [text, handleSend, showSlash, filteredCommands, slashIndex, acceptSlashCommand]
   );
 
   // ── Auto-resize ───────────────────────────────────────────────
 
   const handleInput = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value;
+    textRef.current = value;
     setText(value);
     saveDraft(value);
     updateSlashState(value);

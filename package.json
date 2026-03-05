@@ -24,6 +24,8 @@
     "prepack": "npm run build",
     "typecheck": "tsc --noEmit",
     "hiboss": "tsx bin/hiboss.ts",
+    "e2e:console-reply": "bash scripts/e2e-console-reply-agent-browser.sh",
+    "e2e:team-chat-reply": "bash scripts/e2e-team-chat-reply-agent-browser.sh",
     "examples:cli": "tsx scripts/gen-cli-examples.ts",
     "examples:prompts": "tsx scripts/gen-prompt-examples.ts",
     "version:suggest": "tsx scripts/suggest-version.ts",
