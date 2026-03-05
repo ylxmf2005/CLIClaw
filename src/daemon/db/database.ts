@@ -1923,14 +1923,15 @@ export class HiBossDatabase {
    */
   countDuePendingEnvelopesForAgent(agentName: string): number {
     const address = `agent:${agentName}`;
+    const addressPrefix = `agent:${agentName}:`;
     const nowMs = Date.now();
     const stmt = this.db.prepare(`
       SELECT COUNT(*) AS n
       FROM envelopes
-      WHERE "to" = ? AND status = 'pending'
+      WHERE ("to" = ? OR "to" LIKE ? || '%') AND status = 'pending'
         AND (deliver_at IS NULL OR deliver_at <= ?)
     `);
-    const row = stmt.get(address, nowMs) as { n: number } | undefined;
+    const row = stmt.get(address, addressPrefix, nowMs) as { n: number } | undefined;
     return row?.n ?? 0;
   }
 
@@ -1953,15 +1954,16 @@ export class HiBossDatabase {
    */
   getPendingEnvelopesForAgent(agentName: string, limit: number): Envelope[] {
     const address = `agent:${agentName}`;
+    const addressPrefix = `agent:${agentName}:`;
     const nowMs = Date.now();
     const stmt = this.db.prepare(`
       SELECT * FROM envelopes
-      WHERE "to" = ? AND status = 'pending'
+      WHERE ("to" = ? OR "to" LIKE ? || '%') AND status = 'pending'
         AND (deliver_at IS NULL OR deliver_at <= ?)
       ORDER BY priority DESC, COALESCE(deliver_at, created_at) ASC, created_at ASC
       LIMIT ?
     `);
-    const rows = stmt.all(address, nowMs, limit) as EnvelopeRow[];
+    const rows = stmt.all(address, addressPrefix, nowMs, limit) as EnvelopeRow[];
     return rows.map((row) => this.rowToEnvelope(row));
   }
 
