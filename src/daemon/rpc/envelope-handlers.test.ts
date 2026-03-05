@@ -608,6 +608,11 @@ test("envelope.send team broadcast returns no-recipients for sender-only team", 
 
 function makeAdminContext(params: {
   knownAgents?: Agent[];
+  teams?: Array<{
+    name: string;
+    status?: "active" | "archived";
+    members: string[];
+  }>;
   routeEnvelope?: (input: CreateEnvelopeInput) => Promise<Envelope>;
   abortCurrentRun?: (agentName: string, reason: string) => boolean;
   envelopes?: Envelope[];
@@ -615,6 +620,15 @@ function makeAdminContext(params: {
   const knownAgents = new Map<string, Agent>();
   for (const agent of params.knownAgents ?? []) {
     knownAgents.set(agent.name.toLowerCase(), agent);
+  }
+
+  const teams = new Map<string, { name: string; status: "active" | "archived"; members: string[] }>();
+  for (const team of params.teams ?? []) {
+    teams.set(team.name.toLowerCase(), {
+      name: team.name,
+      status: team.status ?? "active",
+      members: [...team.members],
+    });
   }
 
   const envelopes = params.envelopes ?? [];
@@ -639,6 +653,21 @@ function makeAdminContext(params: {
     db: {
       updateAgentLastSeen: () => undefined,
       getAgentByNameCaseInsensitive: (name: string) => knownAgents.get(name.toLowerCase()) ?? null,
+      getTeamByNameCaseInsensitive: (name: string) => {
+        const team = teams.get(name.toLowerCase());
+        if (!team) return null;
+        return {
+          id: `${team.name}-id`,
+          name: team.name,
+          status: team.status,
+          kind: "manual",
+          createdAt: Date.now(),
+        };
+      },
+      listTeamMemberAgentNames: (teamName: string) => {
+        const team = teams.get(teamName.toLowerCase());
+        return team ? [...team.members] : [];
+      },
       getBossTimezone: () => "UTC",
       getEnvelopeById: (id: string) => envelopes.find((e) => e.id === id) ?? null,
       listEnvelopesByToFilter: (options: { toFilter: string; status: string; limit: number }) => {
@@ -1094,4 +1123,167 @@ test("envelope.send validates team broadcast params even with no recipients", as
     RPC_ERRORS.INVALID_PARAMS,
     "Invalid deliver-at"
   );
+});
+
+// ==================== Admin team mention fan-out tests ====================
+
+test("envelope.send with admin token and team destination with mentions fans out to mentioned members only", async () => {
+  const alice = makeAgent("alice");
+  const bob = makeAgent("bob");
+  const routed: CreateEnvelopeInput[] = [];
+  let envCounter = 0;
+  const ctx = makeAdminContext({
+    knownAgents: [alice, bob],
+    teams: [{ name: "alpha", members: ["alice", "bob"] }],
+    routeEnvelope: async (input) => {
+      envCounter++;
+      routed.push(input);
+      return {
+        id: `env-${envCounter}`,
+        from: input.from,
+        to: input.to,
+        fromBoss: input.fromBoss ?? false,
+        content: input.content,
+        priority: input.priority,
+        status: "pending",
+        createdAt: Date.now(),
+        metadata: input.metadata,
+      };
+    },
+  });
+  const handlers = createEnvelopeHandlers(ctx);
+
+  const result = (await handlers["envelope.send"]({
+    token: "admin-token",
+    to: "team:alpha",
+    from: "channel:console:team-chat-alpha",
+    text: "hello team",
+    mentions: ["alice"],
+  })) as { ids: string[] };
+
+  assert.deepEqual(result.ids, ["env-1"]);
+  assert.equal(routed.length, 1);
+  assert.equal(routed[0]!.to, "agent:alice:team:alpha");
+  const metadata = routed[0]!.metadata as Record<string, unknown> | undefined;
+  assert.equal(metadata?.origin, "console");
+  assert.deepEqual(metadata?.mentions, ["alice"]);
+  assert.equal(metadata?.chatScope, "team:alpha");
+});
+
+test("envelope.send with admin token and team destination with @all mention fans out to all members", async () => {
+  const alice = makeAgent("alice");
+  const bob = makeAgent("bob");
+  const routed: CreateEnvelopeInput[] = [];
+  let envCounter = 0;
+  const ctx = makeAdminContext({
+    knownAgents: [alice, bob],
+    teams: [{ name: "alpha", members: ["alice", "bob"] }],
+    routeEnvelope: async (input) => {
+      envCounter++;
+      routed.push(input);
+      return {
+        id: `env-${envCounter}`,
+        from: input.from,
+        to: input.to,
+        fromBoss: input.fromBoss ?? false,
+        content: input.content,
+        priority: input.priority,
+        status: "pending",
+        createdAt: Date.now(),
+        metadata: input.metadata,
+      };
+    },
+  });
+  const handlers = createEnvelopeHandlers(ctx);
+
+  const result = (await handlers["envelope.send"]({
+    token: "admin-token",
+    to: "team:alpha",
+    from: "channel:console:team-chat-alpha",
+    text: "hello everyone",
+    mentions: ["@all"],
+  })) as { ids: string[] };
+
+  assert.deepEqual(result.ids, ["env-1", "env-2"]);
+  assert.equal(routed.length, 2);
+  assert.deepEqual(routed.map((item) => item.to), ["agent:alice:team:alpha", "agent:bob:team:alpha"]);
+});
+
+test("envelope.send with admin token and team destination without mentions rejects", async () => {
+  const alice = makeAgent("alice");
+  const ctx = makeAdminContext({
+    knownAgents: [alice],
+    teams: [{ name: "alpha", members: ["alice"] }],
+  });
+  const handlers = createEnvelopeHandlers(ctx);
+
+  await assertRpcError(
+    () =>
+      handlers["envelope.send"]({
+        token: "admin-token",
+        to: "team:alpha",
+        from: "channel:console:team-chat-alpha",
+        text: "hello",
+      }),
+    RPC_ERRORS.INVALID_PARAMS,
+    "Team messages require at least one mention"
+  );
+});
+
+test("envelope.send with admin token and team destination with invalid mention rejects", async () => {
+  const alice = makeAgent("alice");
+  const ctx = makeAdminContext({
+    knownAgents: [alice],
+    teams: [{ name: "alpha", members: ["alice"] }],
+  });
+  const handlers = createEnvelopeHandlers(ctx);
+
+  await assertRpcError(
+    () =>
+      handlers["envelope.send"]({
+        token: "admin-token",
+        to: "team:alpha",
+        from: "channel:console:team-chat-alpha",
+        text: "hello",
+        mentions: ["ghost"],
+      }),
+    RPC_ERRORS.INVALID_PARAMS,
+    "Invalid mention: 'ghost' is not a member of team"
+  );
+});
+
+test("envelope.send with agent token to team still works without mentions", async () => {
+  const sender = makeAgent("sender");
+  const alice = makeAgent("alice");
+  const bob = makeAgent("bob");
+  const routed: CreateEnvelopeInput[] = [];
+  const ctx = makeContext({
+    sender,
+    knownAgents: [sender, alice, bob],
+    teams: [{ name: "alpha", members: ["sender", "alice", "bob"] }],
+    routeEnvelope: async (input) => {
+      routed.push(input);
+      return {
+        id: `env-${routed.length}`,
+        from: input.from,
+        to: input.to,
+        fromBoss: false,
+        content: input.content,
+        priority: input.priority,
+        status: "pending",
+        createdAt: Date.now(),
+        metadata: input.metadata,
+      };
+    },
+  });
+  const handlers = createEnvelopeHandlers(ctx);
+
+  const result = (await handlers["envelope.send"]({
+    token: sender.token,
+    to: "team:alpha",
+    text: "hello team",
+  })) as { ids: string[] };
+
+  assert.deepEqual(result.ids, ["env-1", "env-2"]);
+  assert.deepEqual(routed.map((item) => item.to), ["agent:alice:team:alpha", "agent:bob:team:alpha"]);
 });

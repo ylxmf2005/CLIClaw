@@ -72,6 +72,7 @@ export function createEnvelopeHandlers(ctx: DaemonContext): RpcMethodRegistry {
           parseMode: p.parseMode,
           replyToEnvelopeId: p.replyToEnvelopeId,
           origin: p.origin,
+          mentions: p.mentions,
         },
       });
     }
@@ -92,6 +93,7 @@ export function createEnvelopeHandlers(ctx: DaemonContext): RpcMethodRegistry {
         parseMode: p.parseMode,
         replyToEnvelopeId: p.replyToEnvelopeId,
         origin: p.origin,
+        mentions: p.mentions,
       },
     });
   };

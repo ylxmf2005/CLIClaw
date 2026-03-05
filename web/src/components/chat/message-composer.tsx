@@ -1,12 +1,15 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
-import { ArrowUp, Paperclip, Clock, X, Eye, EyeOff } from "lucide-react";
+import { ArrowUp, AtSign, Paperclip, Clock, X, Eye, EyeOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SchedulePopover } from "./schedule-popover";
 import { MessageContent } from "@/components/shared/message-content";
 import { AttachmentBar } from "./attachment-bar";
 import { PlusMenu } from "./plus-menu";
+import { MentionBar } from "./mention-bar";
+import { MentionAutocomplete } from "./mention-autocomplete";
+import { isAllMention } from "@/lib/team-mentions";
 import type { AttachmentFile } from "./attachment-bar";
 
 // ── Types ──────────────────────────────────────────────────────────
@@ -16,6 +19,12 @@ export type { AttachmentFile } from "./attachment-bar";
 export interface SlashCommand {
   command: string;
   description: string;
+}
+
+export interface TeamModeProps {
+  teamMembers: string[];
+  mentions: string[];
+  onMentionsChange: (mentions: string[]) => void;
 }
 
 export interface MessageComposerProps {
@@ -29,6 +38,8 @@ export interface MessageComposerProps {
   onDraftChange?: (text: string) => void;
   /** Slash commands available for autocomplete. */
   slashCommands?: SlashCommand[];
+  /** Team mode configuration. When provided, enables mention bar and send gate. */
+  teamMode?: TeamModeProps;
 }
 
 // ── Constants ──────────────────────────────────────────────────────
@@ -84,6 +95,7 @@ export function MessageComposer({
   draft,
   onDraftChange,
   slashCommands,
+  teamMode,
 }: MessageComposerProps) {
   const [text, setText] = useState(draft ?? "");
   const [attachments, setAttachments] = useState<AttachmentFile[]>([]);
@@ -92,15 +104,21 @@ export function MessageComposer({
   const [showPreview, setShowPreview] = useState(false);
   const [slashFilter, setSlashFilter] = useState<string | null>(null);
   const [slashIndex, setSlashIndex] = useState(0);
+  const [showMentionAutocomplete, setShowMentionAutocomplete] = useState(false);
+  const [mentionFilter, setMentionFilter] = useState("");
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
+  const mentionBarRef = useRef<HTMLDivElement>(null);
   const dragCounterRef = useRef(0);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const textRef = useRef(draft ?? "");
   const attachmentsRef = useRef<AttachmentFile[]>([]);
   const sendLockedRef = useRef(false);
+
+  const isTeamMode = !!teamMode;
+  const hasMentions = teamMode ? teamMode.mentions.length > 0 : true;
 
   // Sync text when draft prop changes (conversation switch)
   useEffect(() => {
@@ -145,6 +163,60 @@ export function MessageComposer({
     const t = setTimeout(() => setError(null), 4000);
     return () => clearTimeout(t);
   }, [error]);
+
+  // ── Mention autocomplete ───────────────────────────────────────
+
+  const handleMentionSelect = useCallback(
+    (name: string) => {
+      if (!teamMode) return;
+
+      let newMentions: string[];
+      if (isAllMention(name)) {
+        // @all replaces all individual mentions
+        newMentions = ["@all"];
+      } else {
+        // Individual mention replaces @all
+        const withoutAll = teamMode.mentions.filter((m) => !isAllMention(m));
+        newMentions = [...withoutAll, name];
+      }
+
+      teamMode.onMentionsChange(newMentions);
+      setShowMentionAutocomplete(false);
+      setMentionFilter("");
+
+      // Clear any @ text from textarea
+      const currentText = textRef.current;
+      const atMatch = currentText.match(/@[A-Za-z0-9._-]*$/);
+      if (atMatch) {
+        const cleaned = currentText.slice(0, currentText.length - atMatch[0].length);
+        textRef.current = cleaned;
+        setText(cleaned);
+        saveDraft(cleaned);
+      }
+
+      textareaRef.current?.focus();
+    },
+    [teamMode, saveDraft]
+  );
+
+  const handleMentionRemove = useCallback(
+    (name: string) => {
+      if (!teamMode) return;
+      teamMode.onMentionsChange(teamMode.mentions.filter((m) => m !== name));
+    },
+    [teamMode]
+  );
+
+  const handleTriggerAutocomplete = useCallback(() => {
+    setMentionFilter("");
+    setShowMentionAutocomplete(true);
+    textareaRef.current?.focus();
+  }, []);
+
+  const handleDismissAutocomplete = useCallback(() => {
+    setShowMentionAutocomplete(false);
+    setMentionFilter("");
+  }, []);
 
   // ── Slash command autocomplete ──────────────────────────────────
 
@@ -205,6 +277,11 @@ export function MessageComposer({
   // ── Send ──────────────────────────────────────────────────────
 
   const hasContent = text.trim().length > 0 || attachments.length > 0;
+  // In team mode, also require mentions for non-slash-command messages
+  const isSlashCommand = text.trim().startsWith("/");
+  const canSend = isTeamMode
+    ? hasMentions && (hasContent || isSlashCommand)
+    : hasContent;
 
   const resetComposerState = useCallback(() => {
     textRef.current = "";
@@ -218,6 +295,8 @@ export function MessageComposer({
     onDraftChange?.("");
     setShowPreview(false);
     setSlashFilter(null);
+    setShowMentionAutocomplete(false);
+    setMentionFilter("");
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
@@ -234,6 +313,8 @@ export function MessageComposer({
     const currentAttachments = attachmentsRef.current;
     const hasCurrentContent = currentText.trim().length > 0 || currentAttachments.length > 0;
     if (!hasCurrentContent || disabled || sendLockedRef.current) return;
+    // In team mode, block send without mentions (unless it's handled by parent)
+    if (isTeamMode && !hasMentions) return;
     sendLockedRef.current = true;
 
     const textToSend = currentText.trim();
@@ -246,7 +327,7 @@ export function MessageComposer({
     } catch {
       releaseSendLock();
     }
-  }, [disabled, onSend, resetComposerState, releaseSendLock]);
+  }, [disabled, isTeamMode, hasMentions, onSend, resetComposerState, releaseSendLock]);
 
   const handleSchedule = useCallback(
     (date: Date) => {
@@ -254,6 +335,7 @@ export function MessageComposer({
       const currentAttachments = attachmentsRef.current;
       const hasCurrentContent = currentText.trim().length > 0 || currentAttachments.length > 0;
       if (!hasCurrentContent || disabled || sendLockedRef.current || !onScheduleSend) return;
+      if (isTeamMode && !hasMentions) return;
       sendLockedRef.current = true;
 
       const textToSend = currentText.trim();
@@ -265,13 +347,19 @@ export function MessageComposer({
         releaseSendLock();
       }
     },
-    [disabled, onScheduleSend, resetComposerState, releaseSendLock]
+    [disabled, isTeamMode, hasMentions, onScheduleSend, resetComposerState, releaseSendLock]
   );
 
   // ── Keyboard ──────────────────────────────────────────────────
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      // Mention autocomplete takes priority when visible
+      if (showMentionAutocomplete) {
+        // Let MentionAutocomplete's window keydown handler handle it
+        return;
+      }
+
       if (showSlash) {
         if (e.key === "ArrowDown") {
           e.preventDefault();
@@ -307,7 +395,7 @@ export function MessageComposer({
         handleSend();
       }
     },
-    [text, handleSend, showSlash, filteredCommands, slashIndex, acceptSlashCommand]
+    [text, handleSend, showSlash, showMentionAutocomplete, filteredCommands, slashIndex, acceptSlashCommand]
   );
 
   // ── Auto-resize ───────────────────────────────────────────────
@@ -318,10 +406,23 @@ export function MessageComposer({
     setText(value);
     saveDraft(value);
     updateSlashState(value);
+
+    // Detect @mention typing in team mode
+    if (isTeamMode) {
+      const atMatch = value.match(/@([A-Za-z0-9._-]*)$/);
+      if (atMatch) {
+        setShowMentionAutocomplete(true);
+        setMentionFilter(atMatch[1] ?? "");
+      } else if (showMentionAutocomplete && !value.includes("@")) {
+        setShowMentionAutocomplete(false);
+        setMentionFilter("");
+      }
+    }
+
     const el = e.target;
     el.style.height = "auto";
     el.style.height = Math.min(el.scrollHeight, 160) + "px";
-  }, [saveDraft, updateSlashState]);
+  }, [saveDraft, updateSlashState, isTeamMode, showMentionAutocomplete]);
 
   // ── Clipboard paste ───────────────────────────────────────────
 
@@ -455,6 +556,18 @@ export function MessageComposer({
         {/* Attachment preview bar */}
         {attachments.length > 0 && <AttachmentBar attachments={attachments} onRemove={removeAttachment} />}
 
+        {/* Mention autocomplete dropdown (team mode) */}
+        {isTeamMode && showMentionAutocomplete && (
+          <MentionAutocomplete
+            members={teamMode.teamMembers}
+            currentMentions={teamMode.mentions}
+            filter={mentionFilter}
+            onSelect={handleMentionSelect}
+            onDismiss={handleDismissAutocomplete}
+            anchorRef={mentionBarRef}
+          />
+        )}
+
         {/* Slash command autocomplete popup */}
         {showSlash && (
           <div className="mb-1 overflow-hidden rounded-lg border border-border bg-background shadow-lg">
@@ -480,15 +593,41 @@ export function MessageComposer({
           </div>
         )}
 
+        {/* Mention chips (team mode, only shown when mentions selected) */}
+        {isTeamMode && (
+          <div ref={mentionBarRef}>
+            <MentionBar
+              mentions={teamMode.mentions}
+              onRemove={handleMentionRemove}
+              onTriggerAutocomplete={handleTriggerAutocomplete}
+              teamMembers={teamMode.teamMembers}
+              disabled={disabled}
+            />
+          </div>
+        )}
+
         {/* Main input row */}
         <div
           className={cn(
             "flex items-end gap-2 rounded-xl border bg-background px-3 py-2 transition-colors",
-            hasContent ? "border-cyan-glow/30" : "border-border"
+            canSend ? "border-cyan-glow/30" : "border-border"
           )}
         >
           {/* Plus menu (attach files, etc.) */}
           <PlusMenu disabled={disabled} onAddFiles={openFilePicker} />
+
+          {/* @ mention button (team mode, inline) */}
+          {isTeamMode && (
+            <button
+              type="button"
+              onClick={handleTriggerAutocomplete}
+              disabled={disabled}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-400/50"
+              aria-label="Mention a team member"
+            >
+              <AtSign className="h-4 w-4" />
+            </button>
+          )}
 
           {/* Hidden file input */}
           <input
@@ -533,7 +672,7 @@ export function MessageComposer({
           <SchedulePopover onSchedule={handleSchedule}>
             <button
               type="button"
-              disabled={disabled || !hasContent}
+              disabled={disabled || !canSend}
               aria-label="Schedule message"
               className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40 focus-visible:ring-2 focus-visible:ring-cyan-400/50 focus-visible:outline-none"
             >
@@ -545,11 +684,11 @@ export function MessageComposer({
           <button
             type="button"
             onClick={handleSend}
-            disabled={!hasContent || disabled}
+            disabled={!canSend || disabled}
             aria-label="Send message"
             className={cn(
               "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-all focus-visible:ring-2 focus-visible:ring-cyan-400/50 focus-visible:outline-none",
-              hasContent
+              canSend
                 ? "bg-cyan-glow text-primary-foreground shadow-[0_0_12px_rgba(0,212,255,0.3)] hover:opacity-90"
                 : "bg-accent text-muted-foreground"
             )}

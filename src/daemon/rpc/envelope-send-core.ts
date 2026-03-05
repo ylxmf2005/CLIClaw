@@ -20,6 +20,7 @@ export interface EnvelopeSendCoreInput {
   replyToEnvelopeId?: string;
   origin?: EnvelopeOrigin;
   chatScope?: string;
+  mentions?: string[];
 }
 
 export interface EnvelopeSendCoreSingleResult {
@@ -324,12 +325,12 @@ export async function sendEnvelopeFromAgent(params: {
 
 /**
  * Send an envelope as the boss (admin token). Sets fromBoss: true.
- * Only supports agent destinations (not channel or team broadcast).
+ * Supports agent destinations and team destinations (when mentions provided).
  */
 export async function sendEnvelopeFromBoss(params: {
   ctx: DaemonContext;
   input: Omit<EnvelopeSendCoreInput, "chatScope">;
-}): Promise<EnvelopeSendCoreSingleResult> {
+}): Promise<EnvelopeSendCoreResult> {
   const p = params.input;
   if (typeof p.to !== "string" || !p.to.trim()) {
     rpcError(RPC_ERRORS.INVALID_PARAMS, "Invalid to");
@@ -346,7 +347,8 @@ export async function sendEnvelopeFromBoss(params: {
   if (
     destination.type !== "agent" &&
     destination.type !== "agent-new-chat" &&
-    destination.type !== "agent-chat"
+    destination.type !== "agent-chat" &&
+    destination.type !== "team"
   ) {
     rpcError(
       RPC_ERRORS.INVALID_PARAMS,
@@ -354,13 +356,7 @@ export async function sendEnvelopeFromBoss(params: {
     );
   }
 
-  const destAgent = params.ctx.db.getAgentByNameCaseInsensitive(destination.agentName);
-  if (!destAgent) {
-    rpcError(RPC_ERRORS.NOT_FOUND, "Agent not found");
-  }
-
   const metadata: Record<string, unknown> = {};
-  let to: string;
   let deliverAt: number | undefined;
   let interruptNow = false;
   let fromBoss = true;
@@ -384,6 +380,86 @@ export async function sendEnvelopeFromBoss(params: {
     metadata.origin = "console";
   }
 
+  // --- Team destination with mentions ---
+  if (destination.type === "team") {
+    // Console-origin team sends require mentions
+    if (metadata.origin === "console") {
+      if (!Array.isArray(p.mentions) || p.mentions.length === 0) {
+        rpcError(
+          RPC_ERRORS.INVALID_PARAMS,
+          "Team messages require at least one mention"
+        );
+      }
+    } else if (!Array.isArray(p.mentions) || p.mentions.length === 0) {
+      rpcError(
+        RPC_ERRORS.INVALID_PARAMS,
+        "Admin can only send to agent destinations (agent:<name>:<chatId> or agent:<name>:new)"
+      );
+    }
+
+    const team = params.ctx.db.getTeamByNameCaseInsensitive(destination.teamName);
+    if (!team) {
+      rpcError(RPC_ERRORS.NOT_FOUND, "Team not found");
+    }
+    if (team.status !== "active") {
+      rpcError(RPC_ERRORS.INVALID_PARAMS, "Cannot send to archived team");
+    }
+
+    const allMembers = params.ctx.db.listTeamMemberAgentNames(team.name);
+
+    let recipients: string[];
+    if (p.mentions.length === 1 && p.mentions[0] === "@all") {
+      recipients = [...new Set(allMembers)];
+    } else {
+      // Validate each mention against team members
+      recipients = [];
+      for (const mention of p.mentions) {
+        const found = allMembers.find(
+          (name) => name.toLowerCase() === mention.toLowerCase()
+        );
+        if (!found) {
+          rpcError(
+            RPC_ERRORS.INVALID_PARAMS,
+            `Invalid mention: '${mention}' is not a member of team '${team.name}'`
+          );
+        }
+        if (!recipients.includes(found)) {
+          recipients.push(found);
+        }
+      }
+    }
+
+    if (recipients.length === 0) {
+      return { ids: [], noRecipients: true };
+    }
+
+    const teamChatScope = computeTeamChatId(team.name);
+    const ids: string[] = [];
+    for (const recipient of recipients) {
+      const sent = await sendEnvelopeFromBoss({
+        ctx: params.ctx,
+        input: {
+          ...p,
+          to: `agent:${recipient}:${teamChatScope}`,
+          // Pass mentions through for metadata stamping, but not as fan-out trigger
+          // (the `to` is now an agent-chat destination, not team)
+        },
+      });
+      if (!("id" in sent)) {
+        rpcError(RPC_ERRORS.INTERNAL_ERROR, "Unexpected team broadcast result");
+      }
+      ids.push(sent.id);
+    }
+    return { ids };
+  }
+
+  // --- Agent destination ---
+  const destAgent = params.ctx.db.getAgentByNameCaseInsensitive(destination.agentName);
+  if (!destAgent) {
+    rpcError(RPC_ERRORS.NOT_FOUND, "Agent not found");
+  }
+
+  let to: string;
   if (destination.type === "agent-new-chat") {
     const chatId = createNewAgentChatId();
     metadata.chatScope = chatId;
@@ -396,6 +472,11 @@ export async function sendEnvelopeFromBoss(params: {
       RPC_ERRORS.INVALID_PARAMS,
       "Invalid to (agent destinations must use agent:<name>:new or agent:<name>:<chat-id>)"
     );
+  }
+
+  // Stamp mentions on metadata when present (from team fan-out)
+  if (Array.isArray(p.mentions) && p.mentions.length > 0) {
+    metadata.mentions = p.mentions;
   }
 
   if (p.interruptNow !== undefined) {

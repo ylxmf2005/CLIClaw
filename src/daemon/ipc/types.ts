@@ -65,6 +65,7 @@ export interface EnvelopeSendParams {
   parseMode?: "plain" | "markdownv2" | "html";
   replyToEnvelopeId?: string;
   origin?: "cli" | "internal";
+  mentions?: string[];
 }
 
 export interface EnvelopeSendResult {

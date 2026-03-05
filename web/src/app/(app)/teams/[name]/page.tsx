@@ -5,12 +5,20 @@ import { useAppState } from "@/providers/app-state-provider";
 import { useEffect, useState, useCallback } from "react";
 import { MessageList } from "@/components/chat/message-list";
 import { MessageComposer } from "@/components/chat/message-composer";
+import type { SlashCommand } from "@/components/chat/message-composer";
 import { Button } from "@/components/ui/button";
 import { Users, UserPlus, Settings, X } from "lucide-react";
 import * as api from "@/lib/api";
-import { resolveTeamRecipients } from "@/lib/team-mentions";
+import { buildMentionsPayload } from "@/lib/team-mentions";
 import type { Envelope, TeamMember } from "@/lib/types";
 import { useToast } from "@/providers/toast-provider";
+
+const TEAM_SLASH_COMMANDS: SlashCommand[] = [
+  { command: "status", description: "Check agent status" },
+  { command: "abort", description: "Abort agent's current run" },
+  { command: "refresh", description: "Refresh agent session" },
+  { command: "interrupt", description: "Interrupt with priority message" },
+];
 
 export default function TeamChatPage() {
   const { name } = useParams<{ name: string }>();
@@ -18,15 +26,17 @@ export default function TeamChatPage() {
   const { toast } = useToast();
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [showMembers, setShowMembers] = useState(false);
+  const [mentions, setMentions] = useState<string[]>([]);
 
   const team = state.teams.find((t) => t.name === name);
   const address = `team:${name}`;
   const teamChatScope = `team:${name}`;
   const teamConsoleAddress = `channel:console:team-chat-${name}`;
   const envelopes = state.envelopes[address] || [];
+  const memberNames = members.map((m) => m.agentName);
 
-  const loadTeamEnvelopes = useCallback(async (memberNames: string[]) => {
-    if (memberNames.length === 0) {
+  const loadTeamEnvelopes = useCallback(async (memberAgentNames: string[]) => {
+    if (memberAgentNames.length === 0) {
       dispatch({ type: "SET_ENVELOPES", key: address, envelopes: [] });
       return;
     }
@@ -38,7 +48,7 @@ export default function TeamChatPage() {
           status: "done",
           limit: 100,
         }),
-        ...memberNames.map((agentName) =>
+        ...memberAgentNames.map((agentName) =>
           api.listEnvelopes({
             to: `agent:${agentName}`,
             chatId: teamChatScope,
@@ -83,39 +93,88 @@ export default function TeamChatPage() {
     };
   }, [name, address, dispatch, loadTeamEnvelopes]);
 
+  // Reset mentions when switching teams
+  useEffect(() => {
+    setMentions([]);
+  }, [name]);
+
   const handleSent = useCallback(() => {
     void loadTeamEnvelopes(members.map((m) => m.agentName));
   }, [loadTeamEnvelopes, members]);
 
-  const sendToTeamRecipients = useCallback(
+  // ── Slash command execution ──────────────────────────────────
+
+  const executeSlashCommand = useCallback(
+    async (command: string, targetAgents: string[]) => {
+      const results: string[] = [];
+      for (const agentName of targetAgents) {
+        try {
+          switch (command) {
+            case "status": {
+              const status = await api.getAgentStatus(agentName);
+              results.push(`${agentName}: ${status.status.agentState} (${status.status.agentHealth})`);
+              break;
+            }
+            case "abort": {
+              const result = await api.abortAgent(agentName);
+              results.push(`${agentName}: ${result.cancelledRun ? "run cancelled" : "no active run"}`);
+              break;
+            }
+            case "refresh": {
+              await api.refreshAgent(agentName);
+              results.push(`${agentName}: refreshed`);
+              break;
+            }
+            case "interrupt": {
+              results.push(`${agentName}: use interrupt with a message`);
+              break;
+            }
+            default:
+              results.push(`${agentName}: unknown command /${command}`);
+          }
+        } catch (err) {
+          results.push(`${agentName}: ${err instanceof Error ? err.message : "failed"}`);
+        }
+      }
+      toast({
+        title: `/${command}`,
+        description: results.join("\n"),
+      });
+    },
+    [toast]
+  );
+
+  // ── Send handler ──────────────────────────────────────────────
+
+  const sendTeamMessage = useCallback(
     async (messageText: string, deliverAt?: string) => {
-      const memberNames = members.map((m) => m.agentName);
-      const resolution = resolveTeamRecipients(messageText, memberNames);
+      if (mentions.length === 0) return;
 
-      if (resolution.kind === "unknown") {
-        toast({
-          title: "Unknown team member",
-          description: `@${resolution.mentioned} is not in team ${name}`,
-          variant: "error",
-        });
+      const text = messageText.trim();
+
+      // Handle slash commands
+      const slashMatch = text.match(/^\/([a-z]+)$/i);
+      if (slashMatch) {
+        const command = slashMatch[1]!.toLowerCase();
+        const isAllMention = mentions.some((m) => m.toLowerCase() === "@all" || m.toLowerCase() === "all");
+        const targetAgents = isAllMention ? memberNames : mentions;
+        await executeSlashCommand(command, targetAgents);
+        setMentions([]);
         return;
       }
 
-      if (resolution.recipients.length === 0) {
-        return;
-      }
+      if (!text) return;
 
       try {
-        await Promise.all(
-          resolution.recipients.map((agentName) =>
-            api.sendEnvelope({
-              to: `agent:${agentName}:${teamChatScope}`,
-              from: teamConsoleAddress,
-              text: resolution.text,
-              ...(deliverAt ? { deliverAt } : {}),
-            }),
-          ),
-        );
+        const mentionsPayload = buildMentionsPayload(mentions);
+        await api.sendEnvelope({
+          to: `team:${name}`,
+          from: teamConsoleAddress,
+          text,
+          mentions: mentionsPayload,
+          ...(deliverAt ? { deliverAt } : {}),
+        });
+        setMentions([]);
         handleSent();
       } catch (err) {
         toast({
@@ -125,7 +184,7 @@ export default function TeamChatPage() {
         });
       }
     },
-    [members, name, teamChatScope, teamConsoleAddress, handleSent, toast],
+    [mentions, memberNames, name, teamConsoleAddress, handleSent, toast, executeSlashCommand],
   );
 
   if (!team) {
@@ -168,19 +227,25 @@ export default function TeamChatPage() {
           <MessageComposer
             onSend={(text) => {
               if (text) {
-                void sendToTeamRecipients(text);
+                void sendTeamMessage(text);
               }
               dispatch({ type: "CLEAR_DRAFT", key: address });
             }}
             onScheduleSend={(text, scheduledAt) => {
               if (text) {
-                void sendToTeamRecipients(text, scheduledAt.toISOString());
+                void sendTeamMessage(text, scheduledAt.toISOString());
               }
               dispatch({ type: "CLEAR_DRAFT", key: address });
             }}
-            placeholder={`Message ${team.name}...`}
+            placeholder={mentions.length > 0 ? `Message ${team.name}...` : `Use @ to mention members or @all`}
             draft={state.drafts[address]}
             onDraftChange={(text) => dispatch({ type: "SET_DRAFT", key: address, text })}
+            slashCommands={TEAM_SLASH_COMMANDS}
+            teamMode={{
+              teamMembers: memberNames,
+              mentions,
+              onMentionsChange: setMentions,
+            }}
           />
         </div>
 
