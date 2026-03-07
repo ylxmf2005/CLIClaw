@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { CLICLAW_DIR_ENV } from "./env.js";
 import {
   DEFAULT_AGENTS_DIRNAME,
+  DEFAULT_BOSSES_DIRNAME,
   DEFAULT_DAEMON_DIRNAME,
   DEFAULT_DB_FILENAME,
   DEFAULT_MEDIA_DIRNAME,
@@ -20,22 +21,31 @@ function expandTilde(p: string): string {
   return p;
 }
 
-function resolveRootDirFromEnv(): { ok: true; dir: string } | { ok: false; error: string } {
-  const raw = (process.env[CLICLAW_DIR_ENV] ?? "").trim();
-  if (!raw) return { ok: true, dir: getDefaultCliClawDir() };
-
+function resolveRootDirFromEnvVar(envName: string): { ok: true; dir: string } | { ok: false; error: string } | null {
+  const raw = (process.env[envName] ?? "").trim();
+  if (!raw) return null;
   const expanded = expandTilde(raw);
   if (!path.isAbsolute(expanded)) {
-    return { ok: false, error: `Invalid ${CLICLAW_DIR_ENV} (must be an absolute path or start with ~): ${raw}` };
+    return { ok: false, error: `Invalid ${envName} (must be an absolute path or start with ~): ${raw}` };
   }
-
   return { ok: true, dir: expanded };
+}
+
+function resolveRootDirFromEnv(): { ok: true; dir: string } | { ok: false; error: string } {
+  const modern = resolveRootDirFromEnvVar(CLICLAW_DIR_ENV);
+  if (modern) return modern;
+  return { ok: true, dir: getDefaultCliClawDir() };
+}
+
+export function resolveCliClawDbPath(daemonDir: string): string {
+  return path.join(daemonDir, DEFAULT_DB_FILENAME);
 }
 
 export interface CliClawPaths {
   rootDir: string;
   daemonDir: string;
   agentsDir: string;
+  bossesDir: string;
   mediaDir: string;
   dbPath: string;
   socketPath: string;
@@ -57,8 +67,9 @@ export function getCliClawPaths(): CliClawPaths {
     rootDir,
     daemonDir,
     agentsDir: path.join(rootDir, DEFAULT_AGENTS_DIRNAME),
+    bossesDir: path.join(rootDir, DEFAULT_BOSSES_DIRNAME),
     mediaDir: path.join(rootDir, DEFAULT_MEDIA_DIRNAME),
-    dbPath: path.join(daemonDir, DEFAULT_DB_FILENAME),
+    dbPath: resolveCliClawDbPath(daemonDir),
     socketPath: path.join(daemonDir, DEFAULT_SOCKET_FILENAME),
     pidPath: path.join(daemonDir, DEFAULT_PID_FILENAME),
   };

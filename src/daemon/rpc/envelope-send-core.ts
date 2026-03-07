@@ -74,12 +74,13 @@ export async function sendEnvelopeFromAgent(params: {
   }
 
   if (p.origin !== undefined) {
-    if (p.origin !== "cli" && p.origin !== "internal") {
+    if (p.origin !== "cli" && p.origin !== "internal" && p.origin !== "console") {
       rpcError(RPC_ERRORS.INVALID_PARAMS, "Invalid origin");
     }
     origin = p.origin;
   }
   metadata.origin = origin;
+  metadata.fromName = params.senderAgent.name;
 
   if (interruptNow && p.deliverAt !== undefined) {
     rpcError(RPC_ERRORS.INVALID_PARAMS, "interrupt-now cannot be used with deliver-at");
@@ -323,5 +324,5 @@ export async function sendEnvelopeFromAgent(params: {
   }
 }
 
-// sendEnvelopeFromBoss is in envelope-send-boss.ts
-export { sendEnvelopeFromBoss } from "./envelope-send-boss.js";
+// human-token send helpers are in envelope-send-boss.ts
+export { sendEnvelopeFromBoss, sendEnvelopeFromHuman } from "./envelope-send-boss.js";

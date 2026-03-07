@@ -724,11 +724,112 @@ function LiveSettingsPanel() {
   const { theme, toggleTheme } = useTheme();
   const { status: wsStatus } = useWebSocket();
   const isConnected = wsStatus === "connected";
-  const { logout } = useAuth();
+  const { logout, identity } = useAuth();
+  const { state } = useAppState();
   const router = useRouter();
+  const [profileTokenName, setProfileTokenName] = useState<string>("");
+  const [profileName, setProfileName] = useState("");
+  const [profileVersion, setProfileVersion] = useState("1");
+  const [profileContent, setProfileContent] = useState("");
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileOptions, setProfileOptions] = useState<Array<{
+    tokenName: string;
+    name: string;
+    role: "admin" | "user";
+  }>>([]);
+  const [selectedSoulAgent, setSelectedSoulAgent] = useState<string>("");
+  const [soulVersion, setSoulVersion] = useState("1");
+  const [soulContent, setSoulContent] = useState("");
+  const [savingSoul, setSavingSoul] = useState(false);
+
+  useEffect(() => {
+    if (!identity) return;
+
+    const initialTokenName = identity.tokenName;
+    setProfileTokenName(initialTokenName);
+
+    void api.getBossProfile(initialTokenName)
+      .then(({ profile }) => {
+        setProfileName(profile.name);
+        setProfileVersion(profile.version);
+        setProfileContent(profile.content);
+      })
+      .catch(() => {});
+
+    if (identity.role === "admin") {
+      void api.listBossProfiles()
+        .then((res) => {
+          const options = res.profiles
+            .filter((p) => !p.error)
+            .map((p) => ({
+              tokenName: p.tokenName,
+              name: p.name,
+              role: p.role,
+            }));
+          setProfileOptions(options);
+        })
+        .catch(() => {});
+    } else {
+      setProfileOptions([]);
+    }
+  }, [identity?.tokenName, identity?.role]);
+
+  useEffect(() => {
+    if (!profileTokenName) return;
+    void api.getBossProfile(profileTokenName)
+      .then(({ profile }) => {
+        setProfileName(profile.name);
+        setProfileVersion(profile.version);
+        setProfileContent(profile.content);
+      })
+      .catch(() => {});
+  }, [profileTokenName]);
+
+  useEffect(() => {
+    const firstAgent = state.agents[0]?.name ?? "";
+    if (selectedSoulAgent || !firstAgent) return;
+    setSelectedSoulAgent(firstAgent);
+  }, [state.agents, selectedSoulAgent]);
+
+  useEffect(() => {
+    if (!selectedSoulAgent) return;
+    void api.getAgentSoul(selectedSoulAgent)
+      .then(({ soul }) => {
+        setSoulVersion(soul.version);
+        setSoulContent(soul.content);
+      })
+      .catch(() => {});
+  }, [selectedSoulAgent]);
+
+  const saveBossProfile = useCallback(async () => {
+    if (!profileTokenName) return;
+    setSavingProfile(true);
+    try {
+      await api.updateBossProfile(profileTokenName, {
+        name: profileName,
+        version: profileVersion,
+        content: profileContent,
+      });
+    } finally {
+      setSavingProfile(false);
+    }
+  }, [profileTokenName, profileName, profileVersion, profileContent]);
+
+  const saveSoul = useCallback(async () => {
+    if (!selectedSoulAgent) return;
+    setSavingSoul(true);
+    try {
+      await api.updateAgentSoul(selectedSoulAgent, {
+        version: soulVersion,
+        content: soulContent,
+      });
+    } finally {
+      setSavingSoul(false);
+    }
+  }, [selectedSoulAgent, soulVersion, soulContent]);
 
   return (
-    <div className="flex flex-col gap-2 p-3">
+    <div className="flex flex-col gap-3 p-3">
       <div className={cn(
         "flex items-center gap-2.5 rounded-lg border p-3",
         isConnected ? "border-emerald-signal/20 bg-emerald-signal/5" : "border-rose-alert/20 bg-rose-alert/5"
@@ -740,6 +841,95 @@ function LiveSettingsPanel() {
         </div>
         <span className={`h-2 w-2 rounded-full ${isConnected ? "bg-emerald-signal pulse-emerald" : "bg-rose-alert"}`} />
       </div>
+
+      {identity && (
+        <div className="rounded-lg border border-sidebar-border bg-sidebar-accent/40 p-3 text-xs">
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Current Identity</div>
+          <div className="mt-1 font-medium text-foreground">{identity.displayName}</div>
+          <div className="text-[11px] text-muted-foreground">
+            {identity.tokenName} · {identity.role}
+          </div>
+        </div>
+      )}
+
+      <div className="rounded-lg border border-sidebar-border bg-sidebar-accent/30 p-3 space-y-2">
+        <div className="text-[10px] uppercase tracking-wider text-muted-foreground">BOSS.md</div>
+        {identity?.role === "admin" && profileOptions.length > 0 && (
+          <select
+            value={profileTokenName}
+            onChange={(e) => setProfileTokenName(e.target.value)}
+            className="h-8 w-full rounded border border-border bg-input px-2 text-xs text-foreground"
+          >
+            {profileOptions.map((option) => (
+              <option key={option.tokenName} value={option.tokenName}>
+                {option.name} ({option.tokenName})
+              </option>
+            ))}
+          </select>
+        )}
+        <input
+          value={profileName}
+          onChange={(e) => setProfileName(e.target.value)}
+          placeholder="Display name"
+          className="h-8 w-full rounded border border-border bg-input px-2 text-xs text-foreground"
+        />
+        <input
+          value={profileVersion}
+          onChange={(e) => setProfileVersion(e.target.value)}
+          placeholder="Version"
+          className="h-8 w-full rounded border border-border bg-input px-2 text-xs text-foreground"
+        />
+        <textarea
+          value={profileContent}
+          onChange={(e) => setProfileContent(e.target.value)}
+          rows={5}
+          placeholder="BOSS.md content"
+          className="w-full rounded border border-border bg-input px-2 py-2 text-xs text-foreground"
+        />
+        <button
+          onClick={saveBossProfile}
+          disabled={savingProfile || !profileTokenName}
+          className="h-8 w-full rounded bg-cyan-glow text-xs font-medium text-primary-foreground disabled:opacity-50"
+        >
+          {savingProfile ? "Saving..." : "Save BOSS.md"}
+        </button>
+      </div>
+
+      <div className="rounded-lg border border-sidebar-border bg-sidebar-accent/30 p-3 space-y-2">
+        <div className="text-[10px] uppercase tracking-wider text-muted-foreground">SOUL.md</div>
+        <select
+          value={selectedSoulAgent}
+          onChange={(e) => setSelectedSoulAgent(e.target.value)}
+          className="h-8 w-full rounded border border-border bg-input px-2 text-xs text-foreground"
+        >
+          {state.agents.map((agent) => (
+            <option key={agent.name} value={agent.name}>
+              {agent.name}
+            </option>
+          ))}
+        </select>
+        <input
+          value={soulVersion}
+          onChange={(e) => setSoulVersion(e.target.value)}
+          placeholder="Version"
+          className="h-8 w-full rounded border border-border bg-input px-2 text-xs text-foreground"
+        />
+        <textarea
+          value={soulContent}
+          onChange={(e) => setSoulContent(e.target.value)}
+          rows={4}
+          placeholder="SOUL.md content"
+          className="w-full rounded border border-border bg-input px-2 py-2 text-xs text-foreground"
+        />
+        <button
+          onClick={saveSoul}
+          disabled={savingSoul || !selectedSoulAgent}
+          className="h-8 w-full rounded bg-cyan-glow text-xs font-medium text-primary-foreground disabled:opacity-50"
+        >
+          {savingSoul ? "Saving..." : "Save SOUL.md"}
+        </button>
+      </div>
+
       <button
         onClick={toggleTheme}
         aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}

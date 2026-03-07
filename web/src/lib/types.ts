@@ -149,6 +149,14 @@ export interface SetupCheck {
   };
 }
 
+export interface AuthIdentity {
+  token: string;
+  tokenName: string;
+  role: "admin" | "user" | "agent";
+  displayName: string;
+  fromBoss: boolean;
+}
+
 // WebSocket event types
 export type WsEventType =
   | "envelope.new"
@@ -165,6 +173,7 @@ export type WsEventType =
   | "run.started"
   | "run.completed"
   | "console.message"
+  | "session.deleted"
   | "snapshot";
 
 export interface WsEvent {
@@ -206,7 +215,7 @@ export interface AgentSession {
 export interface SessionBinding {
   adapterType: string;
   chatId: string;
-  createdAt: number;
+  updatedAt: number;
 }
 
 export interface ChatSettings {

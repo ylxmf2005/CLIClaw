@@ -347,6 +347,9 @@ export function createTeamHandlers(ctx: DaemonContext): RpcMethodRegistry {
           "Admin tokens cannot send envelopes (use an agent token or send via a channel adapter)"
         );
       }
+      if (principal.kind !== "agent") {
+        rpcError(RPC_ERRORS.UNAUTHORIZED, "Access denied");
+      }
 
       if (typeof p.teamName !== "string" || !isValidTeamName(p.teamName.trim())) {
         rpcError(RPC_ERRORS.INVALID_PARAMS, TEAM_NAME_ERROR_MESSAGE);

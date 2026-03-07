@@ -8,10 +8,13 @@ import {
   DEFAULT_SESSION_SUMMARY_PER_SESSION_MAX_CHARS,
   DEFAULT_SESSION_SUMMARY_RECENT_DAYS,
 } from "./defaults.js";
+import { parseProfileMarkdown, serializeProfileMarkdown } from "./profile-markdown.js";
 import { parseSessionHistoryMarkdown } from "./session-history-markdown.js";
 import { assertValidAgentName } from "./validation.js";
 
 const MEMORY_FILENAME = "MEMORY.md";
+const SOUL_FILENAME = "SOUL.md";
+const SOUL_VERSION = "1";
 const DAILY_MEMORIES_DIRNAME = "memories";
 const DAILY_MEMORY_FILENAME_REGEX = /^\d{4}-\d{2}-\d{2}\.md$/;
 const HISTORY_DATE_DIRNAME_REGEX = /^\d{4}-\d{2}-\d{2}$/;
@@ -27,6 +30,10 @@ function getAgentInternalSpaceDir(cliclawDir: string, agentName: string): string
 
 function getAgentMemoryPath(cliclawDir: string, agentName: string): string {
   return path.join(getAgentInternalSpaceDir(cliclawDir, agentName), MEMORY_FILENAME);
+}
+
+function getAgentSoulPath(cliclawDir: string, agentName: string): string {
+  return path.join(getAgentInternalSpaceDir(cliclawDir, agentName), SOUL_FILENAME);
 }
 
 function getAgentDailyMemoriesDir(cliclawDir: string, agentName: string): string {
@@ -52,6 +59,7 @@ export function ensureAgentInternalSpaceLayout(params: {
 
     const dir = getAgentInternalSpaceDir(params.cliclawDir, params.agentName);
     const memoryPath = getAgentMemoryPath(params.cliclawDir, params.agentName);
+    const soulPath = getAgentSoulPath(params.cliclawDir, params.agentName);
 
     fs.mkdirSync(dir, { recursive: true });
 
@@ -67,6 +75,38 @@ export function ensureAgentInternalSpaceLayout(params: {
       const stat = fs.statSync(memoryPath);
       if (!stat.isFile()) {
         return { ok: false, error: `Expected file at ${memoryPath}` };
+      }
+    }
+
+    if (!fs.existsSync(soulPath)) {
+      fs.writeFileSync(
+        soulPath,
+        serializeProfileMarkdown({
+          frontmatter: {
+            version: SOUL_VERSION,
+          },
+          body: "",
+        }),
+        "utf8",
+      );
+    } else {
+      const stat = fs.statSync(soulPath);
+      if (!stat.isFile()) {
+        return { ok: false, error: `Expected file at ${soulPath}` };
+      }
+      const raw = fs.readFileSync(soulPath, "utf8");
+      const parsed = parseProfileMarkdown(raw);
+      if (!parsed || typeof parsed.frontmatter.version !== "string" || !parsed.frontmatter.version.trim()) {
+        fs.writeFileSync(
+          soulPath,
+          serializeProfileMarkdown({
+            frontmatter: {
+              version: SOUL_VERSION,
+            },
+            body: "",
+          }),
+          "utf8",
+        );
       }
     }
 
@@ -102,6 +142,78 @@ export function readAgentInternalMemorySnapshot(params: {
     );
 
     return { ok: true, note };
+  } catch (err) {
+    return { ok: false, error: getErrorMessage(err) };
+  }
+}
+
+export function readAgentInternalSoulSnapshot(params: {
+  cliclawDir: string;
+  agentName: string;
+}):
+  | { ok: true; version: string; note: string; path: string }
+  | { ok: false; error: string } {
+  try {
+    assertValidAgentName(params.agentName);
+
+    const ensured = ensureAgentInternalSpaceLayout(params);
+    if (!ensured.ok) return ensured;
+
+    const soulPath = getAgentSoulPath(params.cliclawDir, params.agentName);
+    const raw = fs.readFileSync(soulPath, "utf8");
+    const parsed = parseProfileMarkdown(raw);
+    if (!parsed) {
+      return { ok: false, error: `Invalid frontmatter in ${soulPath}` };
+    }
+    const version = (parsed.frontmatter.version ?? "").trim();
+    if (!version) {
+      return { ok: false, error: `Missing required frontmatter 'version' in ${soulPath}` };
+    }
+    return {
+      ok: true,
+      version,
+      note: parsed.body.trim(),
+      path: soulPath,
+    };
+  } catch (err) {
+    return { ok: false, error: getErrorMessage(err) };
+  }
+}
+
+export function writeAgentInternalSoul(params: {
+  cliclawDir: string;
+  agentName: string;
+  version: string;
+  note: string;
+}):
+  | { ok: true; version: string; note: string; path: string }
+  | { ok: false; error: string } {
+  try {
+    assertValidAgentName(params.agentName);
+    const version = params.version.trim();
+    if (!version) {
+      return { ok: false, error: "Missing required frontmatter field: version" };
+    }
+    const ensured = ensureAgentInternalSpaceLayout(params);
+    if (!ensured.ok) return ensured;
+    const soulPath = getAgentSoulPath(params.cliclawDir, params.agentName);
+    const note = params.note.trim();
+    fs.writeFileSync(
+      soulPath,
+      serializeProfileMarkdown({
+        frontmatter: {
+          version,
+        },
+        body: note,
+      }),
+      "utf8",
+    );
+    return {
+      ok: true,
+      version,
+      note,
+      path: soulPath,
+    };
   } catch (err) {
     return { ok: false, error: getErrorMessage(err) };
   }

@@ -1,5 +1,4 @@
 import * as fs from "node:fs";
-import * as path from "path";
 import { getDefaultConfig } from "../daemon/daemon.js";
 import { CliClawDatabase } from "../daemon/db/database.js";
 import type { PermissionLevel } from "../shared/permissions.js";
@@ -12,6 +11,7 @@ import {
 import { DEFAULT_AGENT_PERMISSION_LEVEL } from "../shared/defaults.js";
 import { getSettingsPath, readSettingsFile } from "../shared/settings-io.js";
 import type { Settings } from "../shared/settings.js";
+import { resolveCliClawDbPath } from "../shared/cliclaw-paths.js";
 
 export type Principal =
   | { kind: "admin"; level: "admin" }
@@ -59,7 +59,7 @@ export function authorizeCliOperation(operation: string, token: string): Princip
     return authorizeFromSettings(operation, token);
   }
 
-  const dbPath = path.join(config.daemonDir, "cliclaw.db");
+  const dbPath = resolveCliClawDbPath(config.daemonDir);
   const db = new CliClawDatabase(dbPath);
 
   try {

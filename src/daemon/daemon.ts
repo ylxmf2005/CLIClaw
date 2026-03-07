@@ -16,7 +16,7 @@ import type { RpcMethodRegistry } from "./ipc/types.js";
 import { RPC_ERRORS } from "./ipc/types.js";
 import type { ChatAdapter } from "../adapters/types.js";
 import { DEFAULT_AGENT_PERMISSION_LEVEL } from "../shared/defaults.js";
-import { getCliClawPaths } from "../shared/cliclaw-paths.js";
+import { getCliClawPaths, resolveCliClawDbPath } from "../shared/cliclaw-paths.js";
 import {
   DEFAULT_PERMISSION_POLICY,
   type PermissionLevel,
@@ -133,7 +133,7 @@ export class Daemon {
   private relayExecutor: RelayExecutor | null = null;
 
   constructor(private config: DaemonConfig = getDefaultConfig()) {
-    const dbPath = path.join(config.daemonDir, "cliclaw.db");
+    const dbPath = resolveCliClawDbPath(config.daemonDir);
     const socketPath = path.join(config.daemonDir, "daemon.sock");
 
     this.pidLock = new PidLock({ daemonDir: config.daemonDir });
@@ -206,8 +206,22 @@ export class Daemon {
   }
 
   private resolvePrincipal(token: string): Principal {
-    if (this.db.verifyAdminToken(token)) {
+    const user = this.db.resolveTokenUser(token);
+    if (user?.role === "admin") {
       return { kind: "admin", level: "admin" };
+    }
+    if (user?.role === "user") {
+      return {
+        kind: "user",
+        level: "restricted",
+        user: {
+          token: user.token,
+          tokenName: user.tokenName,
+          name: user.name,
+          role: user.role,
+          ...(user.agents ? { agents: user.agents } : {}),
+        },
+      };
     }
 
     const agent = this.db.findAgentByToken(token);

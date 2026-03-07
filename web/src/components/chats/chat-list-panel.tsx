@@ -200,7 +200,9 @@ export function ChatListPanel() {
                       s.bindings.some((b) => b.chatId === convo.chatId)
                     );
                     const adapterTypes = session
-                      ? session.bindings.map((b) => b.adapterType)
+                      ? session.bindings
+                          .filter((b) => b.chatId === convo.chatId)
+                          .map((b) => b.adapterType)
                       : [];
                     return (
                       <ChatListItem

@@ -26,11 +26,13 @@ function writeSettings(cliclawDir: string): void {
     tokens: [
       {
         name: "Ethan",
+        tokenName: "ethan",
         token: ADMIN_TOKEN,
         role: "admin",
       },
       {
         name: "PolyU_CLC",
+        tokenName: "polyu-clc",
         token: USER_TOKEN,
         role: "user",
         agents: ["molbot"],

@@ -24,6 +24,17 @@ import type { RelayExecutor } from "../../agent/executor-relay.js";
  */
 export type Principal =
   | { kind: "admin"; level: "admin" }
+  | {
+      kind: "user";
+      level: "restricted";
+      user: {
+        token: string;
+        tokenName: string;
+        name: string;
+        role: "admin" | "user";
+        agents?: string[];
+      };
+    }
   | { kind: "agent"; level: PermissionLevel; agent: Agent };
 
 /**

@@ -165,18 +165,27 @@ export class TelegramAdapter implements ChatAdapter {
   }
 
   private async callCommandApi<T>(label: string, action: () => Promise<T>): Promise<T | null> {
-    const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), TELEGRAM_COMMAND_API_TIMEOUT_MS));
-    const result = await Promise.race([
-      action().catch((err) => {
-        console.warn(`[${this.platform}] command api failed (${label}):`, err);
-        return null;
-      }),
-      timeout,
-    ]);
-    if (result === null) {
-      console.warn(`[${this.platform}] command api timed out (${label}) after ${TELEGRAM_COMMAND_API_TIMEOUT_MS}ms`);
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    const timeout = new Promise<null>((resolve) => {
+      timeoutId = setTimeout(() => resolve(null), TELEGRAM_COMMAND_API_TIMEOUT_MS);
+    });
+    try {
+      const result = await Promise.race([
+        action().catch((err) => {
+          console.warn(`[${this.platform}] command api failed (${label}):`, err);
+          return null;
+        }),
+        timeout,
+      ]);
+      if (result === null) {
+        console.warn(`[${this.platform}] command api timed out (${label}) after ${TELEGRAM_COMMAND_API_TIMEOUT_MS}ms`);
+      }
+      return result as T | null;
+    } finally {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
     }
-    return result as T | null;
   }
 
   private async sendCommandResponse(command: ChannelCommand, response: ChannelCommandResponse): Promise<void> {

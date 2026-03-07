@@ -13,6 +13,7 @@ import { registerSessionRoutes } from "./routes-sessions.js";
 import { registerUploadRoutes } from "./routes-upload.js";
 import { registerTeamRoutes } from "./routes-teams.js";
 import { registerCronRoutes } from "./routes-cron.js";
+import { registerProfileRoutes } from "./routes-profiles.js";
 
 /**
  * Create an HttpRouter with all routes registered.
@@ -28,6 +29,7 @@ export function createRoutes(rpc: RpcMethodRegistry, daemonCtx: DaemonContext): 
   registerUploadRoutes(router, daemonCtx);
   registerTeamRoutes(router, rpc);
   registerCronRoutes(router, rpc);
+  registerProfileRoutes(router, daemonCtx);
 
   return router;
 }

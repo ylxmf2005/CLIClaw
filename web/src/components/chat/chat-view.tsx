@@ -22,6 +22,8 @@ import {
   toggleRelay,
   getChatSettings,
   updateChatSettings,
+  getChatBossContext,
+  updateChatBossContext,
 } from "@/lib/api";
 import type { Envelope, ReasoningEffort } from "@/lib/types";
 import type { AttachmentFile } from "./attachment-bar";
@@ -36,6 +38,7 @@ export function ChatView() {
   const [detailSheetOpen, setDetailSheetOpen] = useState(false);
   const [chatModelOverride, setChatModelOverride] = useState<string | null>(null);
   const [chatReasoningOverride, setChatReasoningOverride] = useState<ReasoningEffort | null>(null);
+  const [useBossMd, setUseBossMd] = useState(true);
   const pendingChatSettingsSaveRef = useRef<Promise<void> | null>(null);
 
   // Load envelopes for selected chat
@@ -76,6 +79,7 @@ export function ChatView() {
     if (!selection) {
       setChatModelOverride(null);
       setChatReasoningOverride(null);
+      setUseBossMd(true);
       pendingChatSettingsSaveRef.current = null;
       return;
     }
@@ -83,6 +87,7 @@ export function ChatView() {
     let cancelled = false;
     setChatModelOverride(null);
     setChatReasoningOverride(null);
+    setUseBossMd(true);
     pendingChatSettingsSaveRef.current = null;
 
     getChatSettings(selection.agentName, selection.chatId)
@@ -90,6 +95,13 @@ export function ChatView() {
         if (cancelled) return;
         setChatModelOverride(result.modelOverride ?? null);
         setChatReasoningOverride(result.reasoningEffortOverride ?? null);
+      })
+      .catch(() => {});
+
+    getChatBossContext(selection.agentName, selection.chatId)
+      .then((result) => {
+        if (cancelled) return;
+        setUseBossMd(result.effectiveUseBoss);
       })
       .catch(() => {});
 
@@ -267,6 +279,25 @@ export function ChatView() {
     }
   }, [selection, relayAvailable, relayOn, relayKey, dispatch, toast]);
 
+  const handleToggleUseBossMd = useCallback(async () => {
+    if (!selection) return;
+    const next = !useBossMd;
+    setUseBossMd(next);
+    try {
+      const result = await updateChatBossContext(selection.agentName, selection.chatId, {
+        useBossOverride: next,
+      });
+      setUseBossMd(result.effectiveUseBoss);
+    } catch (err) {
+      setUseBossMd(!next);
+      toast({
+        title: "BOSS context toggle failed",
+        description: err instanceof Error ? err.message : "Could not update chat BOSS context",
+        variant: "error",
+      });
+    }
+  }, [selection, toast, useBossMd]);
+
   if (!selection) {
     return (
       <EmptyState
@@ -329,6 +360,8 @@ export function ChatView() {
         relayOn={relayOn}
         relayAvailable={relayAvailable}
         onToggleRelay={handleToggleRelay}
+        useBossMd={useBossMd}
+        onToggleUseBossMd={handleToggleUseBossMd}
       />
 
       <AgentDetailSheet

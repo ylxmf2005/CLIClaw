@@ -14,6 +14,7 @@ import {
   ensureAgentInternalSpaceLayout,
   readAgentInternalDailyMemorySnapshot,
   readAgentInternalMemorySnapshot,
+  readAgentInternalSoulSnapshot,
   readAgentInternalSessionSummarySnapshot,
 } from "../shared/internal-space.js";
 
@@ -36,6 +37,12 @@ export interface InstructionContext {
   boss?: {
     name?: string;
     adapterIds?: Record<string, string>;
+  };
+  bossMd?: {
+    enabled?: boolean;
+    snapshot?: string;
+    source?: string;
+    error?: string;
   };
   sessionSummaryConfig?: {
     recentDays: number;
@@ -78,8 +85,12 @@ export function generateSystemInstructions(ctx: InstructionContext): string {
   // Inject internal space MEMORY.md snapshot for this agent (best-effort; never prints token).
   const cliclawDir = ctx.cliclawDir ?? (promptContext.cliclaw as Record<string, unknown>).dir as string;
   const spaceContext = promptContext.internalSpace as Record<string, unknown>;
+  const bossMdContext = promptContext.bossMd as Record<string, unknown>;
   const ensured = ensureAgentInternalSpaceLayout({ cliclawDir, agentName: agent.name });
   if (!ensured.ok) {
+    spaceContext.soul = "";
+    spaceContext.soulFence = "```";
+    spaceContext.soulError = ensured.error;
     spaceContext.note = "";
     spaceContext.noteFence = "```";
     spaceContext.error = ensured.error;
@@ -90,6 +101,17 @@ export function generateSystemInstructions(ctx: InstructionContext): string {
     spaceContext.sessionSummariesFence = "```";
     spaceContext.sessionSummariesError = ensured.error;
   } else {
+    const soulSnapshot = readAgentInternalSoulSnapshot({ cliclawDir, agentName: agent.name });
+    if (soulSnapshot.ok) {
+      spaceContext.soul = soulSnapshot.note;
+      spaceContext.soulFence = chooseFence(soulSnapshot.note);
+      spaceContext.soulError = "";
+    } else {
+      spaceContext.soul = "";
+      spaceContext.soulFence = "```";
+      spaceContext.soulError = soulSnapshot.error;
+    }
+
     const snapshot = readAgentInternalMemorySnapshot({ cliclawDir, agentName: agent.name });
     if (snapshot.ok) {
       spaceContext.note = snapshot.note;
@@ -130,6 +152,19 @@ export function generateSystemInstructions(ctx: InstructionContext): string {
       spaceContext.sessionSummariesFence = "```";
       spaceContext.sessionSummariesError = sessionSummarySnapshot.error;
     }
+  }
+
+  const bossMdEnabled = ctx.bossMd?.enabled !== false;
+  bossMdContext.enabled = bossMdEnabled;
+  bossMdContext.source = ctx.bossMd?.source ?? "";
+  bossMdContext.error = ctx.bossMd?.error ?? "";
+  if (bossMdEnabled && typeof ctx.bossMd?.snapshot === "string" && ctx.bossMd.snapshot.trim()) {
+    const snapshot = ctx.bossMd.snapshot.trim();
+    bossMdContext.snapshot = snapshot;
+    bossMdContext.snapshotFence = chooseFence(snapshot);
+  } else {
+    bossMdContext.snapshot = "";
+    bossMdContext.snapshotFence = "```";
   }
 
   (promptContext.cliclaw as Record<string, unknown>).additionalContext =

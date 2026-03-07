@@ -85,6 +85,11 @@ export interface ConsoleMessagePayload {
   envelope: Envelope;
 }
 
+export interface SessionDeletedPayload {
+  agentName: string;
+  sessionId: string;
+}
+
 // ==================== Event Map ====================
 
 export interface DaemonEventMap {
@@ -99,6 +104,7 @@ export interface DaemonEventMap {
   "agent.pty.output": AgentPtyOutputPayload;
   "agent.pty.input": AgentPtyInputPayload;
   "console.message": ConsoleMessagePayload;
+  "session.deleted": SessionDeletedPayload;
 }
 
 export type DaemonEventType = keyof DaemonEventMap;
@@ -155,6 +161,7 @@ export class DaemonEventBus {
       "agent.pty.output",
       "agent.pty.input",
       "console.message",
+      "session.deleted",
     ];
 
     const listeners = new Map<string, (...args: unknown[]) => void>();

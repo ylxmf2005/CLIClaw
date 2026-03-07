@@ -28,7 +28,11 @@ import { generateUUID } from "../../shared/uuid.js";
 import { assertValidAgentName, assertValidTeamName } from "../../shared/validation.js";
 import { getDaemonIanaTimeZone } from "../../shared/timezone.js";
 import type { Settings } from "../../shared/settings.js";
-import { parseUserPermissionPolicy, resolveUserPermissionUserByToken } from "../../shared/user-permissions.js";
+import {
+  evaluateUserPermissionByToken,
+  parseUserPermissionPolicy,
+  resolveUserPermissionUserByToken,
+} from "../../shared/user-permissions.js";
 import type { Team, TeamMember, TeamKind, TeamStatus } from "../../team/types.js";
 
 /**
@@ -226,6 +230,11 @@ export interface ChatModelSettings {
   reasoningEffortOverride?: Agent["reasoningEffort"];
 }
 
+export interface ChatBossSettings {
+  useBossOverride?: boolean;
+  ownerTokenName?: string;
+}
+
 export interface EnvelopeCreatedEvent {
   envelope: Envelope;
   origin: EnvelopeOrigin;
@@ -300,6 +309,12 @@ export class CliClawDatabase {
     }
     if (!names.has("reasoning_effort_override")) {
       this.db.exec("ALTER TABLE chat_state ADD COLUMN reasoning_effort_override TEXT");
+    }
+    if (!names.has("use_boss_override")) {
+      this.db.exec("ALTER TABLE chat_state ADD COLUMN use_boss_override INTEGER");
+    }
+    if (!names.has("owner_token_name")) {
+      this.db.exec("ALTER TABLE chat_state ADD COLUMN owner_token_name TEXT");
     }
   }
 
@@ -419,6 +434,8 @@ export class CliClawDatabase {
         "relay_on",
         "model_override",
         "reasoning_effort_override",
+        "use_boss_override",
+        "owner_token_name",
       ],
     };
 
@@ -3053,14 +3070,91 @@ export class CliClawDatabase {
    * Verify an admin token.
    */
   verifyAdminToken(token: string): boolean {
+    const user = this.resolveTokenUser(token);
+    return user?.role === "admin";
+  }
+
+  /**
+   * Verify whether the token exists in user permission policy (admin or user).
+   */
+  verifyKnownUserToken(token: string): boolean {
+    return this.resolveTokenUser(token) !== null;
+  }
+
+  /**
+   * Resolve token identity from user permission policy.
+   */
+  resolveTokenUser(token: string): {
+    token: string;
+    tokenName: string;
+    name: string;
+    role: "admin" | "user";
+    agents?: string[];
+  } | null {
     const raw = (this.getConfig("user_permission_policy") ?? "").trim();
-    if (!raw) return false;
+    if (!raw) return null;
     try {
       const policy = parseUserPermissionPolicy(raw);
       const user = resolveUserPermissionUserByToken(policy, token);
-      return user?.role === "admin";
+      if (!user) return null;
+      return {
+        token: user.token,
+        tokenName: user.tokenName,
+        name: user.name,
+        role: user.role,
+        ...(user.agents ? { agents: user.agents } : {}),
+      };
     } catch {
-      return false;
+      return null;
+    }
+  }
+
+  listTokenUsers(): Array<{
+    token: string;
+    tokenName: string;
+    name: string;
+    role: "admin" | "user";
+    agents?: string[];
+  }> {
+    const raw = (this.getConfig("user_permission_policy") ?? "").trim();
+    if (!raw) return [];
+    try {
+      const policy = parseUserPermissionPolicy(raw);
+      return policy.tokens.map((user) => ({
+        token: user.token,
+        tokenName: user.tokenName,
+        name: user.name,
+        role: user.role,
+        ...(user.agents ? { agents: user.agents } : {}),
+      }));
+    } catch {
+      return [];
+    }
+  }
+
+  evaluateUserTokenAgentAccess(token: string, agentName: string): {
+    allowed: boolean;
+    token?: string;
+    tokenName?: string;
+    role?: "admin" | "user";
+    userName?: string;
+  } {
+    const raw = (this.getConfig("user_permission_policy") ?? "").trim();
+    if (!raw) {
+      return { allowed: false };
+    }
+    try {
+      const policy = parseUserPermissionPolicy(raw);
+      const decision = evaluateUserPermissionByToken(policy, token, agentName);
+      return {
+        allowed: decision.allowed,
+        token: decision.token,
+        tokenName: decision.tokenName,
+        role: decision.role,
+        userName: decision.userName,
+      };
+    } catch {
+      return { allowed: false };
     }
   }
 
@@ -3280,6 +3374,26 @@ export class CliClawDatabase {
     };
   }
 
+  getChatBossSettings(agentName: string, chatId: string): ChatBossSettings {
+    const stmt = this.db.prepare(
+      "SELECT use_boss_override, owner_token_name FROM chat_state WHERE agent_name = ? AND chat_id = ?"
+    );
+    const row = stmt.get(agentName, chatId) as
+      | { use_boss_override: number | null; owner_token_name: string | null }
+      | undefined;
+    if (!row) return {};
+    const useBossOverride =
+      row.use_boss_override === 1 ? true : row.use_boss_override === 0 ? false : undefined;
+    const ownerTokenName =
+      typeof row.owner_token_name === "string" && row.owner_token_name.trim().length > 0
+        ? row.owner_token_name.trim()
+        : undefined;
+    return {
+      ...(useBossOverride !== undefined ? { useBossOverride } : {}),
+      ...(ownerTokenName ? { ownerTokenName } : {}),
+    };
+  }
+
   /**
    * Upsert model/reasoning overrides for a specific agent+chat pair.
    */
@@ -3316,6 +3430,135 @@ export class CliClawDatabase {
       modelOverride,
       reasoningEffortOverride
     );
+  }
+
+  setChatBossSettings(
+    agentName: string,
+    chatId: string,
+    settings: {
+      useBossOverride?: boolean | null;
+      ownerTokenName?: string | null;
+    }
+  ): void {
+    const useBossOverride =
+      settings.useBossOverride === null || settings.useBossOverride === undefined
+        ? null
+        : (settings.useBossOverride ? 1 : 0);
+    const ownerTokenName =
+      typeof settings.ownerTokenName === "string"
+        ? settings.ownerTokenName.trim() || null
+        : null;
+
+    const stmt = this.db.prepare(`
+      INSERT INTO chat_state (
+        agent_name,
+        chat_id,
+        relay_on,
+        model_override,
+        reasoning_effort_override,
+        use_boss_override,
+        owner_token_name
+      )
+      VALUES (
+        ?, ?,
+        COALESCE((SELECT relay_on FROM chat_state WHERE agent_name = ? AND chat_id = ?), 0),
+        (SELECT model_override FROM chat_state WHERE agent_name = ? AND chat_id = ?),
+        (SELECT reasoning_effort_override FROM chat_state WHERE agent_name = ? AND chat_id = ?),
+        ?, ?
+      )
+      ON CONFLICT(agent_name, chat_id)
+      DO UPDATE SET
+        use_boss_override = excluded.use_boss_override,
+        owner_token_name = excluded.owner_token_name
+    `);
+    stmt.run(
+      agentName,
+      chatId,
+      agentName,
+      chatId,
+      agentName,
+      chatId,
+      agentName,
+      chatId,
+      useBossOverride,
+      ownerTokenName,
+    );
+  }
+
+  claimAgentChatOwnerTokenName(agentName: string, chatId: string, tokenName: string): {
+    ok: true;
+    ownerTokenName: string;
+  } | {
+    ok: false;
+    ownerTokenName: string;
+  } {
+    const normalized = tokenName.trim().toLowerCase();
+    if (!normalized) {
+      return { ok: false, ownerTokenName: "" };
+    }
+    const existing = this.getChatBossSettings(agentName, chatId).ownerTokenName;
+    if (existing && existing !== normalized) {
+      return { ok: false, ownerTokenName: existing };
+    }
+    this.setChatBossSettings(agentName, chatId, {
+      ownerTokenName: normalized,
+      useBossOverride: this.getChatBossSettings(agentName, chatId).useBossOverride ?? null,
+    });
+    return { ok: true, ownerTokenName: normalized };
+  }
+
+  getAgentUseBossDefault(agentName: string): boolean {
+    const raw = (this.getConfig(`use_boss_default_agent:${agentName}`) ?? "").trim().toLowerCase();
+    if (raw === "0" || raw === "false" || raw === "off") return false;
+    if (raw === "1" || raw === "true" || raw === "on") return true;
+    return true;
+  }
+
+  setAgentUseBossDefault(agentName: string, enabled: boolean): void {
+    this.setConfig(`use_boss_default_agent:${agentName}`, enabled ? "true" : "false");
+  }
+
+  getTeamUseBossDefault(teamName: string): boolean {
+    const raw = (this.getConfig(`use_boss_default_team:${teamName}`) ?? "").trim().toLowerCase();
+    if (raw === "0" || raw === "false" || raw === "off") return false;
+    if (raw === "1" || raw === "true" || raw === "on") return true;
+    return true;
+  }
+
+  setTeamUseBossDefault(teamName: string, enabled: boolean): void {
+    this.setConfig(`use_boss_default_team:${teamName}`, enabled ? "true" : "false");
+  }
+
+  getEffectiveUseBossForChat(agentName: string, chatId: string): boolean {
+    const chatOverride = this.getChatBossSettings(agentName, chatId).useBossOverride;
+    if (chatOverride !== undefined) return chatOverride;
+    if (chatId.startsWith("team:")) {
+      const teamName = chatId.slice("team:".length).trim();
+      if (teamName) {
+        return this.getTeamUseBossDefault(teamName);
+      }
+    }
+    return this.getAgentUseBossDefault(agentName);
+  }
+
+  listChatParticipantTokenNames(agentName: string, chatId: string): string[] {
+    const agentAddress = `agent:${agentName}`;
+    const scopedAddress = `${agentAddress}:${chatId}`;
+    const rows = this.db.prepare(`
+      SELECT DISTINCT lower(trim(CAST(json_extract(metadata, '$.userTokenName') AS TEXT))) as token_name
+      FROM envelopes
+      WHERE (
+        "to" = ?
+        OR (
+          json_extract(metadata, '$.chatScope') = ?
+          AND ("from" = ? OR "to" = ?)
+        )
+      )
+        AND json_type(metadata, '$.userTokenName') = 'text'
+    `).all(scopedAddress, chatId, agentAddress, agentAddress) as Array<{ token_name: string | null }>;
+    return rows
+      .map((row) => (row.token_name ?? "").trim())
+      .filter((value) => value.length > 0);
   }
 
   /**

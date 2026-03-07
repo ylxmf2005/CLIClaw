@@ -161,19 +161,21 @@ test("listConversationsForAgent excludes team chat scopes", () => {
       provider: "codex",
     });
 
-    db.createEnvelope({
+    const direct = db.createEnvelope({
       from: "channel:web:boss",
       to: "agent:nex:chat-1",
       fromBoss: true,
       content: { text: "direct chat" },
     });
+    db.updateEnvelopeStatus(direct.id, "done");
 
-    db.createEnvelope({
+    const team = db.createEnvelope({
       from: "channel:web:boss",
       to: "agent:nex:team:alpha",
       fromBoss: true,
       content: { text: "team chat" },
     });
+    db.updateEnvelopeStatus(team.id, "done");
 
     const conversations = db.listConversationsForAgent("nex");
     assert.deepEqual(

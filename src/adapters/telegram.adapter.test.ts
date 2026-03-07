@@ -14,7 +14,7 @@ function buildCommand(overrides: Partial<ChannelCommand> = {}): ChannelCommand {
 }
 
 test("Telegram command response schedules auto-delete when enabled", { concurrency: false }, async () => {
-  const scheduledCallbacks: Array<() => void> = [];
+  const scheduledCallbacks: Array<{ ms: number | undefined; run: () => void }> = [];
   const deleteCalls: Array<{ chatId: string; messageId: number }> = [];
 
   const adapter = new TelegramAdapter("123:abc", "en", {
@@ -36,7 +36,7 @@ test("Telegram command response schedules auto-delete when enabled", { concurren
 
   try {
     globalThis.setTimeout = ((callback: (...args: unknown[]) => void, _ms?: number, ..._args: unknown[]) => {
-      scheduledCallbacks.push(() => callback());
+      scheduledCallbacks.push({ ms: _ms, run: () => callback() });
       return { fake: true } as unknown as ReturnType<typeof setTimeout>;
     }) as typeof setTimeout;
 
@@ -44,10 +44,11 @@ test("Telegram command response schedules auto-delete when enabled", { concurren
 
     await (adapter as any).sendCommandResponse(buildCommand(), { text: "ok" });
 
-    assert.equal(scheduledCallbacks.length, 1);
+    const autoDeleteCallbacks = scheduledCallbacks.filter((item) => item.ms === 30_000);
+    assert.equal(autoDeleteCallbacks.length, 1);
     assert.equal((adapter as any).commandReplyDeleteTimers.size, 1);
 
-    await scheduledCallbacks[0]!();
+    await autoDeleteCallbacks[0]!.run();
     assert.deepEqual(deleteCalls, [{ chatId: "chat-1", messageId: 101 }]);
   } finally {
     globalThis.setTimeout = originalSetTimeout;
@@ -57,7 +58,7 @@ test("Telegram command response schedules auto-delete when enabled", { concurren
 });
 
 test("Telegram command response auto-delete can be disabled", { concurrency: false }, async () => {
-  const scheduledCallbacks: Array<() => void> = [];
+  const scheduledCallbacks: Array<{ ms: number | undefined; run: () => void }> = [];
 
   const adapter = new TelegramAdapter("123:abc", "en", {
     getCommandReplyAutoDeleteSeconds: () => 0,
@@ -75,13 +76,14 @@ test("Telegram command response auto-delete can be disabled", { concurrency: fal
 
   try {
     globalThis.setTimeout = ((callback: (...args: unknown[]) => void, _ms?: number, ..._args: unknown[]) => {
-      scheduledCallbacks.push(() => callback());
+      scheduledCallbacks.push({ ms: _ms, run: () => callback() });
       return { fake: true } as unknown as ReturnType<typeof setTimeout>;
     }) as typeof setTimeout;
 
     await (adapter as any).sendCommandResponse(buildCommand(), { text: "ok" });
 
-    assert.equal(scheduledCallbacks.length, 0);
+    const autoDeleteCallbacks = scheduledCallbacks.filter((item) => item.ms === 30_000);
+    assert.equal(autoDeleteCallbacks.length, 0);
     assert.equal((adapter as any).commandReplyDeleteTimers.size, 0);
   } finally {
     globalThis.setTimeout = originalSetTimeout;

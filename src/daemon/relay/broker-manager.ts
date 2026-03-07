@@ -13,6 +13,8 @@
 import type { DaemonEventBus } from "../events/event-bus.js";
 import { logEvent, errorMessage } from "../../shared/daemon-log.js";
 import { buildRelaySessionName, parseRelaySessionName } from "./relay-session-name.js";
+import { execSync } from "node:child_process";
+import { openSync, writeSync, closeSync } from "node:fs";
 
 // Dynamic import to handle missing SDK gracefully
 let RelayAdapterClass: typeof import("@agent-relay/sdk").RelayAdapter | null = null;
@@ -45,6 +47,19 @@ export class BrokerManager {
   private started = false;
   private cwd: string;
   private eventBus: DaemonEventBus;
+
+  /**
+   * Map of relay agent name → TTY device path for direct PTY input.
+   *
+   * The broker binary's `send_input` RPC is broken for PTY workers: it writes
+   * raw bytes to the worker subprocess stdin, but the PTY worker expects JSON
+   * protocol frames, causing `invalid_frame` errors. As a workaround, we
+   * discover the child process's TTY slave device after spawn and write
+   * keystrokes there directly.
+   */
+  private agentTtyPaths = new Map<string, string>();
+  /** Map of relay agent name → PTY worker PID (returned by spawn). */
+  private agentPtyWorkerPids = new Map<string, number>();
 
   constructor(options: BrokerManagerOptions) {
     this.cwd = options.cwd;
@@ -116,7 +131,7 @@ export class BrokerManager {
     const handler = (payload: { name: string; chatId?: string; data: string }) => {
       if (!this.adapter) return;
       const relayName = payload.chatId ? buildRelaySessionName(payload.name, payload.chatId) : payload.name;
-      this.adapter.sendInput(relayName, payload.data).catch((err) => {
+      this.sendInput(relayName, payload.data).catch((err) => {
         logEvent("error", "relay-pty-input-failed", {
           name: relayName,
           error: errorMessage(err),
@@ -157,7 +172,65 @@ export class BrokerManager {
 
     this.started = false;
     this.available = false;
+    this.agentTtyPaths.clear();
+    this.agentPtyWorkerPids.clear();
     logEvent("info", "relay-broker-stopped");
+  }
+
+  /**
+   * Discover the TTY device path for a PTY worker's child process.
+   * The PTY worker (agent-relay-broker pty) spawns the CLI tool as a child
+   * process with a PTY slave device. We find that device to write input
+   * directly.
+   */
+  private discoverChildTty(ptyWorkerPid: number, agentName: string, retries = 5): void {
+    const attempt = () => {
+      try {
+        const childrenRaw = execSync(`pgrep -P ${ptyWorkerPid} 2>/dev/null`, {
+          encoding: "utf-8",
+          timeout: 3000,
+        }).trim();
+        if (!childrenRaw) return false;
+
+        // Take the first child process
+        const childPid = childrenRaw.split("\n")[0].trim();
+        const tty = execSync(`ps -o tty= -p ${childPid} 2>/dev/null`, {
+          encoding: "utf-8",
+          timeout: 3000,
+        }).trim();
+
+        if (tty && tty !== "??" && tty !== "?") {
+          const ttyPath = `/dev/${tty}`;
+          this.agentTtyPaths.set(agentName, ttyPath);
+          logEvent("info", "relay-tty-discovered", {
+            name: agentName,
+            tty: ttyPath,
+            "child-pid": childPid,
+          });
+          return true;
+        }
+      } catch {
+        // Process may not be ready yet
+      }
+      return false;
+    };
+
+    // Try immediately, then retry with delays
+    if (attempt()) return;
+
+    let remaining = retries;
+    const timer = setInterval(() => {
+      remaining--;
+      if (attempt() || remaining <= 0) {
+        clearInterval(timer);
+        if (remaining <= 0 && !this.agentTtyPaths.has(agentName)) {
+          logEvent("warn", "relay-tty-discovery-failed", {
+            name: agentName,
+            "pty-worker-pid": ptyWorkerPid,
+          });
+        }
+      }
+    }, 500);
   }
 
   /**
@@ -183,6 +256,13 @@ export class BrokerManager {
         model: params.model,
         interactive: true,
       });
+
+      if (result.success && result.pid) {
+        this.agentPtyWorkerPids.set(params.name, result.pid);
+        // Discover the child process TTY in the background
+        this.discoverChildTty(result.pid, params.name);
+      }
+
       return { success: result.success, error: result.error };
     } catch (err) {
       return { success: false, error: errorMessage(err) };
@@ -193,6 +273,9 @@ export class BrokerManager {
    * Release (stop) a relay agent.
    */
   async releaseAgent(name: string, reason?: string): Promise<void> {
+    this.agentTtyPaths.delete(name);
+    this.agentPtyWorkerPids.delete(name);
+
     if (!this.adapter) return;
 
     try {
@@ -207,8 +290,37 @@ export class BrokerManager {
 
   /**
    * Send raw input to an agent's PTY stdin.
+   *
+   * Uses direct TTY device write instead of the broker's broken `send_input`
+   * RPC. Falls back to `adapter.sendInput()` if TTY path is not yet known.
    */
   async sendInput(name: string, data: string): Promise<void> {
+    const ttyPath = this.agentTtyPaths.get(name);
+    if (ttyPath) {
+      try {
+        const fd = openSync(ttyPath, "w");
+        try {
+          writeSync(fd, data);
+        } finally {
+          closeSync(fd);
+        }
+        return;
+      } catch (err) {
+        logEvent("warn", "relay-tty-write-failed", {
+          name,
+          tty: ttyPath,
+          error: errorMessage(err),
+        });
+        // TTY may have been invalidated; clear and re-discover
+        this.agentTtyPaths.delete(name);
+        const pid = this.agentPtyWorkerPids.get(name);
+        if (pid) {
+          this.discoverChildTty(pid, name, 2);
+        }
+      }
+    }
+
+    // Fallback to SDK (known broken for PTY workers, but try anyway)
     if (!this.adapter) return;
     await this.adapter.sendInput(name, data);
   }
@@ -254,6 +366,21 @@ export class BrokerManager {
    * Interrupt an agent (ESC ESC sequence).
    */
   async interruptAgent(name: string): Promise<boolean> {
+    // Try direct TTY write first (sends ESC ESC)
+    const ttyPath = this.agentTtyPaths.get(name);
+    if (ttyPath) {
+      try {
+        const fd = openSync(ttyPath, "w");
+        try {
+          writeSync(fd, "\x1b\x1b");
+        } finally {
+          closeSync(fd);
+        }
+        return true;
+      } catch {
+        // Fall through to SDK
+      }
+    }
     if (!this.adapter) return false;
     try {
       return await this.adapter.interruptAgent(name);

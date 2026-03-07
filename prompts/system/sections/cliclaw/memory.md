@@ -36,29 +36,6 @@ internal-space-memory-snapshot: {{ cliclaw.dir }}/agents/{{ agent.name }}/intern
 {% endif %}
 {% endif %}
 
-### Session summary memory (`internal_space/history/YYYY-MM-DD/<chat-id>/<session-id>.md`)
-
-When sessions close, CLIClaw records a `summary` in each session markdown frontmatter.
-These summaries are injected into new sessions to preserve continuity.
-
-Guidelines:
-- Keep `summary` concise and high-signal.
-- Focus on decisions, unfinished TODOs, unresolved issues, and actionable next steps.
-- Do not write chain-of-thought; only write conclusions.
-
-{% if internalSpace.sessionSummariesError %}
-internal-space-session-summaries-unavailable: {{ internalSpace.sessionSummariesError }}
-{% else %}
-internal-space-session-summaries-snapshot: {{ cliclaw.dir }}/agents/{{ agent.name }}/internal_space/history/
-{% if internalSpace.sessionSummaries %}
-{{ internalSpace.sessionSummariesFence }}text
-{{ internalSpace.sessionSummaries }}
-{{ internalSpace.sessionSummariesFence }}
-{% else %}
-(empty; no readable summaries found in latest {{ internalSpace.sessionSummaryRecentDays | default(3) }} day(s))
-{% endif %}
-{% endif %}
-
 ### Daily memory (`internal_space/memories/YYYY-MM-DD.md`)
 
 Write a daily log. Keep it extremely simple:
@@ -81,6 +58,29 @@ internal-space-daily-memory-snapshot: {{ cliclaw.dir }}/agents/{{ agent.name }}/
 {{ internalSpace.dailyFence }}
 {% else %}
 (empty; no readable memories found in latest {{ internalSpace.dailyRecentFiles }} daily file(s))
+{% endif %}
+{% endif %}
+
+### Session summary memory (`internal_space/history/YYYY-MM-DD/<chat-id>/<session-id>.md`)
+
+When sessions close, CLIClaw records a `summary` in each session markdown frontmatter.
+These summaries are injected into new sessions to preserve continuity.
+
+Guidelines:
+- Keep `summary` concise and high-signal.
+- Focus on decisions, unfinished TODOs, unresolved issues, and actionable next steps.
+- Do not write chain-of-thought; only write conclusions.
+
+{% if internalSpace.sessionSummariesError %}
+internal-space-session-summaries-unavailable: {{ internalSpace.sessionSummariesError }}
+{% else %}
+internal-space-session-summaries-snapshot: {{ cliclaw.dir }}/agents/{{ agent.name }}/internal_space/history/
+{% if internalSpace.sessionSummaries %}
+{{ internalSpace.sessionSummariesFence }}text
+{{ internalSpace.sessionSummaries }}
+{{ internalSpace.sessionSummariesFence }}
+{% else %}
+(empty; no readable summaries found in latest {{ internalSpace.sessionSummaryRecentDays | default(3) }} day(s))
 {% endif %}
 {% endif %}
 

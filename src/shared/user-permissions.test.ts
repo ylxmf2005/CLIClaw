@@ -43,6 +43,8 @@ test("parseUserPermissionPolicyFromObject parses users policy", () => {
   assert.equal(policy.tokens[0]?.role, "admin");
   assert.deepEqual(policy.tokens[1]?.agents, ["nex", "kai"]);
   assert.equal(policy.tokens[0]?.bindings?.[0]?.uid, "ethanelift");
+  assert.equal(policy.tokens[0]?.tokenName, "ethan");
+  assert.equal(policy.tokens[1]?.tokenName, "lpc");
 });
 
 test("parseUserPermissionPolicyFromObject rejects admin with agents", () => {
@@ -67,6 +69,7 @@ test("resolveUserPermissionUserByToken resolves token user", () => {
   const admin = resolveUserPermissionUserByToken(policy, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
   assert.equal(admin?.name, "Ethan");
   assert.equal(admin?.role, "admin");
+  assert.equal(admin?.tokenName, "ethan");
 
   const missing = resolveUserPermissionUserByToken(policy, "cccccccccccccccccccccccccccccccc");
   assert.equal(missing, undefined);
@@ -79,11 +82,13 @@ test("evaluateUserPermissionByToken enforces role semantics", () => {
   assert.equal(admin.allowed, true);
   assert.equal(admin.fromBoss, true);
   assert.equal(admin.role, "admin");
+  assert.equal(admin.tokenName, "ethan");
 
   const userAllowed = evaluateUserPermissionByToken(policy, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "nex");
   assert.equal(userAllowed.allowed, true);
   assert.equal(userAllowed.fromBoss, false);
   assert.equal(userAllowed.role, "user");
+  assert.equal(userAllowed.tokenName, "lpc");
 
   const userDenied = evaluateUserPermissionByToken(policy, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "shieru");
   assert.equal(userDenied.allowed, false);

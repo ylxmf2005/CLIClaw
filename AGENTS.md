@@ -68,6 +68,7 @@ Short IDs (must follow):
 - Runtime: Node.js 18+ (ES2022) recommended.
 - Tokens are printed once by `cliclaw setup` / `cliclaw agent register` (no "show token" command).
 - `CLICLAW_TOKEN` is used when `--token` is omitted.
+- For daemon lifecycle commands, always export `CLICLAW_DIR` explicitly in the current shell before running `cliclaw setup|daemon ...|agent ...` to avoid targeting the wrong data directory.
 - Sending to `channel:<adapter>:...` is only allowed if the sending agent is bound to that adapter type.
 - `--deliver-at` supports relative (`+2h`, `+1Y2M3D`) and ISO 8601; units are case-sensitive (`Y/M/D/h/m/s`).
 - Security: agent tokens are stored plaintext in `~/cliclaw/.daemon/cliclaw.db`; protect `~/cliclaw/`.
@@ -84,6 +85,7 @@ Fast path (dev):
 npm i
 npm run build && npm link
 
+export CLICLAW_DIR="$HOME/cliclaw-dev"
 cliclaw setup
 cliclaw daemon start --token <boss-token>
 cliclaw agent register --token <boss-token> --name nex --description "AI assistant" --workspace "$PWD"

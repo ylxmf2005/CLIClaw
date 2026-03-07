@@ -8,8 +8,9 @@ import { CliClawDatabase } from "../db/database.js";
 import { HttpRouter } from "./router.js";
 import { registerSessionRoutes } from "./routes-sessions.js";
 import type { DaemonContext } from "../rpc/context.js";
+import { appendPtyHistoryEvent, flushPtyHistoryWritesForTest } from "../terminal/pty-history.js";
 
-function withTempDb(run: (db: CliClawDatabase) => Promise<void> | void): Promise<void> {
+function withTempDb(run: (db: CliClawDatabase, rootDir: string) => Promise<void> | void): Promise<void> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cliclaw-routes-sessions-test-"));
   const dbPath = path.join(dir, "cliclaw.db");
   let db: CliClawDatabase | null = null;
@@ -17,7 +18,7 @@ function withTempDb(run: (db: CliClawDatabase) => Promise<void> | void): Promise
   const execute = async () => {
     try {
       db = new CliClawDatabase(dbPath);
-      await run(db);
+      await run(db, dir);
     } finally {
       db?.close();
       fs.rmSync(dir, { recursive: true, force: true });
@@ -37,7 +38,7 @@ function createRouteContext(params: Record<string, string>, query?: URLSearchPar
 }
 
 test("GET relay route rehydrates missing relay session when relay state is on", async () => {
-  await withTempDb(async (db) => {
+  await withTempDb(async (db, rootDir) => {
     db.registerAgent({
       name: "echo-e2e",
       provider: "codex",
@@ -57,6 +58,7 @@ test("GET relay route rehydrates missing relay session when relay state is on", 
 
     const daemonCtx = {
       db,
+      config: { dataDir: rootDir, daemonDir: path.join(rootDir, ".daemon") },
       resolvePrincipal: () => ({ kind: "admin" as const, level: "admin" as const }),
       assertOperationAllowed: () => {},
       relayAvailable: true,
@@ -99,7 +101,7 @@ test("GET relay route rehydrates missing relay session when relay state is on", 
 });
 
 test("GET relay route clears stale relay state when session rehydrate fails", async () => {
-  await withTempDb(async (db) => {
+  await withTempDb(async (db, rootDir) => {
     db.registerAgent({
       name: "echo-e2e",
       provider: "codex",
@@ -108,6 +110,7 @@ test("GET relay route clears stale relay state when session rehydrate fails", as
 
     const daemonCtx = {
       db,
+      config: { dataDir: rootDir, daemonDir: path.join(rootDir, ".daemon") },
       resolvePrincipal: () => ({ kind: "admin" as const, level: "admin" as const }),
       assertOperationAllowed: () => {},
       relayAvailable: true,
@@ -134,7 +137,7 @@ test("GET relay route clears stale relay state when session rehydrate fails", as
 });
 
 test("GET chat messages route returns full chat timeline (incoming + outgoing)", async () => {
-  await withTempDb(async (db) => {
+  await withTempDb(async (db, rootDir) => {
     db.registerAgent({
       name: "echo-e2e",
       provider: "codex",
@@ -169,6 +172,7 @@ test("GET chat messages route returns full chat timeline (incoming + outgoing)",
 
     const daemonCtx = {
       db,
+      config: { dataDir: rootDir, daemonDir: path.join(rootDir, ".daemon") },
       resolvePrincipal: () => ({ kind: "admin" as const, level: "admin" as const }),
       assertOperationAllowed: () => {},
       relayAvailable: false,
@@ -191,5 +195,63 @@ test("GET chat messages route returns full chat timeline (incoming + outgoing)",
     assert.ok(ids.includes(inbound.id));
     assert.ok(ids.includes(outbound.id));
     assert.ok(!ids.includes(noise.id));
+  });
+});
+
+test("GET pty history route returns persisted output chunks for a chat", async () => {
+  await withTempDb(async (db, rootDir) => {
+    db.registerAgent({
+      name: "echo-e2e",
+      provider: "codex",
+    });
+
+    appendPtyHistoryEvent({
+      cliclawDir: rootDir,
+      agentName: "echo-e2e",
+      chatId: "default",
+      direction: "output",
+      data: "first chunk\n",
+      timestampMs: 1_000,
+    });
+    appendPtyHistoryEvent({
+      cliclawDir: rootDir,
+      agentName: "echo-e2e",
+      chatId: "default",
+      direction: "output",
+      data: "second chunk\n",
+      timestampMs: 1_001,
+    });
+    appendPtyHistoryEvent({
+      cliclawDir: rootDir,
+      agentName: "echo-e2e",
+      chatId: "default",
+      direction: "input",
+      data: "ignored input\r",
+      timestampMs: 1_002,
+    });
+    await flushPtyHistoryWritesForTest();
+
+    const daemonCtx = {
+      db,
+      config: { dataDir: rootDir, daemonDir: path.join(rootDir, ".daemon") },
+      resolvePrincipal: () => ({ kind: "admin" as const, level: "admin" as const }),
+      assertOperationAllowed: () => {},
+      relayAvailable: false,
+      relayExecutor: null,
+    } as unknown as DaemonContext;
+
+    const router = new HttpRouter();
+    registerSessionRoutes(router, {}, daemonCtx);
+
+    const match = router.match("GET", "/api/agents/echo-e2e/chats/default/pty-history");
+    assert.ok(match);
+
+    const result = await match.handler(
+      createRouteContext(match.params, new URLSearchParams("limit=10")),
+      {} as never,
+      {} as never,
+    ) as { chunks: string[] };
+
+    assert.deepEqual(result.chunks, ["first chunk\n", "second chunk\n"]);
   });
 });

@@ -13,6 +13,7 @@ export const DEFAULT_SOCKET_FILENAME = "daemon.sock";
 export const DEFAULT_PID_FILENAME = "daemon.pid";
 export const DEFAULT_MEDIA_DIRNAME = "media";
 export const DEFAULT_AGENTS_DIRNAME = "agents";
+export const DEFAULT_BOSSES_DIRNAME = "bosses";
 
 export function getDefaultCliClawDir(): string {
   return path.join(os.homedir(), DEFAULT_CLICLAW_DIRNAME);

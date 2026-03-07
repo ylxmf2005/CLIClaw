@@ -19,6 +19,7 @@ import type {
   CronExecutionMode,
   ParseMode,
   EnvelopeAttachment,
+  AuthIdentity,
 } from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3889";
@@ -67,15 +68,19 @@ export class ApiError extends Error {
 }
 
 // Auth
-export async function login(token: string): Promise<boolean> {
-  const res = await apiFetch<{ valid: boolean }>("/api/auth/login", {
+export async function login(token: string): Promise<{ valid: boolean; identity?: AuthIdentity }> {
+  const res = await apiFetch<{ valid: boolean; identity?: AuthIdentity }>("/api/auth/login", {
     method: "POST",
     body: JSON.stringify({ token }),
   });
   if (res.valid) {
     setAuthToken(token);
   }
-  return res.valid;
+  return res;
+}
+
+export async function getAuthMe(): Promise<{ identity: AuthIdentity }> {
+  return apiFetch("/api/auth/me");
 }
 
 // Daemon
@@ -217,6 +222,19 @@ export async function getAgentChatMessages(params: {
   );
 }
 
+export async function getPtyHistory(params: {
+  agentName: string;
+  chatId: string;
+  limit?: number;
+}): Promise<{ chunks: string[] }> {
+  const query = new URLSearchParams();
+  if (typeof params.limit === "number") query.set("limit", String(params.limit));
+  const querySuffix = query.toString() ? `?${query.toString()}` : "";
+  return apiFetch(
+    `/api/agents/${encodeURIComponent(params.agentName)}/chats/${encodeURIComponent(params.chatId)}/pty-history${querySuffix}`
+  );
+}
+
 export async function getThread(
   envelopeId: string
 ): Promise<{ envelopes: Envelope[]; totalCount: number }> {
@@ -227,7 +245,26 @@ export async function getThread(
 export async function getConversations(
   agentName: string
 ): Promise<{ conversations: ChatConversation[] }> {
-  return apiFetch(`/api/agents/${encodeURIComponent(agentName)}/conversations`);
+  const raw = await apiFetch<{
+    conversations: Array<{
+      chatId: string;
+      lastMessageText?: string;
+      lastMessageAt?: number;
+      messageCount?: number;
+      label?: string;
+    }>;
+  }>(`/api/agents/${encodeURIComponent(agentName)}/conversations`);
+  return {
+    conversations: raw.conversations.map((c) => ({
+      agentName,
+      chatId: c.chatId,
+      lastMessage: c.lastMessageText,
+      lastMessageAt: c.lastMessageAt,
+      messageCount: c.messageCount,
+      label: c.label,
+      createdAt: c.lastMessageAt ?? 0,
+    })),
+  };
 }
 
 // Relay
@@ -310,6 +347,175 @@ export async function registerTeam(params: {
 }): Promise<{ team: Team }> {
   return apiFetch("/api/teams", {
     method: "POST",
+    body: JSON.stringify(params),
+  });
+}
+
+export async function getChatBossContext(
+  agentName: string,
+  chatId: string,
+): Promise<{
+  agentName: string;
+  chatId: string;
+  useBossOverride?: boolean;
+  ownerTokenName?: string;
+  effectiveUseBoss: boolean;
+}> {
+  return apiFetch(`/api/agents/${encodeURIComponent(agentName)}/chats/${encodeURIComponent(chatId)}/boss-context`);
+}
+
+export async function updateChatBossContext(
+  agentName: string,
+  chatId: string,
+  params: {
+    useBossOverride: boolean | null;
+  },
+): Promise<{
+  success: boolean;
+  agentName: string;
+  chatId: string;
+  useBossOverride?: boolean;
+  ownerTokenName?: string;
+  effectiveUseBoss: boolean;
+}> {
+  return apiFetch(`/api/agents/${encodeURIComponent(agentName)}/chats/${encodeURIComponent(chatId)}/boss-context`, {
+    method: "PATCH",
+    body: JSON.stringify(params),
+  });
+}
+
+export async function getAgentBossContext(
+  agentName: string,
+): Promise<{ agentName: string; enabled: boolean }> {
+  return apiFetch(`/api/agents/${encodeURIComponent(agentName)}/boss-context`);
+}
+
+export async function updateAgentBossContext(
+  agentName: string,
+  enabled: boolean,
+): Promise<{ success: boolean; agentName: string; enabled: boolean }> {
+  return apiFetch(`/api/agents/${encodeURIComponent(agentName)}/boss-context`, {
+    method: "PATCH",
+    body: JSON.stringify({ enabled }),
+  });
+}
+
+export async function getBossProfileMe(): Promise<{
+  profile: {
+    tokenName: string;
+    name: string;
+    version: string;
+    content: string;
+    metadata: Record<string, string>;
+    path: string;
+  };
+}> {
+  return apiFetch("/api/boss-profiles/me");
+}
+
+export async function updateBossProfileMe(params: {
+  name?: string;
+  version?: string;
+  content?: string;
+  metadata?: Record<string, string>;
+}): Promise<{
+  success: boolean;
+  profile: {
+    tokenName: string;
+    name: string;
+    version: string;
+    content: string;
+    metadata: Record<string, string>;
+    path: string;
+  };
+}> {
+  return apiFetch("/api/boss-profiles/me", {
+    method: "PATCH",
+    body: JSON.stringify(params),
+  });
+}
+
+export async function listBossProfiles(): Promise<{
+  profiles: Array<{
+    tokenName: string;
+    name: string;
+    version?: string;
+    role: "admin" | "user";
+    content?: string;
+    metadata?: Record<string, string>;
+    path?: string;
+    error?: string;
+  }>;
+}> {
+  return apiFetch("/api/boss-profiles");
+}
+
+export async function getBossProfile(tokenName: string): Promise<{
+  profile: {
+    tokenName: string;
+    name: string;
+    version: string;
+    content: string;
+    metadata: Record<string, string>;
+    path: string;
+  };
+}> {
+  return apiFetch(`/api/boss-profiles/${encodeURIComponent(tokenName)}`);
+}
+
+export async function updateBossProfile(
+  tokenName: string,
+  params: {
+    name?: string;
+    version?: string;
+    content?: string;
+    metadata?: Record<string, string>;
+  },
+): Promise<{
+  success: boolean;
+  profile: {
+    tokenName: string;
+    name: string;
+    version: string;
+    content: string;
+    metadata: Record<string, string>;
+    path: string;
+  };
+}> {
+  return apiFetch(`/api/boss-profiles/${encodeURIComponent(tokenName)}`, {
+    method: "PATCH",
+    body: JSON.stringify(params),
+  });
+}
+
+export async function getAgentSoul(
+  agentName: string,
+): Promise<{
+  soul: {
+    version: string;
+    content: string;
+    path: string;
+  };
+}> {
+  return apiFetch(`/api/agents/${encodeURIComponent(agentName)}/soul`);
+}
+
+export async function updateAgentSoul(
+  agentName: string,
+  params: {
+    version?: string;
+    content?: string;
+  },
+): Promise<{
+  success: boolean;
+  soul: {
+    version: string;
+    content: string;
+    path: string;
+  };
+}> {
+  return apiFetch(`/api/agents/${encodeURIComponent(agentName)}/soul`, {
+    method: "PATCH",
     body: JSON.stringify(params),
   });
 }

@@ -15,6 +15,7 @@ import type {
   SendMessageOptions,
 } from "./types.js";
 import type { DaemonEventBus } from "../daemon/events/event-bus.js";
+import { logEvent } from "../shared/daemon-log.js";
 
 export const CONSOLE_ADAPTER_TOKEN = "__console_adapter__";
 
@@ -46,6 +47,7 @@ export class ConsoleAdapter implements ChatAdapter {
     if (!options?.envelope) {
       // Console real-time delivery expects the originating envelope.
       // Skip emitting partial payloads to avoid inconsistent UI state.
+      logEvent("warn", "console-adapter-missing-envelope", { "chat-id": chatId });
       return;
     }
     this.eventBus.emit("console.message", {

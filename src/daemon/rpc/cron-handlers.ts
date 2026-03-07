@@ -243,6 +243,9 @@ export function createCronHandlers(ctx: DaemonContext): RpcMethodRegistry {
     if (principal.kind === "admin") {
       return { schedules: cron.listAllSchedules() };
     }
+    if (principal.kind !== "agent") {
+      rpcError(RPC_ERRORS.UNAUTHORIZED, "Access denied");
+    }
 
     ctx.db.updateAgentLastSeen(principal.agent.name);
     return { schedules: cron.listSchedules(principal.agent.name) };

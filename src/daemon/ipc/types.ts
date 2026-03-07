@@ -473,6 +473,27 @@ export interface AdminVerifyParams {
 
 export interface AdminVerifyResult {
   valid: boolean;
+  identity?: {
+    token: string;
+    tokenName: string;
+    role: "admin" | "user" | "agent";
+    displayName: string;
+    fromBoss: boolean;
+  };
+}
+
+export interface AuthMeParams {
+  token: string;
+}
+
+export interface AuthMeResult {
+  identity: {
+    token: string;
+    tokenName: string;
+    role: "admin" | "user" | "agent";
+    displayName: string;
+    fromBoss: boolean;
+  };
 }
 
 // ==================== Session Parameters ====================

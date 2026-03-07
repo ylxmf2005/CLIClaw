@@ -105,6 +105,15 @@ export function formatChannelMentionTarget(adapterType: string, chatId: string):
 }
 
 export function getEnvelopeSenderName(envelope: Envelope): string {
+  const metadata =
+    envelope.metadata && typeof envelope.metadata === "object"
+      ? (envelope.metadata as Record<string, unknown>)
+      : undefined;
+  const fromName = trimOrUndefined(metadata?.fromName);
+  if (fromName) {
+    return fromName;
+  }
+
   const from = parseAddress(envelope.from);
   if (from.type !== "channel") return from.name;
 
@@ -112,10 +121,6 @@ export function getEnvelopeSenderName(envelope: Envelope): string {
     return envelope.fromBoss ? "You" : "Web";
   }
 
-  const metadata =
-    envelope.metadata && typeof envelope.metadata === "object"
-      ? (envelope.metadata as Record<string, unknown>)
-      : undefined;
   const channelUser = readChannelUser(metadata);
   if (channelUser?.displayName) {
     return channelUser.username
@@ -130,6 +135,14 @@ export function getEnvelopeSenderName(envelope: Envelope): string {
   }
 
   return from.adapterType || "Channel";
+}
+
+export function getEnvelopeSenderTokenName(envelope: Envelope): string | undefined {
+  const metadata =
+    envelope.metadata && typeof envelope.metadata === "object"
+      ? (envelope.metadata as Record<string, unknown>)
+      : undefined;
+  return trimOrUndefined(metadata?.userTokenName);
 }
 
 export function getEnvelopeSenderKey(envelope: Envelope): string {

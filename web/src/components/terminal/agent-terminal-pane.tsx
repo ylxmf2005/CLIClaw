@@ -116,13 +116,21 @@ export function AgentTerminalPane({
 
   useEffect(() => {
     const chatKey = `${agentName}:${chatId}`;
-    if (seededChatKeyRef.current === chatKey) return;
-    seededChatKeyRef.current = chatKey;
-
     const initialLogChunk = safeLogLine(initialLogLine);
     const history = initialPtyOutput.length > 0
       ? initialPtyOutput
       : (initialLogChunk ? [initialLogChunk] : []);
+    const isNewChat = seededChatKeyRef.current !== chatKey;
+    const currentLooksLikeBootstrap =
+      outputChunksRef.current.length === 0
+      || (
+        outputChunksRef.current.length === 1
+        && outputChunksRef.current[0]?.startsWith("\x1b[90m[Attached to ")
+      );
+    const shouldHydrateLateHistory = !isNewChat && history.length > 0 && currentLooksLikeBootstrap;
+
+    if (!isNewChat && !shouldHydrateLateHistory) return;
+    seededChatKeyRef.current = chatKey;
 
     outputChunksRef.current = history.length > 0
       ? history.slice(-MAX_CHUNKS)
@@ -209,14 +217,12 @@ export function AgentTerminalPane({
   }, [relayOn]);
 
   useEffect(() => {
-    if (!relayOn || !terminalRef.current) return;
-
     const terminal = terminalRef.current;
+    if (!terminal || !relayOn) return;
+
     const disposable = terminal.onData((data: string) => {
       const selectedText = terminal.getSelection();
       if (selectedText && selectedText.length > 0) {
-        // Match normal terminal behavior: typing should continue even when
-        // prior mouse selection exists.
         terminal.clearSelection();
       }
       send({
@@ -225,7 +231,9 @@ export function AgentTerminalPane({
       });
     });
 
-    return () => disposable.dispose();
+    return () => {
+      disposable.dispose();
+    };
   }, [agentName, chatId, relayOn, send]);
 
   useEffect(() => {

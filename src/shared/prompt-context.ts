@@ -244,6 +244,9 @@ export function buildSystemPromptContext(params: {
       additionalContext: "",
     },
     internalSpace: {
+      soul: "",
+      soulFence: "```",
+      soulError: "",
       note: "",
       noteFence: "```",
       daily: "",
@@ -259,6 +262,13 @@ export function buildSystemPromptContext(params: {
       sessionSummariesError: "",
       sessionSummaryRecentDays: DEFAULT_SESSION_SUMMARY_RECENT_DAYS,
       sessionSummaryPerSessionMaxChars: DEFAULT_SESSION_SUMMARY_PER_SESSION_MAX_CHARS,
+    },
+    bossMd: {
+      enabled: true,
+      snapshot: "",
+      snapshotFence: "```",
+      error: "",
+      source: "",
     },
     boss: {
       name: params.boss?.name ?? "",

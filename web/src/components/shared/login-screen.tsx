@@ -69,14 +69,14 @@ export function LoginScreen() {
 
           <div className="space-y-2">
             <label htmlFor="admin-token" className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-              Admin Token
+              Access Token
             </label>
             <Input
               id="admin-token"
               type="password"
               value={token}
               onChange={(e) => setToken(e.target.value)}
-              placeholder="Enter your admin token"
+              placeholder="Enter your token"
               className="h-11 border-border bg-input text-sm placeholder:text-muted-foreground focus:border-cyan-glow/40 focus:ring-cyan-glow/10"
               autoFocus
             />

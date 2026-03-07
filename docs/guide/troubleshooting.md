@@ -49,6 +49,34 @@ mv ~/cliclaw/log_history ~/cliclaw/.daemon/ || true
 cliclaw daemon start --token <admin-token>
 ```
 
+## Migrating from legacy `~/hiboss`
+
+Earlier Hi-Boss builds used `~/hiboss/` and `.daemon/hiboss.db`.
+
+Current CLIClaw builds default to `~/cliclaw/` and `.daemon/cliclaw.db`.
+
+Migration (preserve state):
+
+```bash
+# Stop daemon first
+hiboss daemon stop --token <admin-token> || true
+cliclaw daemon stop --token <admin-token> || true
+
+# Move old root into new root location
+mv ~/hiboss ~/cliclaw
+
+# Ensure daemon dir exists
+mkdir -p ~/cliclaw/.daemon
+
+# Rename legacy DB filename
+if [ -f ~/cliclaw/.daemon/hiboss.db ] && [ ! -f ~/cliclaw/.daemon/cliclaw.db ]; then
+  mv ~/cliclaw/.daemon/hiboss.db ~/cliclaw/.daemon/cliclaw.db
+fi
+
+# Start with new CLI
+cliclaw daemon start --token <admin-token>
+```
+
 Full reset (wipes local state):
 
 ```bash

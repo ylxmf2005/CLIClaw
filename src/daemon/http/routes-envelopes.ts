@@ -24,7 +24,7 @@ export function registerEnvelopeRoutes(router: HttpRouter, rpc: RpcMethodRegistr
       interruptNow: body.interruptNow,
       parseMode: body.parseMode,
       replyToEnvelopeId: body.replyToEnvelopeId,
-      origin: "cli",
+      origin: "console",
       mentions: body.mentions,
     });
   });

@@ -4,7 +4,7 @@
 
 import type { HttpRouter } from "./router.js";
 import type { RpcMethodRegistry } from "../ipc/types.js";
-import type { DaemonContext } from "../rpc/context.js";
+import type { DaemonContext, Principal } from "../rpc/context.js";
 import { rpcError } from "../rpc/context.js";
 import { RPC_ERRORS } from "../ipc/types.js";
 import { requireTokenFromCtx } from "./route-helpers.js";
@@ -12,8 +12,32 @@ import { generateUUID } from "../../shared/uuid.js";
 import { isKnownAdapterType } from "../../shared/adapter-types.js";
 import { logEvent } from "../../shared/daemon-log.js";
 import { isValidAgentName, AGENT_NAME_ERROR_MESSAGE } from "../../shared/validation.js";
+import { readPtyOutputChunks } from "../terminal/pty-history.js";
 
 const VALID_REASONING_EFFORTS = new Set(["none", "low", "medium", "high", "xhigh", "max"]);
+
+function assertPrincipalCanAccessAgent(
+  daemonCtx: DaemonContext,
+  principal: Principal,
+  agentName: string,
+): void {
+  if (principal.kind === "agent" && principal.agent.name !== agentName) {
+    rpcError(RPC_ERRORS.UNAUTHORIZED, "Access denied");
+  }
+  if (principal.kind === "user") {
+    const decision = daemonCtx.db.evaluateUserTokenAgentAccess(principal.user.token, agentName);
+    if (!decision.allowed) {
+      rpcError(RPC_ERRORS.UNAUTHORIZED, "Access denied");
+    }
+  }
+}
+
+function parseOptionalBoolean(value: unknown): boolean | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value === "boolean") return value;
+  return undefined;
+}
 
 /**
  * Register session and chat-state routes.
@@ -44,9 +68,7 @@ export function registerSessionRoutes(
       rpcError(RPC_ERRORS.NOT_FOUND, "Agent not found");
     }
 
-    if (principal.kind === "agent" && principal.agent.name !== agent.name) {
-      rpcError(RPC_ERRORS.UNAUTHORIZED, "Access denied");
-    }
+    assertPrincipalCanAccessAgent(daemonCtx, principal, agent.name);
 
     const rawLimit = ctx.query.get("limit");
     const parsedLimit = rawLimit ? Number.parseInt(rawLimit, 10) : Number.NaN;
@@ -67,6 +89,45 @@ export function registerSessionRoutes(
     });
 
     return { envelopes };
+  });
+
+  // GET /api/agents/:name/chats/:chatId/pty-history — list persisted PTY output chunks
+  router.get("/api/agents/:name/chats/:chatId/pty-history", async (ctx) => {
+    const token = requireTokenFromCtx(ctx);
+    const principal = daemonCtx.resolvePrincipal(token);
+    daemonCtx.assertOperationAllowed("envelope.list", principal);
+
+    const agentName = (ctx.params.name ?? "").trim();
+    if (!agentName || !isValidAgentName(agentName)) {
+      rpcError(RPC_ERRORS.INVALID_PARAMS, AGENT_NAME_ERROR_MESSAGE);
+    }
+
+    const chatId = (ctx.params.chatId ?? "").trim();
+    if (!chatId) {
+      rpcError(RPC_ERRORS.INVALID_PARAMS, "chatId is required");
+    }
+
+    const agent = daemonCtx.db.getAgentByNameCaseInsensitive(agentName);
+    if (!agent) {
+      rpcError(RPC_ERRORS.NOT_FOUND, "Agent not found");
+    }
+
+    assertPrincipalCanAccessAgent(daemonCtx, principal, agent.name);
+
+    const rawLimit = ctx.query.get("limit");
+    const parsedLimit = rawLimit ? Number.parseInt(rawLimit, 10) : Number.NaN;
+    const limit = Number.isFinite(parsedLimit)
+      ? Math.max(1, Math.min(10_000, Math.trunc(parsedLimit)))
+      : 2000;
+
+    const chunks = readPtyOutputChunks({
+      cliclawDir: daemonCtx.config.dataDir,
+      agentName: agent.name,
+      chatId,
+      limit,
+    });
+
+    return { chunks };
   });
 
   // GET /api/sessions?agentName=<name>
@@ -104,6 +165,7 @@ export function registerSessionRoutes(
     if (!agent) {
       rpcError(RPC_ERRORS.NOT_FOUND, "Agent not found");
     }
+    assertPrincipalCanAccessAgent(daemonCtx, principal, agent.name);
 
     let relayOn = daemonCtx.db.getChatRelayState(agent.name, chatId);
 
@@ -150,6 +212,7 @@ export function registerSessionRoutes(
     if (!agent) {
       rpcError(RPC_ERRORS.NOT_FOUND, "Agent not found");
     }
+    assertPrincipalCanAccessAgent(daemonCtx, principal, agent.name);
 
     const settings = daemonCtx.db.getChatModelSettings(agent.name, chatId);
     return {
@@ -176,6 +239,7 @@ export function registerSessionRoutes(
     if (!agent) {
       rpcError(RPC_ERRORS.NOT_FOUND, "Agent not found");
     }
+    assertPrincipalCanAccessAgent(daemonCtx, principal, agent.name);
 
     const body = (ctx.body ?? {}) as Record<string, unknown>;
     if (!("modelOverride" in body) && !("reasoningEffortOverride" in body)) {
@@ -256,6 +320,7 @@ export function registerSessionRoutes(
     if (!agent) {
       rpcError(RPC_ERRORS.NOT_FOUND, "Agent not found");
     }
+    assertPrincipalCanAccessAgent(daemonCtx, principal, agent.name);
 
     const sessions = daemonCtx.db.listAgentSessionsByAgent(agent.name);
     const result = sessions.map((s) => {
@@ -270,7 +335,7 @@ export function registerSessionRoutes(
         bindings: bindings.map((b) => ({
           adapterType: b.adapterType,
           chatId: b.chatId,
-          createdAt: b.updatedAt,
+          updatedAt: b.updatedAt,
         })),
       };
     });
@@ -293,6 +358,7 @@ export function registerSessionRoutes(
     if (!agent) {
       rpcError(RPC_ERRORS.NOT_FOUND, "Agent not found");
     }
+    assertPrincipalCanAccessAgent(daemonCtx, principal, agent.name);
 
     const body = (ctx.body ?? {}) as Record<string, unknown>;
     const adapterType = typeof body.adapterType === "string" ? body.adapterType.trim() : "";
@@ -323,7 +389,7 @@ export function registerSessionRoutes(
         bindings: bindings.map((b) => ({
           adapterType: b.adapterType,
           chatId: b.chatId,
-          createdAt: b.updatedAt,
+          updatedAt: b.updatedAt,
         })),
       },
       chatId,
@@ -346,6 +412,7 @@ export function registerSessionRoutes(
     if (!agent) {
       rpcError(RPC_ERRORS.NOT_FOUND, "Agent not found");
     }
+    assertPrincipalCanAccessAgent(daemonCtx, principal, agent.name);
 
     const session = daemonCtx.db.getAgentSessionById(sessionId);
     if (!session || session.agentName !== agent.name) {
@@ -362,15 +429,13 @@ export function registerSessionRoutes(
       rpcError(RPC_ERRORS.INVALID_PARAMS, `Unknown adapter type: ${adapterType}`);
     }
 
-    // Use getOrCreateChannelSession to upsert the binding for this session's chat
-    daemonCtx.db.getOrCreateChannelSession({
-      agentName: agent.name,
-      adapterType,
-      chatId,
-      provider: session.provider,
-    });
+    // Check if this (adapterType, chatId) is already bound to a different session
+    const existingBinding = daemonCtx.db.getChannelSessionBinding(agent.name, adapterType, chatId);
+    if (existingBinding && existingBinding.sessionId !== session.id) {
+      rpcError(RPC_ERRORS.INVALID_PARAMS, `Binding (${adapterType}, ${chatId}) already belongs to another session`);
+    }
 
-    // Now switch the binding to point to the target session
+    // Directly bind to the target session (atomic)
     daemonCtx.db.switchChannelSession({
       agentName: agent.name,
       adapterType,
@@ -386,7 +451,7 @@ export function registerSessionRoutes(
         bindings: bindings.map((b) => ({
           adapterType: b.adapterType,
           chatId: b.chatId,
-          createdAt: b.updatedAt,
+          updatedAt: b.updatedAt,
         })),
       },
     };
@@ -408,6 +473,7 @@ export function registerSessionRoutes(
     if (!agent) {
       rpcError(RPC_ERRORS.NOT_FOUND, "Agent not found");
     }
+    assertPrincipalCanAccessAgent(daemonCtx, principal, agent.name);
 
     const session = daemonCtx.db.getAgentSessionById(sessionId);
     if (!session || session.agentName !== agent.name) {
@@ -446,7 +512,7 @@ export function registerSessionRoutes(
         bindings: bindings.map((b) => ({
           adapterType: b.adapterType,
           chatId: b.chatId,
-          createdAt: b.updatedAt,
+          updatedAt: b.updatedAt,
         })),
       },
     };
@@ -468,6 +534,7 @@ export function registerSessionRoutes(
     if (!agent) {
       rpcError(RPC_ERRORS.NOT_FOUND, "Agent not found");
     }
+    assertPrincipalCanAccessAgent(daemonCtx, principal, agent.name);
 
     const session = daemonCtx.db.getAgentSessionById(sessionId);
     if (!session || session.agentName !== agent.name) {
@@ -480,11 +547,10 @@ export function registerSessionRoutes(
       rpcError(RPC_ERRORS.NOT_FOUND, "Session not found");
     }
 
-    // Emit event so WebSocket clients can update
-    daemonCtx.eventBus?.emit("agent.status", {
-      name: agent.name,
-      agentState: "idle",
-      agentHealth: "ok",
+    // Emit event so WebSocket clients can refresh session lists
+    daemonCtx.eventBus?.emit("session.deleted", {
+      agentName: agent.name,
+      sessionId: session.id,
     });
 
     return { success: true, deletedSessionId: session.id };
@@ -508,6 +574,7 @@ export function registerSessionRoutes(
     if (!agent) {
       rpcError(RPC_ERRORS.NOT_FOUND, "Agent not found");
     }
+    assertPrincipalCanAccessAgent(daemonCtx, principal, agent.name);
 
     const session = daemonCtx.db.getAgentSessionById(sessionId);
     if (!session || session.agentName !== agent.name) {
@@ -541,9 +608,186 @@ export function registerSessionRoutes(
         bindings: bindings.map((b) => ({
           adapterType: b.adapterType,
           chatId: b.chatId,
-          createdAt: b.updatedAt,
+          updatedAt: b.updatedAt,
         })),
       },
+    };
+  });
+
+  // GET /api/agents/:name/boss-context — agent default use-BOSS setting
+  router.get("/api/agents/:name/boss-context", async (ctx) => {
+    const token = requireTokenFromCtx(ctx);
+    const principal = daemonCtx.resolvePrincipal(token);
+    daemonCtx.assertOperationAllowed("chat.relay-toggle", principal);
+
+    const agentName = (ctx.params.name ?? "").trim();
+    if (!agentName || !isValidAgentName(agentName)) {
+      rpcError(RPC_ERRORS.INVALID_PARAMS, AGENT_NAME_ERROR_MESSAGE);
+    }
+    const agent = daemonCtx.db.getAgentByNameCaseInsensitive(agentName);
+    if (!agent) {
+      rpcError(RPC_ERRORS.NOT_FOUND, "Agent not found");
+    }
+    assertPrincipalCanAccessAgent(daemonCtx, principal, agent.name);
+
+    return {
+      agentName: agent.name,
+      enabled: daemonCtx.db.getAgentUseBossDefault(agent.name),
+    };
+  });
+
+  // PATCH /api/agents/:name/boss-context — set agent default use-BOSS setting
+  router.patch("/api/agents/:name/boss-context", async (ctx) => {
+    const token = requireTokenFromCtx(ctx);
+    const principal = daemonCtx.resolvePrincipal(token);
+    daemonCtx.assertOperationAllowed("chat.relay-toggle", principal);
+
+    const agentName = (ctx.params.name ?? "").trim();
+    if (!agentName || !isValidAgentName(agentName)) {
+      rpcError(RPC_ERRORS.INVALID_PARAMS, AGENT_NAME_ERROR_MESSAGE);
+    }
+    const agent = daemonCtx.db.getAgentByNameCaseInsensitive(agentName);
+    if (!agent) {
+      rpcError(RPC_ERRORS.NOT_FOUND, "Agent not found");
+    }
+    assertPrincipalCanAccessAgent(daemonCtx, principal, agent.name);
+
+    const body = (ctx.body ?? {}) as Record<string, unknown>;
+    if (typeof body.enabled !== "boolean") {
+      rpcError(RPC_ERRORS.INVALID_PARAMS, "enabled must be a boolean");
+    }
+    daemonCtx.db.setAgentUseBossDefault(agent.name, body.enabled);
+    daemonCtx.executor.requestSessionContextReload(agent.name, "http:agent-boss-default");
+    return {
+      success: true,
+      agentName: agent.name,
+      enabled: daemonCtx.db.getAgentUseBossDefault(agent.name),
+    };
+  });
+
+  // GET /api/teams/:teamName/boss-context — team default use-BOSS setting
+  router.get("/api/teams/:teamName/boss-context", async (ctx) => {
+    const token = requireTokenFromCtx(ctx);
+    const principal = daemonCtx.resolvePrincipal(token);
+    daemonCtx.assertOperationAllowed("team.status", principal);
+
+    const teamName = (ctx.params.teamName ?? "").trim();
+    if (!teamName) {
+      rpcError(RPC_ERRORS.INVALID_PARAMS, "teamName is required");
+    }
+    const team = daemonCtx.db.getTeamByNameCaseInsensitive(teamName);
+    if (!team) {
+      rpcError(RPC_ERRORS.NOT_FOUND, "Team not found");
+    }
+
+    return {
+      teamName: team.name,
+      enabled: daemonCtx.db.getTeamUseBossDefault(team.name),
+    };
+  });
+
+  // PATCH /api/teams/:teamName/boss-context — set team default use-BOSS setting
+  router.patch("/api/teams/:teamName/boss-context", async (ctx) => {
+    const token = requireTokenFromCtx(ctx);
+    const principal = daemonCtx.resolvePrincipal(token);
+    daemonCtx.assertOperationAllowed("team.set", principal);
+
+    const teamName = (ctx.params.teamName ?? "").trim();
+    if (!teamName) {
+      rpcError(RPC_ERRORS.INVALID_PARAMS, "teamName is required");
+    }
+    const team = daemonCtx.db.getTeamByNameCaseInsensitive(teamName);
+    if (!team) {
+      rpcError(RPC_ERRORS.NOT_FOUND, "Team not found");
+    }
+    const body = (ctx.body ?? {}) as Record<string, unknown>;
+    if (typeof body.enabled !== "boolean") {
+      rpcError(RPC_ERRORS.INVALID_PARAMS, "enabled must be a boolean");
+    }
+    daemonCtx.db.setTeamUseBossDefault(team.name, body.enabled);
+
+    const members = daemonCtx.db.listTeamMemberAgentNames(team.name);
+    for (const member of members) {
+      daemonCtx.executor.requestSessionContextReload(member, "http:team-boss-default");
+    }
+
+    return {
+      success: true,
+      teamName: team.name,
+      enabled: daemonCtx.db.getTeamUseBossDefault(team.name),
+    };
+  });
+
+  // GET /api/agents/:name/chats/:chatId/boss-context — chat use-BOSS override/effective value
+  router.get("/api/agents/:name/chats/:chatId/boss-context", async (ctx) => {
+    const token = requireTokenFromCtx(ctx);
+    const principal = daemonCtx.resolvePrincipal(token);
+    daemonCtx.assertOperationAllowed("chat.relay-toggle", principal);
+
+    const agentName = (ctx.params.name ?? "").trim();
+    if (!agentName || !isValidAgentName(agentName)) {
+      rpcError(RPC_ERRORS.INVALID_PARAMS, AGENT_NAME_ERROR_MESSAGE);
+    }
+    const chatId = (ctx.params.chatId ?? "").trim();
+    if (!chatId) {
+      rpcError(RPC_ERRORS.INVALID_PARAMS, "chatId is required");
+    }
+    const agent = daemonCtx.db.getAgentByNameCaseInsensitive(agentName);
+    if (!agent) {
+      rpcError(RPC_ERRORS.NOT_FOUND, "Agent not found");
+    }
+    assertPrincipalCanAccessAgent(daemonCtx, principal, agent.name);
+
+    const settings = daemonCtx.db.getChatBossSettings(agent.name, chatId);
+    return {
+      agentName: agent.name,
+      chatId,
+      ...(settings.useBossOverride !== undefined ? { useBossOverride: settings.useBossOverride } : {}),
+      ...(settings.ownerTokenName ? { ownerTokenName: settings.ownerTokenName } : {}),
+      effectiveUseBoss: daemonCtx.db.getEffectiveUseBossForChat(agent.name, chatId),
+    };
+  });
+
+  // PATCH /api/agents/:name/chats/:chatId/boss-context — set chat use-BOSS override
+  router.patch("/api/agents/:name/chats/:chatId/boss-context", async (ctx) => {
+    const token = requireTokenFromCtx(ctx);
+    const principal = daemonCtx.resolvePrincipal(token);
+    daemonCtx.assertOperationAllowed("chat.relay-toggle", principal);
+
+    const agentName = (ctx.params.name ?? "").trim();
+    if (!agentName || !isValidAgentName(agentName)) {
+      rpcError(RPC_ERRORS.INVALID_PARAMS, AGENT_NAME_ERROR_MESSAGE);
+    }
+    const chatId = (ctx.params.chatId ?? "").trim();
+    if (!chatId) {
+      rpcError(RPC_ERRORS.INVALID_PARAMS, "chatId is required");
+    }
+    const agent = daemonCtx.db.getAgentByNameCaseInsensitive(agentName);
+    if (!agent) {
+      rpcError(RPC_ERRORS.NOT_FOUND, "Agent not found");
+    }
+    assertPrincipalCanAccessAgent(daemonCtx, principal, agent.name);
+
+    const body = (ctx.body ?? {}) as Record<string, unknown>;
+    const useBossOverride = parseOptionalBoolean(body.useBossOverride);
+    if (useBossOverride === undefined && body.useBossOverride !== null) {
+      rpcError(RPC_ERRORS.INVALID_PARAMS, "useBossOverride must be boolean|null");
+    }
+    const prev = daemonCtx.db.getChatBossSettings(agent.name, chatId);
+    daemonCtx.db.setChatBossSettings(agent.name, chatId, {
+      useBossOverride,
+      ownerTokenName: prev.ownerTokenName ?? null,
+    });
+    daemonCtx.executor.requestSessionContextReload(agent.name, "http:chat-boss-override");
+
+    const settings = daemonCtx.db.getChatBossSettings(agent.name, chatId);
+    return {
+      success: true,
+      agentName: agent.name,
+      chatId,
+      ...(settings.useBossOverride !== undefined ? { useBossOverride: settings.useBossOverride } : {}),
+      ...(settings.ownerTokenName ? { ownerTokenName: settings.ownerTokenName } : {}),
+      effectiveUseBoss: daemonCtx.db.getEffectiveUseBossForChat(agent.name, chatId),
     };
   });
 }

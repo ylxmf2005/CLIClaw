@@ -16,6 +16,7 @@ import type { Socket } from "node:net";
 import type { DaemonContext } from "../rpc/context.js";
 import type { DaemonEventBus, DaemonEventType } from "../events/event-bus.js";
 import { logEvent, errorMessage } from "../../shared/daemon-log.js";
+import { appendPtyHistoryEvent } from "../terminal/pty-history.js";
 
 const WS_AUTH_CLOSE_CODE = 4001;
 const LOG_BATCH_MAX = 10;
@@ -47,7 +48,11 @@ export function createWsServer(
     }
 
     const token = url.searchParams.get("token");
-    if (!token || !daemonCtx.db.verifyAdminToken(token)) {
+    const isValidToken = !!(
+      token &&
+      (daemonCtx.db.resolveTokenUser(token) || daemonCtx.db.findAgentByToken(token))
+    );
+    if (!isValidToken) {
       socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
       socket.destroy();
       return;
@@ -82,6 +87,25 @@ export function createWsServer(
 
   // Subscribe to all events from the bus
   const unsubscribe = eventBus.onAll((event, payload) => {
+    if (event === "agent.pty.output") {
+      const pty = payload as { name?: string; chatId?: string; data?: string };
+      if (
+        typeof pty.name === "string"
+        && typeof pty.chatId === "string"
+        && pty.chatId.trim().length > 0
+        && typeof pty.data === "string"
+        && pty.data.length > 0
+      ) {
+        appendPtyHistoryEvent({
+          cliclawDir: daemonCtx.config.dataDir,
+          agentName: pty.name,
+          chatId: pty.chatId,
+          direction: "output",
+          data: pty.data,
+        });
+      }
+    }
+
     if (event === "agent.log") {
       // Batch log lines
       for (const client of wss.clients) {
@@ -130,15 +154,27 @@ async function handleInboundMessage(
     };
 
     if (msg.type !== "agent.pty.input" || !msg.payload?.name || !msg.payload?.data) {
+      logEvent("info", "ws-inbound-rejected", { type: msg.type, hasName: !!msg.payload?.name, hasData: !!msg.payload?.data });
       return;
     }
 
     const { name, chatId, data } = msg.payload;
+    logEvent("info", "ws-pty-input", { name, chatId: chatId ?? "none", dataLen: data.length });
+    if (chatId && chatId.trim().length > 0) {
+      appendPtyHistoryEvent({
+        cliclawDir: daemonCtx.config.dataDir,
+        agentName: name,
+        chatId,
+        direction: "input",
+        data,
+      });
+    }
 
     // For chat-bound PTY sessions, route through RelayExecutor so we can
     // self-heal stale in-memory relay session state after daemon restarts.
     if (chatId && daemonCtx.relayExecutor) {
       const result = await daemonCtx.relayExecutor.sendInput(name, chatId, data);
+      logEvent("info", "ws-pty-input-result", { name, chatId, success: result.success, error: result.error });
       if (!result.success) {
         sendPtyErrorToClient(ws, name, chatId, result.error ?? "Relay input failed");
       }

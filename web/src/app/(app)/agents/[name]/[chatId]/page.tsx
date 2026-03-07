@@ -44,7 +44,7 @@ interface SlashExecution {
 export default function AgentChatPage() {
   const { name, chatId } = useParams<{ name: string; chatId: string }>();
   const router = useRouter();
-  const { state, dispatch, loadEnvelopes, loadConversations, loadSessions } = useAppState();
+  const { state, dispatch, loadEnvelopes, loadConversations, loadSessions, loadPtyHistory } = useAppState();
   const { toast } = useToast();
   const [splitPane, setSplitPane] = useState<"terminal" | "cron" | null>(null);
   const [replyTo, setReplyTo] = useState<ReplyTo | null>(null);
@@ -77,24 +77,19 @@ export default function AgentChatPage() {
   const relayKey = `${name}:${chatId}`;
   const relayOn = state.relayStates[relayKey] ?? false;
   const relayAvailable = state.daemonStatus?.relayAvailable ?? false;
+  const ptyChunks = state.ptyOutput[relayKey] || [];
+  const hasPtyTranscript = ptyChunks.length > 0;
 
   const resolveFromAddress = useCallback((): string => {
     const sessions = state.sessions[name] || [];
     const session = sessions.find((s) => s.bindings.some((b) => b.chatId === chatId));
-    if (!session || session.bindings.length === 0) {
+    if (!session) return `channel:console:${chatId}`;
+
+    const binding = session.bindings.find((b) => b.chatId === chatId);
+    if (!binding || binding.adapterType === "console" || binding.adapterType === "internal") {
       return `channel:console:${chatId}`;
     }
-    const currentBinding =
-      session.bindings.find((b) => b.chatId === chatId) ??
-      session.bindings.find((b) => b.adapterType !== "console") ??
-      session.bindings[0];
-    if (!currentBinding) {
-      return `channel:console:${chatId}`;
-    }
-    if (currentBinding.adapterType === "internal") {
-      return `channel:console:${chatId}`;
-    }
-    return `channel:${currentBinding.adapterType}:${currentBinding.chatId}`;
+    return `channel:${binding.adapterType}:${binding.chatId}`;
   }, [state.sessions, name, chatId]);
 
   // Save scroll position when switching away, restore when switching back
@@ -133,13 +128,14 @@ export default function AgentChatPage() {
     loadEnvelopes(`agent:${name}`, chatId);
     loadConversations(name);
     loadSessions(name);
+    loadPtyHistory(name, chatId);
     // Reset unread
     dispatch({ type: "UPDATE_UNREAD", agentName: name, chatId, delta: 0 });
     // Load scheduled/pending envelopes
     api.listEnvelopes({ to: `agent:${name}`, chatId, status: "pending", limit: 20 })
       .then(({ envelopes }) => setScheduledEnvelopes(envelopes))
       .catch(() => {});
-  }, [name, chatId, loadEnvelopes, loadConversations, loadSessions, dispatch]);
+  }, [name, chatId, loadEnvelopes, loadConversations, loadSessions, loadPtyHistory, dispatch]);
 
   useEffect(() => {
     let cancelled = false;
@@ -232,7 +228,7 @@ export default function AgentChatPage() {
         });
         setPendingAttachments([]);
         setReplyTo(null);
-        loadEnvelopes(`agent:${name}`, chatId);
+        // Trust WS `envelope.new` event for real-time update instead of refetching
       } catch (err) {
         toast({
           title: "Send failed",
@@ -241,7 +237,7 @@ export default function AgentChatPage() {
         });
       }
     },
-    [name, chatId, loadEnvelopes, pendingAttachments, replyTo, resolveFromAddress, toast]
+    [name, chatId, pendingAttachments, replyTo, resolveFromAddress, toast]
   );
 
   const handleScheduleSend = useCallback(
@@ -302,7 +298,6 @@ export default function AgentChatPage() {
             interruptNow: true,
             from,
           });
-          await loadEnvelopes(`agent:${name}`, chatId);
         } else {
           throw new Error(`Unsupported slash command: ${commandText}`);
         }
@@ -326,7 +321,7 @@ export default function AgentChatPage() {
         });
       }
     },
-    [name, chatId, loadEnvelopes, resolveFromAddress, toast]
+    [name, chatId, resolveFromAddress, toast]
   );
 
   // Task 9.2: Relay toggle handler that also calls the backend API
@@ -622,8 +617,16 @@ export default function AgentChatPage() {
                     <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
                   </svg>
                 </div>
-                <p className="text-sm text-muted-foreground">No messages yet</p>
-                <p className="mt-1 text-xs text-muted-foreground">Start a conversation with {name}</p>
+                <p className="text-sm text-muted-foreground">
+                  {hasPtyTranscript ? "No envelope messages yet" : "No messages yet"}
+                </p>
+                {hasPtyTranscript ? (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    PTY transcript restored ({ptyChunks.length} chunks). Open Terminal to view history.
+                  </p>
+                ) : (
+                  <p className="mt-1 text-xs text-muted-foreground">Start a conversation with {name}</p>
+                )}
               </div>
             )}
             {envelopes.map((env, i) => {
@@ -845,7 +848,7 @@ export default function AgentChatPage() {
           agentName={name}
           chatId={chatId}
           relayOn={relayOn}
-          initialPtyOutput={state.ptyOutput[relayKey] || state.ptyOutput[name] || []}
+          initialPtyOutput={ptyChunks}
           initialLogLine={state.agentLogLines[name]}
           onClose={() => setSplitPane(null)}
           className="w-[420px] shrink-0"

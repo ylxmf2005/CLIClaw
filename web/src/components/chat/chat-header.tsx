@@ -14,6 +14,8 @@ import {
   Settings,
   Zap,
   Radio,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { cn, formatChatLabel } from "@/lib/utils";
 import type { Agent } from "@/lib/types";
@@ -39,6 +41,8 @@ export interface ChatHeaderProps {
   relayOn: boolean;
   relayAvailable: boolean;
   onToggleRelay: () => void;
+  useBossMd: boolean;
+  onToggleUseBossMd: () => void;
 }
 
 export function ChatHeader({
@@ -60,6 +64,8 @@ export function ChatHeader({
   relayOn,
   relayAvailable,
   onToggleRelay,
+  useBossMd,
+  onToggleUseBossMd,
 }: ChatHeaderProps) {
   return (
     <div className="flex h-14 items-center justify-between border-b border-border bg-card/80 px-4 backdrop-blur-sm">
@@ -140,6 +146,23 @@ export function ChatHeader({
           aria-pressed={relayOn}
         >
           <Radio className="h-4 w-4" />
+        </Button>
+
+        <Button
+          variant="ghost"
+          size="icon"
+          className={cn(
+            "h-8 w-8",
+            useBossMd
+              ? "text-cyan-glow"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+          onClick={onToggleUseBossMd}
+          title={useBossMd ? "BOSS context ON" : "BOSS context OFF"}
+          aria-label="Toggle BOSS context"
+          aria-pressed={useBossMd}
+        >
+          {useBossMd ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
         </Button>
 
         <Button

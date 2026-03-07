@@ -692,6 +692,7 @@ export function stringifySettings(settings: Settings): string {
     "permission-policy": settings.permissionPolicy.operations,
     tokens: settings.tokens.map((token) => ({
       name: token.name,
+      "token-name": token.tokenName,
       token: token.token,
       role: token.role,
       ...(token.agents ? { agents: token.agents } : {}),

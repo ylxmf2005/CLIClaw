@@ -165,6 +165,7 @@ CREATE INDEX IF NOT EXISTS idx_agent_bindings_adapter ON agent_bindings(adapter_
 CREATE INDEX IF NOT EXISTS idx_agent_runs_agent ON agent_runs(agent_name, started_at);
 CREATE INDEX IF NOT EXISTS idx_agent_sessions_agent_last_active ON agent_sessions(agent_name, last_active_at DESC);
 CREATE INDEX IF NOT EXISTS idx_channel_session_bindings_lookup ON channel_session_bindings(agent_name, adapter_type, chat_id);
+CREATE INDEX IF NOT EXISTS idx_channel_session_bindings_session ON channel_session_bindings(session_id);
 CREATE INDEX IF NOT EXISTS idx_channel_session_links_agent_owner_last_seen ON channel_session_links(agent_name, owner_user_id, last_seen_at DESC);
 CREATE INDEX IF NOT EXISTS idx_channel_session_links_agent_chat_last_seen ON channel_session_links(agent_name, adapter_type, chat_id, last_seen_at DESC);
 CREATE INDEX IF NOT EXISTS idx_channel_user_auth_lookup ON channel_user_auth(adapter_type, channel_user_id);
@@ -175,6 +176,8 @@ CREATE TABLE IF NOT EXISTS chat_state (
   relay_on INTEGER DEFAULT 0,
   model_override TEXT,
   reasoning_effort_override TEXT,
+  use_boss_override INTEGER,
+  owner_token_name TEXT,
   PRIMARY KEY (agent_name, chat_id)
 );
 `;

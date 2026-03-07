@@ -35,7 +35,7 @@
     "inventory:magic": "tsx scripts/magic-inventory.ts --out docs/spec/generated/magic-inventory.md"
   },
   "dependencies": {
-    "@agent-relay/sdk": "^3.1.0",
+    "@agent-relay/sdk": "^3.1.11",
     "@inquirer/prompts": "^7.0.0",
     "@types/proper-lockfile": "^4.1.4",
     "better-sqlite3": "^11.7.0",

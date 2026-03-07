@@ -84,6 +84,7 @@ test("parseSettingsJson accepts valid user-permission-policy", () => {
   );
 
   assert.equal(settings.tokens[1]?.token, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+  assert.equal(settings.tokens[1]?.tokenName, "lpc");
   assert.equal(settings.tokens[1]?.role, "user");
   assert.deepEqual(settings.tokens[1]?.agents, ["nex"]);
   assert.equal(settings.tokens[1]?.bindings?.[0]?.uid, "lpcfjx");

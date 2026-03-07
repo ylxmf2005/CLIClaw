@@ -22,7 +22,7 @@ import {
   resolveUserPermissionUserByToken,
 } from "../../shared/user-permissions.js";
 
-type ChannelBridgeInterruptExecutor = Pick<AgentExecutor, "abortCurrentRunForChannel">;
+type ChannelBridgeInterruptExecutor = Pick<AgentExecutor, "abortCurrentRunForChannel" | "requestSessionContextReload">;
 
 interface ChannelBridgeOptions {
   executor?: ChannelBridgeInterruptExecutor;
@@ -98,12 +98,20 @@ export class ChannelBridge {
   private resolveTokenAuthorization(params: {
     token: string;
     targetAgentName: string;
-  }): { allowed: boolean; token?: string; fromBoss: boolean; role?: "admin" | "user"; userName?: string } {
+  }): {
+    allowed: boolean;
+    token?: string;
+    tokenName?: string;
+    fromBoss: boolean;
+    role?: "admin" | "user";
+    userName?: string;
+  } {
     const policy = this.getUserPermissionPolicy();
     const decision = evaluateUserPermissionByToken(policy, params.token, params.targetAgentName);
     return {
       allowed: decision.allowed,
       token: decision.token,
+      tokenName: decision.tokenName,
       fromBoss: decision.fromBoss,
       role: decision.role,
       userName: decision.userName,
@@ -448,6 +456,10 @@ export class ChannelBridge {
         platform,
         channelMessageId: message.id,
         userToken: authz.token,
+        ...(authz.tokenName ? { userTokenName: authz.tokenName } : {}),
+        fromName: message.channelUser.username
+          ? `${message.channelUser.displayName} (@${message.channelUser.username})`
+          : message.channelUser.displayName,
         ...(channelSession ? { channelSessionId: channelSession.session.id } : {}),
         channelUser: message.channelUser,
         chat: message.chat,
@@ -457,7 +469,7 @@ export class ChannelBridge {
 
     const dispatch = this.channelMessageBatcher.enqueue(message, envelopeInput);
     if (dispatch.interruptNow) {
-      this.options.executor?.abortCurrentRunForChannel(
+      this.options.executor?.abortCurrentRunForChannel?.(
         binding.agentName,
         platform,
         message.chat.id,
@@ -466,6 +478,7 @@ export class ChannelBridge {
     }
     try {
       await this.router.routeEnvelope(dispatch.input);
+      this.options.executor?.requestSessionContextReload?.(binding.agentName, "channel:participant-update");
     } catch (err) {
       logEvent("error", "channel-batch-route-failed", {
         from: dispatch.input.from,

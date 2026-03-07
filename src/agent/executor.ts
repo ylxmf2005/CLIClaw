@@ -37,6 +37,7 @@ import { closeActiveSession, closeAllActiveSessions } from "../daemon/history/se
 import { writeAgentRunTrace } from "../shared/agent-run-trace.js";
 import { generateSystemInstructions } from "./instruction-generator.js";
 import { buildAgentTeamPromptContext, resolveAgentWorkspace } from "../team/runtime.js";
+import { formatBossProfilesForPrompt, readBossProfile } from "../shared/boss-profile.js";
 
 /**
  * Maximum number of pending envelopes to process in a single turn.
@@ -409,6 +410,115 @@ export class AgentExecutor {
     return reasons;
   }
 
+  private buildBossMdContextForScope(
+    db: CliClawDatabase,
+    agent: Agent,
+    scope?: SessionExecutionScope,
+  ): {
+    enabled?: boolean;
+    snapshot?: string;
+    source?: string;
+    error?: string;
+  } {
+    if (!scope) {
+      return { enabled: true };
+    }
+
+    const enabled = db.getEffectiveUseBossForChat(agent.name, scope.chatId);
+    if (!enabled) {
+      return { enabled: false };
+    }
+
+    const tokenUsers = db.listTokenUsers();
+    const tokenUsersByName = new Map(tokenUsers.map((user) => [user.tokenName, user]));
+    const tokenNames = new Set<string>();
+
+    const maybeOwner = db.getChatBossSettings(agent.name, scope.chatId).ownerTokenName;
+    if (maybeOwner) {
+      tokenNames.add(maybeOwner);
+    }
+
+    if (scope.ownerUserId) {
+      const user = db.resolveTokenUser(scope.ownerUserId);
+      if (user) {
+        tokenNames.add(user.tokenName);
+      }
+    }
+
+    if (scope.chatId.startsWith("team:")) {
+      for (const tokenName of db.listChatParticipantTokenNames(agent.name, scope.chatId)) {
+        tokenNames.add(tokenName);
+      }
+    }
+
+    if (tokenNames.size === 0) {
+      return {
+        enabled: true,
+        snapshot: "",
+        source: "(no boss participants yet)",
+      };
+    }
+
+    const profiles = Array.from(tokenNames)
+      .sort((a, b) => a.localeCompare(b))
+      .flatMap((tokenName) => {
+        const user = tokenUsersByName.get(tokenName);
+        const profile = readBossProfile({
+          cliclawDir: this.cliclawDir,
+          tokenName,
+          defaultName: user?.name ?? tokenName,
+        });
+        if (!profile.ok) {
+          return [];
+        }
+        return [profile.profile];
+      });
+
+    return {
+      enabled: true,
+      snapshot: formatBossProfilesForPrompt(profiles),
+      source: profiles.map((profile) => profile.path).join(", "),
+    };
+  }
+
+  private buildSystemInstructionsForScope(params: {
+    db: CliClawDatabase;
+    agent: Agent;
+    scope?: SessionExecutionScope;
+  }): { instructions: string; workspace: string } {
+    const workspace = resolveAgentWorkspace({
+      db: params.db,
+      cliclawDir: this.cliclawDir,
+      agent: params.agent,
+    });
+    const bindings = params.db.getBindingsByAgentName(params.agent.name);
+    const boss = getBossInfo(params.db, bindings);
+    const teams = buildAgentTeamPromptContext({
+      db: params.db,
+      cliclawDir: this.cliclawDir,
+      agent: params.agent,
+    });
+    const bossMd = this.buildBossMdContextForScope(params.db, params.agent, params.scope);
+    const agentRecord = params.db.getAgentByName(params.agent.name);
+    if (!agentRecord) {
+      throw new Error(`Agent ${params.agent.name} not found in database`);
+    }
+
+    const instructions = generateSystemInstructions({
+      agent: params.agent,
+      agentToken: agentRecord.token,
+      bindings,
+      workspaceDir: workspace,
+      bossTimezone: params.db.getBossTimezone(),
+      cliclawDir: this.cliclawDir,
+      boss,
+      bossMd,
+      teams,
+      sessionSummaryConfig: params.db.getRuntimeSessionSummaryConfig(),
+    });
+    return { instructions, workspace };
+  }
+
   /**
    * Best-effort close of current history session for a specific chat scope.
    * Used by channel `/new` to end the old chat session before switching.
@@ -448,39 +558,30 @@ export class AgentExecutor {
       return;
     }
 
-    const agentRecord = db.getAgentByName(agent.name);
-    if (!agentRecord) return;
-
-    const workspace = resolveAgentWorkspace({
-      db,
-      cliclawDir: this.cliclawDir,
-      agent,
-    });
-    const bindings = db.getBindingsByAgentName(agent.name);
-    const boss = getBossInfo(db, bindings);
-    const teams = buildAgentTeamPromptContext({
-      db,
-      cliclawDir: this.cliclawDir,
-      agent,
-    });
-    const instructions = generateSystemInstructions({
-      agent,
-      agentToken: agentRecord.token,
-      bindings,
-      workspaceDir: workspace,
-      bossTimezone: db.getBossTimezone(),
-      cliclawDir: this.cliclawDir,
-      boss,
-      teams,
-      sessionSummaryConfig: db.getRuntimeSessionSummaryConfig(),
-    });
-
     let updatedCount = 0;
     for (const key of scopedSessionKeys) {
       const scoped = this.channelSessions.get(key);
       if (!scoped) continue;
-      scoped.systemInstructions = instructions;
-      scoped.workspace = workspace;
+      const sessionId = key.split(":").pop() ?? "";
+      const persisted = sessionId ? db.getAgentSessionById(sessionId) : null;
+      const binding = sessionId ? db.getCoBindingsForSession(sessionId)[0] : undefined;
+      const scopeForSession: SessionExecutionScope | undefined = persisted?.lastChatId
+        ? {
+            kind: "channel",
+            cacheKey: key,
+            agentSessionId: persisted.id,
+            adapterType: persisted.lastAdapterType ?? "internal",
+            chatId: persisted.lastChatId,
+            ownerUserId: binding?.ownerUserId,
+          }
+        : undefined;
+      const next = this.buildSystemInstructionsForScope({
+        db,
+        agent,
+        scope: scopeForSession,
+      });
+      scoped.systemInstructions = next.instructions;
+      scoped.workspace = next.workspace;
       updatedCount += 1;
     }
 
@@ -1221,35 +1322,18 @@ export class AgentExecutor {
     if (!agentRecord) {
       throw new Error(`Agent ${agent.name} not found in database`);
     }
-    const workspace = resolveAgentWorkspace({
+
+    const nextPrompt = this.buildSystemInstructionsForScope({
       db,
-      cliclawDir: this.cliclawDir,
       agent,
-    });
-    const bindings = db.getBindingsByAgentName(agent.name);
-    const boss = getBossInfo(db, bindings);
-    const teams = buildAgentTeamPromptContext({
-      db,
-      cliclawDir: this.cliclawDir,
-      agent,
-    });
-    const instructions = generateSystemInstructions({
-      agent,
-      agentToken: agentRecord.token,
-      bindings,
-      workspaceDir: workspace,
-      bossTimezone: db.getBossTimezone(),
-      cliclawDir: this.cliclawDir,
-      boss,
-      teams,
-      sessionSummaryConfig: db.getRuntimeSessionSummaryConfig(),
+      scope,
     });
 
     const session: AgentSession = {
       provider,
       agentToken: agentRecord.token,
-      systemInstructions: instructions,
-      workspace,
+      systemInstructions: nextPrompt.instructions,
+      workspace: nextPrompt.workspace,
       providerEnvOverrides,
       model: desiredModel,
       reasoningEffort: desiredReasoningEffort,

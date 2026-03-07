@@ -7,13 +7,49 @@ import { rpcError } from "./context.js";
 import { resolveEnvelopeIdInput } from "./resolve-envelope-id.js";
 import type { EnvelopeSendCoreInput, EnvelopeSendCoreResult } from "./envelope-send-core.js";
 
+export interface HumanEnvelopeSender {
+  token: string;
+  tokenName: string;
+  displayName: string;
+  fromBoss: boolean;
+}
+
+function claimChatOwnerIfSupported(params: {
+  ctx: DaemonContext;
+  agentName: string;
+  chatId: string;
+  tokenName: string;
+}): { ok: boolean; ownerTokenName?: string } {
+  const claimer = (params.ctx.db as unknown as {
+    claimAgentChatOwnerTokenName?: (
+      agentName: string,
+      chatId: string,
+      tokenName: string,
+    ) => { ok: boolean; ownerTokenName?: string };
+  }).claimAgentChatOwnerTokenName;
+  if (typeof claimer !== "function") {
+    // Backward compatibility for test doubles/older DB adapters.
+    return { ok: true };
+  }
+  return claimer(params.agentName, params.chatId, params.tokenName);
+}
+
+function requestContextReloadIfSupported(ctx: DaemonContext, agentName: string): void {
+  const reloader = (ctx.executor as unknown as {
+    requestSessionContextReload?: (agentName: string, reason: string) => void;
+  }).requestSessionContextReload;
+  if (typeof reloader !== "function") return;
+  reloader(agentName, "rpc:envelope.send:human");
+}
+
 /**
- * Send an envelope as the boss (admin token). Sets fromBoss: true.
+ * Send an envelope as a human token (admin/user).
  * Supports agent destinations and team destinations (when mentions provided).
  */
-export async function sendEnvelopeFromBoss(params: {
+export async function sendEnvelopeFromHuman(params: {
   ctx: DaemonContext;
   input: Omit<EnvelopeSendCoreInput, "chatScope">;
+  sender: HumanEnvelopeSender;
 }): Promise<EnvelopeSendCoreResult> {
   const p = params.input;
   if (typeof p.to !== "string" || !p.to.trim()) {
@@ -43,11 +79,11 @@ export async function sendEnvelopeFromBoss(params: {
   const metadata: Record<string, unknown> = {};
   let deliverAt: number | undefined;
   let interruptNow = false;
-  let fromBoss = true;
+  let fromBoss = params.sender.fromBoss;
 
   // Allow admin to specify a custom `from` address (channel address only).
   // This enables "send-as-adapter" from the web console.
-  let from = "channel:web:boss";
+  let from = params.sender.fromBoss ? "channel:web:boss" : "channel:web:user";
   if (typeof p.from === "string" && p.from.trim()) {
     const fromInput = p.from.trim();
     let fromParsed: ReturnType<typeof parseAddress>;
@@ -120,12 +156,13 @@ export async function sendEnvelopeFromBoss(params: {
     const teamChatScope = computeTeamChatId(team.name);
     const ids: string[] = [];
     for (const recipient of recipients) {
-      const sent = await sendEnvelopeFromBoss({
+      const sent = await sendEnvelopeFromHuman({
         ctx: params.ctx,
         input: {
           ...p,
           to: `agent:${recipient}:${teamChatScope}`,
         },
+        sender: params.sender,
       });
       if (!("id" in sent)) {
         rpcError(RPC_ERRORS.INTERNAL_ERROR, "Unexpected team broadcast result");
@@ -140,13 +177,42 @@ export async function sendEnvelopeFromBoss(params: {
   if (!destAgent) {
     rpcError(RPC_ERRORS.NOT_FOUND, "Agent not found");
   }
+  const destinationAgentName = destAgent.name;
 
   let to: string;
   if (destination.type === "agent-new-chat") {
     const chatId = createNewAgentChatId();
+    if (!chatId.startsWith("team:") && params.sender.fromBoss) {
+      const ownerCheck = claimChatOwnerIfSupported({
+        ctx: params.ctx,
+        agentName: destAgent.name,
+        chatId,
+        tokenName: params.sender.tokenName,
+      });
+      if (!ownerCheck.ok) {
+        rpcError(
+          RPC_ERRORS.UNAUTHORIZED,
+          `Chat '${chatId}' is owned by another boss (${ownerCheck.ownerTokenName})`,
+        );
+      }
+    }
     metadata.chatScope = chatId;
     to = `agent:${destAgent.name}:${chatId}`;
   } else if (destination.type === "agent-chat") {
+    if (!destination.chatId.startsWith("team:") && params.sender.fromBoss) {
+      const ownerCheck = claimChatOwnerIfSupported({
+        ctx: params.ctx,
+        agentName: destAgent.name,
+        chatId: destination.chatId,
+        tokenName: params.sender.tokenName,
+      });
+      if (!ownerCheck.ok) {
+        rpcError(
+          RPC_ERRORS.UNAUTHORIZED,
+          `Chat '${destination.chatId}' is owned by another boss (${ownerCheck.ownerTokenName})`,
+        );
+      }
+    }
     metadata.chatScope = destination.chatId;
     to = `agent:${destAgent.name}:${destination.chatId}`;
   } else {
@@ -155,6 +221,10 @@ export async function sendEnvelopeFromBoss(params: {
       "Invalid to (agent destinations must use agent:<name>:new or agent:<name>:<chat-id>)"
     );
   }
+
+  metadata.userToken = params.sender.token;
+  metadata.userTokenName = params.sender.tokenName;
+  metadata.fromName = params.sender.displayName;
 
   // Stamp mentions on metadata when present (from team fan-out)
   if (Array.isArray(p.mentions) && p.mentions.length > 0) {
@@ -171,7 +241,7 @@ export async function sendEnvelopeFromBoss(params: {
   // Only set origin from params if not already set by custom `from` (console origin).
   if (metadata.origin === undefined) {
     if (p.origin !== undefined) {
-      if (p.origin !== "cli" && p.origin !== "internal") {
+      if (p.origin !== "cli" && p.origin !== "internal" && p.origin !== "console") {
         rpcError(RPC_ERRORS.INVALID_PARAMS, "Invalid origin");
       }
       metadata.origin = p.origin;
@@ -227,6 +297,7 @@ export async function sendEnvelopeFromBoss(params: {
     });
 
     params.ctx.scheduler.onEnvelopeCreated(envelope);
+    requestContextReloadIfSupported(params.ctx, destinationAgentName);
     if (interruptNow) {
       return {
         id: envelope.id,
@@ -248,4 +319,23 @@ export async function sendEnvelopeFromBoss(params: {
     }
     throw err;
   }
+}
+
+export async function sendEnvelopeFromBoss(params: {
+  ctx: DaemonContext;
+  input: Omit<EnvelopeSendCoreInput, "chatScope">;
+  senderToken: string;
+  senderTokenName: string;
+  senderDisplayName: string;
+}): Promise<EnvelopeSendCoreResult> {
+  return sendEnvelopeFromHuman({
+    ctx: params.ctx,
+    input: params.input,
+    sender: {
+      token: params.senderToken,
+      tokenName: params.senderTokenName,
+      displayName: params.senderDisplayName,
+      fromBoss: true,
+    },
+  });
 }

@@ -1,6 +1,7 @@
 import { AGENT_NAME_ERROR_MESSAGE, isValidAgentName } from "./validation.js";
 
 export type UserPermissionRole = "admin" | "user";
+export const TOKEN_NAME_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 export interface UserPermissionBinding {
   adapterType: string;
@@ -9,6 +10,7 @@ export interface UserPermissionBinding {
 
 export interface UserPermissionUser {
   name: string;
+  tokenName: string;
   token: string;
   role: UserPermissionRole;
   agents?: string[];
@@ -22,6 +24,7 @@ export interface UserPermissionPolicy {
 export interface UserPermissionDecision {
   allowed: boolean;
   token?: string;
+  tokenName?: string;
   role?: UserPermissionRole;
   userName?: string;
   targetAgentName: string;
@@ -42,6 +45,24 @@ function normalizeToken(raw: string): string {
 
 function normalizeAgentName(raw: string): string {
   return raw.trim().toLowerCase();
+}
+
+export function normalizeTokenName(raw: string): string {
+  return raw.trim().toLowerCase();
+}
+
+export function isValidTokenName(tokenNameRaw: string): boolean {
+  const tokenName = normalizeTokenName(tokenNameRaw);
+  return TOKEN_NAME_REGEX.test(tokenName);
+}
+
+export function slugifyTokenNameFromName(name: string): string {
+  const normalized = name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return normalized || "token";
 }
 
 function isValidToken(token: string): boolean {
@@ -133,6 +154,7 @@ function parseUsers(raw: unknown): UserPermissionUser[] {
 
   const users: UserPermissionUser[] = [];
   const tokenKeys = new Set<string>();
+  const tokenNameKeys = new Set<string>();
 
   for (let index = 0; index < raw.length; index++) {
     const item = raw[index];
@@ -143,6 +165,27 @@ function parseUsers(raw: unknown): UserPermissionUser[] {
     const name = typeof item.name === "string" ? item.name.trim() : "";
     if (!name) {
       fail(`tokens[${index}].name`, "is required");
+    }
+
+    const explicitTokenName =
+      typeof item["token-name"] === "string"
+        ? normalizeTokenName(item["token-name"])
+        : typeof item.tokenName === "string"
+          ? normalizeTokenName(item.tokenName)
+          : "";
+    let tokenName = explicitTokenName || slugifyTokenNameFromName(name);
+    if (!explicitTokenName) {
+      let suffix = 2;
+      while (tokenNameKeys.has(tokenName)) {
+        tokenName = `${slugifyTokenNameFromName(name)}-${suffix}`;
+        suffix += 1;
+      }
+    }
+    if (!isValidTokenName(tokenName)) {
+      fail(`tokens[${index}].token-name`, "must match ^[a-z0-9]+(?:-[a-z0-9]+)*$");
+    }
+    if (tokenNameKeys.has(tokenName)) {
+      fail(`tokens[${index}].token-name`, "duplicate token-name");
     }
 
     const tokenRaw = typeof item.token === "string" ? item.token : "";
@@ -170,6 +213,7 @@ function parseUsers(raw: unknown): UserPermissionUser[] {
       }
       users.push({
         name,
+        tokenName,
         token,
         role: "admin",
         ...(bindings.length > 0 ? { bindings } : {}),
@@ -178,6 +222,7 @@ function parseUsers(raw: unknown): UserPermissionUser[] {
       const agents = parseAgentNames(item.agents, `tokens[${index}].agents`);
       users.push({
         name,
+        tokenName,
         token,
         role: "user",
         agents,
@@ -186,6 +231,7 @@ function parseUsers(raw: unknown): UserPermissionUser[] {
     }
 
     tokenKeys.add(token);
+    tokenNameKeys.add(tokenName);
   }
 
   return users;
@@ -238,6 +284,7 @@ export function evaluateUserPermissionByToken(
     return {
       allowed: true,
       token: user.token,
+      tokenName: user.tokenName,
       role: user.role,
       userName: user.name,
       targetAgentName,
@@ -249,6 +296,7 @@ export function evaluateUserPermissionByToken(
   return {
     allowed,
     token: user.token,
+    tokenName: user.tokenName,
     role: user.role,
     userName: user.name,
     targetAgentName,

@@ -18,6 +18,7 @@ interface WsContextValue {
   status: ConnectionStatus;
   subscribe: (handler: EventHandler) => () => void;
   send: (data: unknown) => void;
+  onReconnect: (handler: () => void) => () => void;
 }
 
 const WsContext = createContext<WsContextValue | null>(null);
@@ -30,6 +31,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<ConnectionStatus>("disconnected");
   const wsRef = useRef<WebSocket | null>(null);
   const handlersRef = useRef<Set<EventHandler>>(new Set());
+  const reconnectHandlersRef = useRef<Set<() => void>>(new Set());
   const reconnectAttemptRef = useRef(0);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const disposedRef = useRef(false);
@@ -56,8 +58,12 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
 
     ws.onopen = () => {
       if (disposedRef.current) { ws.close(); return; }
+      const wasReconnect = reconnectAttemptRef.current > 0;
       setStatus("connected");
       reconnectAttemptRef.current = 0;
+      if (wasReconnect) {
+        reconnectHandlersRef.current.forEach((h) => h());
+      }
     };
 
     ws.onmessage = (e) => {
@@ -115,8 +121,15 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const onReconnect = useCallback((handler: () => void) => {
+    reconnectHandlersRef.current.add(handler);
+    return () => {
+      reconnectHandlersRef.current.delete(handler);
+    };
+  }, []);
+
   return (
-    <WsContext.Provider value={{ status, subscribe, send }}>
+    <WsContext.Provider value={{ status, subscribe, send, onReconnect }}>
       {children}
     </WsContext.Provider>
   );

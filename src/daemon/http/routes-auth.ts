@@ -16,6 +16,12 @@ export function registerAuthRoutes(router: HttpRouter, rpc: RpcMethodRegistry): 
     return rpc["admin.verify"]!({ token });
   });
 
+  // GET /api/auth/me — requires Bearer token
+  router.get("/api/auth/me", async (ctx) => {
+    const token = typeof ctx.token === "string" ? ctx.token : "";
+    return rpc["auth.me"]!({ token });
+  });
+
   // GET /api/setup/check — no token required
   router.get("/api/setup/check", async () => {
     return rpc["setup.check"]!({});

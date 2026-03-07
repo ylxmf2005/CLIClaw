@@ -1,5 +1,4 @@
 import * as fs from "node:fs";
-import * as path from "node:path";
 
 import { IpcClient } from "../../ipc-client.js";
 import { getSocketPath, getDefaultConfig, isDaemonRunning } from "../../../daemon/daemon.js";
@@ -16,7 +15,8 @@ import {
 import { SETTINGS_VERSION, type Settings } from "../../../shared/settings.js";
 import { getSettingsPath, writeSettingsFileAtomic } from "../../../shared/settings-io.js";
 import { syncSettingsToDb } from "../../../daemon/settings-sync.js";
-import { parseUserPermissionPolicy } from "../../../shared/user-permissions.js";
+import { parseUserPermissionPolicy, slugifyTokenNameFromName } from "../../../shared/user-permissions.js";
+import { resolveCliClawDbPath } from "../../../shared/cliclaw-paths.js";
 
 export interface SetupUserInfoStatus {
   bossName?: string;
@@ -142,7 +142,7 @@ export async function checkSetupStatus(): Promise<SetupStatus> {
       return buildEmptySetupStatus();
     }
 
-    const dbPath = path.join(daemonConfig.daemonDir, "cliclaw.db");
+    const dbPath = resolveCliClawDbPath(daemonConfig.daemonDir);
     if (!fs.existsSync(dbPath)) {
       return buildEmptySetupStatus();
     }
@@ -179,7 +179,7 @@ async function executeSetupDirect(config: SetupConfig): Promise<{
   fs.mkdirSync(daemonConfig.dataDir, { recursive: true });
   fs.mkdirSync(daemonConfig.daemonDir, { recursive: true });
 
-  const dbPath = path.join(daemonConfig.daemonDir, "cliclaw.db");
+  const dbPath = resolveCliClawDbPath(daemonConfig.daemonDir);
   const db = new CliClawDatabase(dbPath);
   try {
     if (db.isSetupComplete()) {
@@ -216,11 +216,13 @@ async function executeSetupDirect(config: SetupConfig): Promise<{
       tokens: [
         {
           name: config.bossName,
+          tokenName: slugifyTokenNameFromName(config.bossName),
           token: config.adminToken.toLowerCase(),
           role: "admin",
         },
         ...userTokens.map((item) => ({
           name: item.principal,
+          tokenName: slugifyTokenNameFromName(item.principal),
           token: item.token.toLowerCase(),
           role: "admin" as const,
           bindings: [

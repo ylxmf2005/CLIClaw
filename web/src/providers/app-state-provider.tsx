@@ -97,6 +97,7 @@ type Action =
   | { type: "SET_CONVERSATIONS"; agentName: string; conversations: ChatConversation[] }
   | { type: "SET_RELAY_STATE"; key: string; relayOn: boolean }
   | { type: "UPDATE_UNREAD"; agentName: string; chatId: string; delta: number }
+  | { type: "SET_PTY_OUTPUT"; key: string; chunks: string[] }
   | { type: "PTY_OUTPUT"; agentName: string; chatId?: string; data: string }
   | { type: "UPDATE_ENVELOPE"; envelope: Envelope }
   | { type: "SET_SESSIONS"; agentName: string; sessions: AgentSession[] };
@@ -203,11 +204,18 @@ function reducer(state: AppState, action: Action): AppState {
         ...state,
         agents: state.agents.filter((a) => a.name !== action.name),
       };
-    case "SET_ENVELOPES":
+    case "SET_ENVELOPES": {
+      // Merge: keep any envelopes from WS that arrived after the API snapshot
+      const existing = state.envelopes[action.key] || [];
+      const apiIds = new Set(action.envelopes.map((e) => e.id));
+      // Append WS-only envelopes that are newer than the API batch
+      const wsOnly = existing.filter((e) => !apiIds.has(e.id));
+      const merged = [...action.envelopes, ...wsOnly];
       return {
         ...state,
-        envelopes: { ...state.envelopes, [action.key]: action.envelopes },
+        envelopes: { ...state.envelopes, [action.key]: merged },
       };
+    }
     case "ADD_ENVELOPE": {
       // Route envelope to both sender's and receiver's conversation views
       const env = action.envelope;
@@ -281,7 +289,7 @@ function reducer(state: AppState, action: Action): AppState {
             lastMessageAt: env.createdAt,
             messageCount: (convos[idx].messageCount ?? 0) + 1,
             unreadCount: isSelected
-              ? convos[idx].unreadCount
+              ? 0
               : (convos[idx].unreadCount ?? 0) + 1,
           };
         } else {
@@ -383,6 +391,14 @@ function reducer(state: AppState, action: Action): AppState {
         },
       };
     }
+    case "SET_PTY_OUTPUT":
+      return {
+        ...state,
+        ptyOutput: {
+          ...state.ptyOutput,
+          [action.key]: action.chunks,
+        },
+      };
     case "PTY_OUTPUT": {
       const key = action.chatId ? `${action.agentName}:${action.chatId}` : action.agentName;
       const existing = state.ptyOutput[key] || [];
@@ -426,6 +442,7 @@ interface AppContextValue {
   refreshCron: () => Promise<void>;
   refreshDaemonStatus: () => Promise<void>;
   loadEnvelopes: (address: string, chatId?: string) => Promise<void>;
+  loadPtyHistory: (agentName: string, chatId: string) => Promise<void>;
   loadConversations: (agentName: string) => Promise<void>;
   loadSessions: (agentName: string) => Promise<void>;
 }
@@ -434,7 +451,7 @@ const AppContext = createContext<AppContextValue | null>(null);
 
 export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(reducer, initialState);
-  const { subscribe } = useWebSocket();
+  const { subscribe, onReconnect } = useWebSocket();
   const pathname = usePathname();
   const activeChat = useMemo(() => parseActiveChatSelection(pathname), [pathname]);
 
@@ -480,8 +497,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
 
       const conversationsResult = conversationsResults[i];
       if (conversationsResult?.status === "fulfilled") {
-        const withAgent = conversationsResult.value.conversations.map((c) => ({ ...c, agentName: agent.name }));
-        dispatch({ type: "SET_CONVERSATIONS", agentName: agent.name, conversations: withAgent });
+        dispatch({ type: "SET_CONVERSATIONS", agentName: agent.name, conversations: conversationsResult.value.conversations });
       } else if (!firstError && conversationsResult?.status === "rejected") {
         firstError = conversationsResult.reason instanceof Error
           ? conversationsResult.reason
@@ -549,12 +565,19 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const loadPtyHistory = useCallback(async (agentName: string, chatId: string) => {
+    try {
+      const { chunks } = await api.getPtyHistory({ agentName, chatId, limit: 5000 });
+      dispatch({ type: "SET_PTY_OUTPUT", key: `${agentName}:${chatId}`, chunks });
+    } catch {
+      // silent
+    }
+  }, []);
+
   const loadConversations = useCallback(async (agentName: string) => {
     try {
       const { conversations } = await api.getConversations(agentName);
-      // API returns conversations without agentName — inject it
-      const withAgent = conversations.map((c) => ({ ...c, agentName }));
-      dispatch({ type: "SET_CONVERSATIONS", agentName, conversations: withAgent });
+      dispatch({ type: "SET_CONVERSATIONS", agentName, conversations });
     } catch {
       // silent
     }
@@ -663,6 +686,15 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           dispatch({ type: "PTY_OUTPUT", agentName: pty.name, chatId: pty.chatId, data: pty.data });
           break;
         }
+        case "session.deleted": {
+          const p = event.payload as { agentName: string; sessionId: string };
+          if (typeof p.agentName === "string") {
+            api.getAgentSessions(p.agentName)
+              .then(({ sessions }) => dispatch({ type: "SET_SESSIONS", agentName: p.agentName, sessions }))
+              .catch(() => {});
+          }
+          break;
+        }
         case "console.message": {
           const p = event.payload as { chatId: string; envelope: Envelope };
           const metadata = p.envelope.metadata && typeof p.envelope.metadata === "object"
@@ -687,6 +719,14 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     });
   }, [subscribe, activeChat]);
 
+  // Refresh state on WS reconnect to catch missed events
+  useEffect(() => {
+    return onReconnect(() => {
+      refreshAgents().catch(() => {});
+      refreshTeams().catch(() => {});
+    });
+  }, [onReconnect, refreshAgents, refreshTeams]);
+
   return (
     <AppContext.Provider
       value={{
@@ -698,6 +738,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         refreshCron,
         refreshDaemonStatus,
         loadEnvelopes,
+        loadPtyHistory,
         loadConversations,
         loadSessions,
       }}

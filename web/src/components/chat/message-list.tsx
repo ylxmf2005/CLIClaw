@@ -7,6 +7,7 @@ import {
   formatMessageTime,
   getEnvelopeSenderKey,
   getEnvelopeSenderName,
+  getEnvelopeSenderTokenName,
   parseAddress,
 } from "@/lib/utils";
 import { getSenderColor } from "@/lib/colors";
@@ -25,6 +26,7 @@ import {
 import { EmptyState } from "@/components/shared/empty-state";
 import { MessageContent } from "@/components/shared/message-content";
 import { deriveMention, type MentionInfo } from "@/lib/mention-utils";
+import { useAuth } from "@/providers/auth-provider";
 
 /** Returns an icon for the envelope origin */
 function OriginIcon({ origin }: { origin?: string }) {
@@ -75,10 +77,12 @@ export function MessageList({
   currentAgent,
   onReply,
 }: MessageListProps) {
+  const { identity } = useAuth();
   const bottomRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom on new messages
+  const lastEnvelopeId = envelopes[envelopes.length - 1]?.id;
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -88,7 +92,7 @@ export function MessageList({
     if (isNearBottom) {
       bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     }
-  }, [envelopes.length]);
+  }, [envelopes.length, lastEnvelopeId]);
 
   const handleReply = useCallback(
     (env: Envelope) => {
@@ -116,7 +120,15 @@ export function MessageList({
       >
         {envelopes.map((env, i) => {
           const from = parseAddress(env.from);
-          const senderName = getEnvelopeSenderName(env);
+          const baseSenderName = getEnvelopeSenderName(env);
+          const senderTokenName = getEnvelopeSenderTokenName(env);
+          const isSelf =
+            !!identity &&
+            !!senderTokenName &&
+            senderTokenName === identity.tokenName;
+          const senderName = isSelf
+            ? `You (${identity?.displayName ?? baseSenderName})`
+            : baseSenderName;
           const senderKey = getEnvelopeSenderKey(env);
           const isFromBoss = env.fromBoss;
           const isFromCurrentAgent =
