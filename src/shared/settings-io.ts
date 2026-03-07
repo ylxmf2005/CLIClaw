@@ -10,8 +10,8 @@ import {
   type Settings,
 } from "./settings.js";
 
-export function getSettingsPath(hibossDir: string): string {
-  return path.join(hibossDir, SETTINGS_FILENAME);
+export function getSettingsPath(cliclawDir: string): string {
+  return path.join(cliclawDir, SETTINGS_FILENAME);
 }
 
 export function ensureSettingsFileMode(filePath: string): void {
@@ -25,8 +25,8 @@ export function ensureSettingsFileMode(filePath: string): void {
 /**
  * Intentionally synchronous: used in startup/command paths, not hot loops.
  */
-export function readSettingsFile(hibossDir: string): Settings {
-  const settingsPath = getSettingsPath(hibossDir);
+export function readSettingsFile(cliclawDir: string): Settings {
+  const settingsPath = getSettingsPath(cliclawDir);
   if (!fs.existsSync(settingsPath)) {
     throw new Error(`Settings file not found: ${settingsPath}`);
   }
@@ -36,8 +36,8 @@ export function readSettingsFile(hibossDir: string): Settings {
   return settings;
 }
 
-export async function writeSettingsFileAtomic(hibossDir: string, settings: Settings): Promise<void> {
-  const settingsPath = getSettingsPath(hibossDir);
+export async function writeSettingsFileAtomic(cliclawDir: string, settings: Settings): Promise<void> {
+  const settingsPath = getSettingsPath(cliclawDir);
   const tmpPath = `${settingsPath}.tmp-${process.pid}-${Date.now()}`;
   const json = stringifySettings(settings);
 
@@ -55,8 +55,8 @@ export async function writeSettingsFileAtomic(hibossDir: string, settings: Setti
   }
 }
 
-export async function withSettingsLock<T>(hibossDir: string, fn: () => Promise<T>): Promise<T> {
-  const lockPath = `${getSettingsPath(hibossDir)}.lock`;
+export async function withSettingsLock<T>(cliclawDir: string, fn: () => Promise<T>): Promise<T> {
+  const lockPath = `${getSettingsPath(cliclawDir)}.lock`;
   await fs.promises.mkdir(path.dirname(lockPath), { recursive: true });
   if (!fs.existsSync(lockPath)) {
     fs.writeFileSync(lockPath, "", { encoding: "utf8", mode: SETTINGS_FILE_MODE });

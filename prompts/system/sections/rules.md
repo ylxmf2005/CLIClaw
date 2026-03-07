@@ -50,7 +50,7 @@
 
 {% if hasTelegram %}
 ### Reactions
-- Reactions are Telegram **emoji reactions** via `hiboss reaction set` (not a text reply)
+- Reactions are Telegram **emoji reactions** via `cliclaw reaction set` (not a text reply)
 - Use sparingly: agreement, appreciation, or to keep the vibe friendly
 - Skip reactions on routine exchanges
 {% endif %}

@@ -2,12 +2,12 @@
 
 ## Sources
 
-Hi-Boss configuration comes from:
+CLIClaw configuration comes from:
 
-1. CLI flags (`hiboss ... --flag`)
-2. Environment variables (`HIBOSS_TOKEN`, `HIBOSS_DIR`, …)
-3. `settings.json` (`{{HIBOSS_DIR}}/settings.json`, source-of-truth)
-4. SQLite runtime cache (`{{HIBOSS_DIR}}/.daemon/hiboss.db`)
+1. CLI flags (`cliclaw ... --flag`)
+2. Environment variables (`CLICLAW_TOKEN`, `CLICLAW_DIR`, …)
+3. `settings.json` (`{{CLICLAW_DIR}}/settings.json`, source-of-truth)
+4. SQLite runtime cache (`{{CLICLAW_DIR}}/.daemon/cliclaw.db`)
 
 Built-in defaults: `src/shared/defaults.ts`
 
@@ -15,15 +15,15 @@ Built-in defaults: `src/shared/defaults.ts`
 
 ## Environment Variables
 
-### `HIBOSS_TOKEN`
+### `CLICLAW_TOKEN`
 
 Default token for CLI commands when `--token` is omitted. Used by most daemon-talking commands.
 
-### `HIBOSS_DIR`
+### `CLICLAW_DIR`
 
-Overrides root directory (default: `~/hiboss`). Must be absolute or start with `~`. Internal state under `{{HIBOSS_DIR}}/.daemon/`.
+Overrides root directory (default: `~/cliclaw`). Must be absolute or start with `~`. Internal state under `{{CLICLAW_DIR}}/.daemon/`.
 
-### `HIBOSS_UI_LOCALE`
+### `CLICLAW_UI_LOCALE`
 
 UI/system-message locale for fixed non-AI text. Supported: `en` (default), `zh-CN` (also accepts `zh` / `zh_cn` / `en-us`).
 
@@ -32,30 +32,30 @@ Scope: Telegram slash-command descriptions and fixed system messages. Overrides 
 
 ### Provider CLI Homes
 
-Hi-Boss first clears `CLAUDE_CONFIG_DIR` and `CODEX_HOME` when spawning provider processes, then applies per-agent `metadata.providerCli.<provider>.env` overrides if set.
+CLIClaw first clears `CLAUDE_CONFIG_DIR` and `CODEX_HOME` when spawning provider processes, then applies per-agent `metadata.providerCli.<provider>.env` overrides if set.
 
 ---
 
 ## Data Directory Layout
 
-Default root: `~/hiboss/` (override via `HIBOSS_DIR`)
+Default root: `~/cliclaw/` (override via `CLICLAW_DIR`)
 
 Operator-visible files:
-- `{{HIBOSS_DIR}}/media/` — downloaded attachments
-- `{{HIBOSS_DIR}}/teamspaces/<team-name>/` — shared team workspace
-- `{{HIBOSS_DIR}}/agents/<agent-name>/internal_space/MEMORY.md` — per-agent memory
-- `{{HIBOSS_DIR}}/agents/<agent-name>/internal_space/memories/` — daily memory files
-- `{{HIBOSS_DIR}}/agents/<agent-name>/internal_space/history/` — session history
+- `{{CLICLAW_DIR}}/media/` — downloaded attachments
+- `{{CLICLAW_DIR}}/teamspaces/<team-name>/` — shared team workspace
+- `{{CLICLAW_DIR}}/agents/<agent-name>/internal_space/MEMORY.md` — per-agent memory
+- `{{CLICLAW_DIR}}/agents/<agent-name>/internal_space/memories/` — daily memory files
+- `{{CLICLAW_DIR}}/agents/<agent-name>/internal_space/history/` — session history
 
 Internal daemon files (do not touch):
-- `{{HIBOSS_DIR}}/.daemon/hiboss.db` — SQLite DB
-- `{{HIBOSS_DIR}}/.daemon/daemon.sock` — IPC socket
-- `{{HIBOSS_DIR}}/.daemon/daemon.lock` — single-instance lock
-- `{{HIBOSS_DIR}}/.daemon/daemon.pid` — PID
-- `{{HIBOSS_DIR}}/.daemon/daemon.log` — current daemon log
-- `{{HIBOSS_DIR}}/.daemon/log_history/` — archived daemon logs
+- `{{CLICLAW_DIR}}/.daemon/cliclaw.db` — SQLite DB
+- `{{CLICLAW_DIR}}/.daemon/daemon.sock` — IPC socket
+- `{{CLICLAW_DIR}}/.daemon/daemon.lock` — single-instance lock
+- `{{CLICLAW_DIR}}/.daemon/daemon.pid` — PID
+- `{{CLICLAW_DIR}}/.daemon/daemon.log` — current daemon log
+- `{{CLICLAW_DIR}}/.daemon/log_history/` — archived daemon logs
 
-Note: no `--data-dir` flag; use `HIBOSS_DIR`. Provider CLI homes (`~/.claude`, `~/.codex`) are not part of the data directory.
+Note: no `--data-dir` flag; use `CLICLAW_DIR`. Provider CLI homes (`~/.claude`, `~/.codex`) are not part of the data directory.
 
 ---
 
@@ -111,14 +111,14 @@ Token-centric: `role: admin` → all agents, `role: user` → `agents[]` scoped.
 
 ## SQLite State
 
-DB: `{{HIBOSS_DIR}}/.daemon/hiboss.db`. Schema source: `src/daemon/db/schema.ts`.
+DB: `{{CLICLAW_DIR}}/.daemon/cliclaw.db`. Schema source: `src/daemon/db/schema.ts`.
 
 Tables: `config`, `agents`, `teams`, `team_members`, `agent_bindings`, `envelopes`, `cron_schedules`, `agent_runs`, `agent_sessions`, `channel_session_bindings`, `channel_session_links`, `channel_user_auth`, `chat_state`
 
 ### `config` keys (selected)
 
 - `setup_completed`, `boss_name`, `boss_timezone`, `permission_policy`, `user_permission_policy`
-- `ui_locale` (optional legacy/manual key; env `HIBOSS_UI_LOCALE` takes precedence)
+- `ui_locale` (optional legacy/manual key; env `CLICLAW_UI_LOCALE` takes precedence)
 - `runtime_session_concurrency_per_agent`, `runtime_session_concurrency_global`
 - `runtime_session_summary_recent_days`, `runtime_session_summary_per_session_max_chars`, `runtime_session_summary_max_retries`
 - `runtime_telegram_command_reply_auto_delete_seconds`
@@ -127,4 +127,4 @@ Tables: `config`, `agents`, `teams`, `team_members`, `agent_bindings`, `envelope
 ### Key Invariants
 
 - Envelopes are durable; routing/scheduling operates by querying `envelopes`.
-- Agent tokens and adapter tokens stored plaintext; protect `{{HIBOSS_DIR}}/`.
+- Agent tokens and adapter tokens stored plaintext; protect `{{CLICLAW_DIR}}/`.

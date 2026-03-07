@@ -15,7 +15,7 @@ import {
   Zap,
   Radio,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, formatChatLabel } from "@/lib/utils";
 import type { Agent } from "@/lib/types";
 
 export interface ChatHeaderProps {
@@ -70,7 +70,7 @@ export function ChatHeader({
           <div className="flex items-center gap-1.5">
             {chatId && chatId !== "default" && (
               <span className="text-[11px] font-mono text-muted-foreground">
-                {chatId}
+                {formatChatLabel(chatId)}
               </span>
             )}
             {lastRunError && (

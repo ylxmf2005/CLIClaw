@@ -10,7 +10,7 @@ Field mappings: `openspec/specs/core/definitions.md`.
 
 ## Teamspace Layout
 
-- Teamspaces are sibling to `agents/`: `{{HIBOSS_DIR}}/teamspaces/<team-name>/`
+- Teamspaces are sibling to `agents/`: `{{CLICLAW_DIR}}/teamspaces/<team-name>/`
 - Team register initializes teamspace directory.
 - Team delete removes teamspace directory.
 - Team archive does not remove the directory.
@@ -19,12 +19,12 @@ When an agent belongs to at least one active team, the primary active team's tea
 
 ## Team Messaging
 
-`hiboss team send` fans out one envelope per team member (sender excluded). Each envelope targets `agent:<member>` and stamps `metadata.chatScope = team:<name>`.
+`cliclaw team send` fans out one envelope per team member (sender excluded). Each envelope targets `agent:<member>` and stamps `metadata.chatScope = team:<name>`.
 
-- `hiboss team send --name <team>` → broadcast fan-out (all members excluding sender)
-- `hiboss team send --interrupt-now` is supported (applied per recipient); mutually exclusive with `--deliver-at`
-- `hiboss envelope send --to team:<name>` → broadcast fan-out in team chat scope (does not support `--interrupt-now`)
-- `hiboss envelope send --to team:<name>:<agent>` → single target in team chat scope (supports `--interrupt-now`)
+- `cliclaw team send --name <team>` → broadcast fan-out (all members excluding sender)
+- `cliclaw team send --interrupt-now` is supported (applied per recipient); mutually exclusive with `--deliver-at`
+- `cliclaw envelope send --to team:<name>` → broadcast fan-out in team chat scope (does not support `--interrupt-now`)
+- `cliclaw envelope send --to team:<name>:<agent>` → single target in team chat scope (supports `--interrupt-now`)
 - Archived teams reject `team send`
 - Best-effort fan-out: one failure does not abort remaining sends
 
@@ -32,7 +32,7 @@ When an agent belongs to at least one active team, the primary active team's tea
 
 Detailed command flags and output: `openspec/specs/cli/commands.md`.
 
-Commands: `hiboss team register`, `team set`, `team add-member`, `team remove-member`, `team status`, `team list`, `team list-members`, `team send`, `team delete`.
+Commands: `cliclaw team register`, `team set`, `team add-member`, `team remove-member`, `team status`, `team list`, `team list-members`, `team send`, `team delete`.
 
 ## CLI Output Keys
 

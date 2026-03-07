@@ -14,7 +14,7 @@ import type {
   MessageContent,
   SendMessageOptions,
 } from "../../adapters/types.js";
-import { HiBossDatabase } from "../db/database.js";
+import { CliClawDatabase } from "../db/database.js";
 import { ChannelBridge } from "./channel-bridge.js";
 
 class TestAdapter implements ChatAdapter {
@@ -48,10 +48,10 @@ class TestAdapter implements ChatAdapter {
   }
 }
 
-function withTempDb(run: (db: HiBossDatabase) => Promise<void> | void): Promise<void> {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hiboss-channel-bridge-test-"));
-  const dbPath = path.join(dir, "hiboss.db");
-  const db = new HiBossDatabase(dbPath);
+function withTempDb(run: (db: CliClawDatabase) => Promise<void> | void): Promise<void> {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cliclaw-channel-bridge-test-"));
+  const dbPath = path.join(dir, "cliclaw.db");
+  const db = new CliClawDatabase(dbPath);
   return Promise.resolve()
     .then(() => run(db))
     .finally(() => {

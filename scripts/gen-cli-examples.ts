@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { createExampleFixture, runHibossCli, startExamplesDaemon } from "./examples/fixtures.js";
+import { createExampleFixture, runCliclawCli, startExamplesDaemon } from "./examples/fixtures.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -48,9 +48,9 @@ function writeRawDoc(params: { filename: string; contents: string }): void {
 }
 
 async function runOrThrow(params: { homeDir: string; token: string; args: string[] }): Promise<string> {
-  const res = await runHibossCli(params);
+  const res = await runCliclawCli(params);
   if (res.status !== 0) {
-    const cmd = `hiboss ${params.args.join(" ")}`;
+    const cmd = `cliclaw ${params.args.join(" ")}`;
     const err = (res.stderr || res.stdout || "").trim() || "(no output)";
     throw new Error(`Command failed (${res.status}): ${cmd}\n${err}`);
   }
@@ -64,20 +64,20 @@ async function main(): Promise<void> {
   console.log("Generating CLI command output examples (e2e)...");
 
   const fixture = await createExampleFixture();
-  const handle = await startExamplesDaemon(fixture.hibossDir);
+  const handle = await startExamplesDaemon(fixture.cliclawDir);
 
   try {
     writeDoc({
       filename: "daemon_status.DOC.md",
-      title: "hiboss daemon status",
-      command: "hiboss daemon status",
+      title: "cliclaw daemon status",
+      command: "cliclaw daemon status",
       output: await runOrThrow({ homeDir: fixture.homeDir, token: fixture.adminToken, args: ["daemon", "status"] }),
     });
 
     writeDoc({
       filename: "agent_list.DOC.md",
-      title: "hiboss agent list",
-      command: "hiboss agent list",
+      title: "cliclaw agent list",
+      command: "cliclaw agent list",
       output: await runOrThrow({ homeDir: fixture.homeDir, token: fixture.agentToken, args: ["agent", "list"] }),
     });
 
@@ -85,28 +85,28 @@ async function main(): Promise<void> {
       const sections: Array<{ title: string; cmd: string; args: string[] }> = [
         {
           title: "Example: private chat (channel)",
-          cmd: "hiboss envelope list --from channel:telegram:789012 --status pending",
+          cmd: "cliclaw envelope list --from channel:telegram:789012 --status pending",
           args: ["envelope", "list", "--from", "channel:telegram:789012", "--status", "pending"],
         },
         {
           title: "Example: agent normal",
-          cmd: "hiboss envelope list --from agent:scheduler --status pending",
+          cmd: "cliclaw envelope list --from agent:scheduler --status pending",
           args: ["envelope", "list", "--from", "agent:scheduler", "--status", "pending"],
         },
         {
           title: "Example: agent scheduled + cron",
-          cmd: "hiboss envelope list --from agent:nex --status pending",
+          cmd: "cliclaw envelope list --from agent:nex --status pending",
           args: ["envelope", "list", "--from", "agent:nex", "--status", "pending"],
         },
         {
           title: "Example: group chat (channel)",
-          cmd: "hiboss envelope list --from channel:telegram:-100123456789 --status pending",
+          cmd: "cliclaw envelope list --from channel:telegram:-100123456789 --status pending",
           args: ["envelope", "list", "--from", "channel:telegram:-100123456789", "--status", "pending"],
         },
       ];
 
       const parts: string[] = [];
-      parts.push("# hiboss envelope list", "");
+      parts.push("# cliclaw envelope list", "");
       parts.push(
         "Note: `--status pending` with `--from` is treated as a work-queue read; returned envelopes are immediately acknowledged (at-most-once).",
         ""
@@ -124,8 +124,8 @@ async function main(): Promise<void> {
 
     writeDoc({
       filename: "envelope_thread.DOC.md",
-      title: "hiboss envelope thread",
-      command: "hiboss envelope thread --envelope-id 9d0a61fe",
+      title: "cliclaw envelope thread",
+      command: "cliclaw envelope thread --envelope-id 9d0a61fe",
       output: await runOrThrow({
         homeDir: fixture.homeDir,
         token: fixture.agentToken,
@@ -135,8 +135,8 @@ async function main(): Promise<void> {
 
     writeDoc({
       filename: "cron_list.DOC.md",
-      title: "hiboss cron list",
-      command: "hiboss cron list",
+      title: "cliclaw cron list",
+      command: "cliclaw cron list",
       output: await runOrThrow({ homeDir: fixture.homeDir, token: fixture.agentToken, args: ["cron", "list"] }),
     });
 

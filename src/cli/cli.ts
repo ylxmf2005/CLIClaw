@@ -44,12 +44,12 @@ function readPackageVersion(): string {
 }
 
 const program = new Command();
-const hibossVersion = readPackageVersion();
+const cliclawVersion = readPackageVersion();
 
 program
-  .name("hiboss")
-  .description("Hi-Boss: Agent-to-agent and agent-to-human communication daemon")
-  .version(hibossVersion);
+  .name("cliclaw")
+  .description("CLIClaw: Agent-to-agent and agent-to-human communication daemon")
+  .version(cliclawVersion);
 program.helpCommand(false);
 
 // Daemon commands
@@ -61,7 +61,7 @@ const daemon = program
 daemon
   .command("start")
   .description("Start daemon runtime (managed via deployment mode when configured)")
-  .option("--token <token>", "Token (defaults to HIBOSS_TOKEN)")
+  .option("--token <token>", "Token (defaults to CLICLAW_TOKEN)")
   .option("--debug", "Include debug fields in daemon.log")
   .action((options) => {
     startDaemon({ token: options.token, debug: Boolean(options.debug) });
@@ -70,7 +70,7 @@ daemon
 daemon
   .command("stop")
   .description("Stop daemon runtime (managed via deployment mode when configured)")
-  .option("--token <token>", "Token (defaults to HIBOSS_TOKEN)")
+  .option("--token <token>", "Token (defaults to CLICLAW_TOKEN)")
   .action((options) => {
     stopDaemon({ token: options.token });
   });
@@ -78,7 +78,7 @@ daemon
 daemon
   .command("status")
   .description("Show daemon runtime status (managed via deployment mode when configured)")
-  .option("--token <token>", "Token (defaults to HIBOSS_TOKEN)")
+  .option("--token <token>", "Token (defaults to CLICLAW_TOKEN)")
   .action((options) => {
     daemonStatus({ token: options.token });
   });
@@ -96,7 +96,7 @@ envelope
     "--to <address>",
     "Destination address (agent:<name>:new, agent:<name>:<chat-id>, team:<name>, team:<name>:<agent>, or channel:<adapter>:<chat-id>)"
   )
-  .option("--token <token>", "Token (defaults to HIBOSS_TOKEN)")
+  .option("--token <token>", "Token (defaults to CLICLAW_TOKEN)")
   .option("--text <text>", "Envelope text (use - to read from stdin)")
   .option("--text-file <path>", "Read envelope text from file")
   .option("--attachment <path>", "Attachment path (can be used multiple times)", collect, [])
@@ -140,7 +140,7 @@ envelope
   .command("thread")
   .description("Show envelope thread (chain to root)")
   .requiredOption("--envelope-id <id>", "Envelope id (short id, longer prefix, or full UUID)")
-  .option("--token <token>", "Token (defaults to HIBOSS_TOKEN)")
+  .option("--token <token>", "Token (defaults to CLICLAW_TOKEN)")
   .action((options) => {
     threadEnvelope({
       token: options.token,
@@ -159,7 +159,7 @@ reaction
   .description("Set a reaction on a channel message")
   .requiredOption("--envelope-id <id>", "Target channel envelope id (short id, prefix, or full UUID)")
   .requiredOption("--emoji <emoji>", "Reaction emoji (e.g., 👍)")
-  .option("--token <token>", "Token (defaults to HIBOSS_TOKEN)")
+  .option("--token <token>", "Token (defaults to CLICLAW_TOKEN)")
   .addHelpText(
     "after",
     [
@@ -181,7 +181,7 @@ reaction
 envelope
   .command("list")
   .description("List envelopes")
-  .option("--token <token>", "Token (defaults to HIBOSS_TOKEN)")
+  .option("--token <token>", "Token (defaults to CLICLAW_TOKEN)")
   .option("--to <address>", "List envelopes you sent to an address")
   .option("--from <address>", "List envelopes sent to you from an address")
   .requiredOption(
@@ -231,7 +231,7 @@ cron
     "Destination address (agent:<name> or channel:<adapter>:<chat-id>)"
   )
   .option("--timezone <iana>", "IANA timezone (defaults to boss timezone)")
-  .option("--token <token>", "Token (defaults to HIBOSS_TOKEN)")
+  .option("--token <token>", "Token (defaults to CLICLAW_TOKEN)")
   .option("--text <text>", "Envelope text (use - to read from stdin)")
   .option("--text-file <path>", "Read envelope text from file")
   .option("--attachment <path>", "Attachment path (can be used multiple times)", collect, [])
@@ -242,7 +242,14 @@ cron
   .option("--inline", "Shorthand for --execution-mode inline (enter main session queue, not one-shot)")
   .addHelpText(
     "after",
-    ["", "Notes:", "  - For formatting guidance, see: hiboss envelope send --help", ""].join("\n")
+    [
+      "",
+      "Notes:",
+      "  - For formatting guidance, see: cliclaw envelope send --help",
+      "  - isolated/clone + --to agent:<name>: runs the destination agent in one-shot mode",
+      "  - isolated/clone + --to channel:*: runs the owner agent in one-shot mode and posts the result to the channel",
+      "",
+    ].join("\n")
   )
   .action((options) => {
     createCron({
@@ -270,7 +277,7 @@ cron
   )
   .option("--timezone <iana>", "IANA timezone (defaults to boss timezone)")
   .option("--count <n>", "Number of upcoming runs to show (default 5, max 20)", parseInt, 5)
-  .option("--token <token>", "Token (defaults to HIBOSS_TOKEN; only needed when --timezone is omitted)")
+  .option("--token <token>", "Token (defaults to CLICLAW_TOKEN; only needed when --timezone is omitted)")
   .action((options) => {
     explainCron({
       cron: options.cron,
@@ -283,7 +290,7 @@ cron
 cron
   .command("list")
   .description("List cron schedules for this agent")
-  .option("--token <token>", "Token (defaults to HIBOSS_TOKEN)")
+  .option("--token <token>", "Token (defaults to CLICLAW_TOKEN)")
   .action((options) => {
     listCrons({ token: options.token });
   });
@@ -294,7 +301,7 @@ cron
     "Enable a cron schedule (cancels any pending instance and schedules the next one)"
   )
   .requiredOption("--id <id>", "Cron schedule ID")
-  .option("--token <token>", "Token (defaults to HIBOSS_TOKEN)")
+  .option("--token <token>", "Token (defaults to CLICLAW_TOKEN)")
   .action((options) => {
     enableCron({ id: options.id, token: options.token });
   });
@@ -303,7 +310,7 @@ cron
   .command("disable")
   .description("Disable a cron schedule (cancels the pending instance)")
   .requiredOption("--id <id>", "Cron schedule ID")
-  .option("--token <token>", "Token (defaults to HIBOSS_TOKEN)")
+  .option("--token <token>", "Token (defaults to CLICLAW_TOKEN)")
   .action((options) => {
     disableCron({ id: options.id, token: options.token });
   });
@@ -312,7 +319,7 @@ cron
   .command("delete")
   .description("Delete a cron schedule (cancels the pending instance)")
   .requiredOption("--id <id>", "Cron schedule ID")
-  .option("--token <token>", "Token (defaults to HIBOSS_TOKEN)")
+  .option("--token <token>", "Token (defaults to CLICLAW_TOKEN)")
   .action((options) => {
     deleteCron({ id: options.id, token: options.token });
   });

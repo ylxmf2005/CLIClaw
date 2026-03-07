@@ -8,7 +8,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import type { AgentSession, TurnTokenUsage } from "./executor-support.js";
 import { readTokenUsage } from "./executor-support.js";
-import { HIBOSS_TOKEN_ENV } from "../shared/env.js";
+import { CLICLAW_TOKEN_ENV } from "../shared/env.js";
 import { getAgentInternalSpaceDir } from "./home-setup.js";
 import { errorMessage, logEvent } from "../shared/daemon-log.js";
 import {
@@ -49,7 +49,7 @@ export interface CliTurnTraceCapture {
  */
 function buildClaudeArgs(
   session: AgentSession,
-  hibossDir: string,
+  cliclawDir: string,
   agentName: string,
 ): string[] {
   const args: string[] = [
@@ -60,7 +60,7 @@ function buildClaudeArgs(
     "--permission-mode", "bypassPermissions",
   ];
 
-  const internalSpaceDir = getAgentInternalSpaceDir(agentName, hibossDir);
+  const internalSpaceDir = getAgentInternalSpaceDir(agentName, cliclawDir);
   args.push("--add-dir", internalSpaceDir);
 
   if (session.model) {
@@ -81,14 +81,14 @@ function buildClaudeArgs(
 function buildCodexArgs(
   session: AgentSession,
   turnInput: string,
-  hibossDir: string,
+  cliclawDir: string,
   agentName: string,
 ): string[] {
-  const internalSpaceDir = getAgentInternalSpaceDir(agentName, hibossDir);
+  const internalSpaceDir = getAgentInternalSpaceDir(agentName, cliclawDir);
 
   // Config overrides (supported by both `codex exec` and `codex exec resume`).
   // NOTE: We intentionally pass `developer_instructions` on every turn so resume
-  // runs don't rely on prior thread history for Hi-Boss system behavior.
+  // runs don't rely on prior thread history for CLIClaw system behavior.
   const configArgs: string[] = ["-c", `developer_instructions=${session.systemInstructions}`];
   if (session.reasoningEffort) {
     // Codex config key uses TOML strings; quote so parsing is stable.
@@ -126,7 +126,7 @@ export async function executeCliTurn(
   session: AgentSession,
   turnInput: string,
   options: {
-    hibossDir: string;
+    cliclawDir: string;
     agentName: string;
     signal?: AbortSignal;
     onChildProcess?: (proc: ChildProcess) => void;
@@ -134,20 +134,20 @@ export async function executeCliTurn(
     onTraceCaptured?: (trace: CliTurnTraceCapture) => void;
   },
 ): Promise<CliTurnResult> {
-  const { hibossDir, agentName, signal } = options;
+  const { cliclawDir, agentName, signal } = options;
 
   const cmd = session.provider === "claude" ? "claude" : "codex";
   const args =
     session.provider === "claude"
-      ? buildClaudeArgs(session, hibossDir, agentName)
-      : buildCodexArgs(session, turnInput, hibossDir, agentName);
+      ? buildClaudeArgs(session, cliclawDir, agentName)
+      : buildCodexArgs(session, turnInput, cliclawDir, agentName);
 
   const env: Record<string, string> = {
     ...process.env as Record<string, string>,
-    [HIBOSS_TOKEN_ENV]: session.agentToken,
+    [CLICLAW_TOKEN_ENV]: session.agentToken,
   };
 
-  // Provider CLIs support "home" overrides via env vars. Hi-Boss starts from
+  // Provider CLIs support "home" overrides via env vars. CLIClaw starts from
   // shared defaults for stable behavior across machines:
   // - Claude: ~/.claude (override var: CLAUDE_CONFIG_DIR)
   // - Codex:  ~/.codex  (override var: CODEX_HOME)

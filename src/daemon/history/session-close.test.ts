@@ -10,7 +10,7 @@ import { appendSessionJournalEvent, getSessionJournalPath, readSessionFile } fro
 import { getSessionMarkdownPath, readSessionMarkdownFile } from "./session-markdown-file-io.js";
 
 async function withTempAgentsDir(run: (agentsDir: string) => Promise<void> | void): Promise<void> {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hiboss-session-close-test-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cliclaw-session-close-test-"));
   try {
     await run(dir);
   } finally {
@@ -139,6 +139,6 @@ test("closeSessionByPath compacts journal events when history runtime is unavail
     assert.ok(session);
     assert.equal(session?.events.length, 1);
     assert.equal(session?.endedAtMs, endedAtMs);
-    assert.equal(fs.existsSync(getSessionJournalPath(filePath!)), false);
+    assert.equal(fs.existsSync(getSessionJournalPath(filePath!)), true);
   });
 });

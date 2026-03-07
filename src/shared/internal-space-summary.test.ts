@@ -10,19 +10,19 @@ import {
 } from "./session-history-markdown.js";
 import { readAgentInternalSessionSummarySnapshot } from "./internal-space.js";
 
-function withTempHiBoss(run: (hibossDir: string) => void): void {
-  const hibossDir = fs.mkdtempSync(path.join(os.tmpdir(), "hiboss-internal-space-summary-test-"));
+function withTempCliClaw(run: (cliclawDir: string) => void): void {
+  const cliclawDir = fs.mkdtempSync(path.join(os.tmpdir(), "cliclaw-internal-space-summary-test-"));
   try {
-    run(hibossDir);
+    run(cliclawDir);
   } finally {
-    fs.rmSync(hibossDir, { recursive: true, force: true });
+    fs.rmSync(cliclawDir, { recursive: true, force: true });
   }
 }
 
 test("readAgentInternalSessionSummarySnapshot returns summary blocks", () => {
-  withTempHiBoss((hibossDir) => {
+  withTempCliClaw((cliclawDir) => {
     const mdPath = path.join(
-      hibossDir,
+      cliclawDir,
       "agents",
       "nex",
       "internal_space",
@@ -50,7 +50,7 @@ test("readAgentInternalSessionSummarySnapshot returns summary blocks", () => {
     fs.writeFileSync(mdPath, serializeSessionHistoryMarkdown(doc), "utf8");
 
     const snapshot = readAgentInternalSessionSummarySnapshot({
-      hibossDir,
+      cliclawDir,
       agentName: "nex",
       recentDays: 3,
       perSessionMaxChars: 24000,
@@ -65,9 +65,9 @@ test("readAgentInternalSessionSummarySnapshot returns summary blocks", () => {
 });
 
 test("readAgentInternalSessionSummarySnapshot surfaces summary-unavailable placeholder", () => {
-  withTempHiBoss((hibossDir) => {
+  withTempCliClaw((cliclawDir) => {
     const mdPath = path.join(
-      hibossDir,
+      cliclawDir,
       "agents",
       "nex",
       "internal_space",
@@ -95,7 +95,7 @@ test("readAgentInternalSessionSummarySnapshot surfaces summary-unavailable place
     fs.writeFileSync(mdPath, serializeSessionHistoryMarkdown(doc), "utf8");
 
     const snapshot = readAgentInternalSessionSummarySnapshot({
-      hibossDir,
+      cliclawDir,
       agentName: "nex",
       recentDays: 3,
       perSessionMaxChars: 24000,

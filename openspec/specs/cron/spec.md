@@ -1,10 +1,10 @@
 # Cron Schedules
 
-Hi-Boss supports **cron schedules** as a thin layer on top of envelopes:
+CLIClaw supports **cron schedules** as a thin layer on top of envelopes:
 
 - A cron schedule is **persistent** (stored in SQLite).
 - Each schedule **materializes** exactly one pending envelope at a time, with `deliver-at` set to the next cron occurrence.
-- When that envelope becomes `done`, Hi-Boss materializes the next occurrence.
+- When that envelope becomes `done`, CLIClaw materializes the next occurrence.
 
 This keeps the core invariant intact: **envelopes are still the only delivery unit**.
 
@@ -52,7 +52,7 @@ The materialized envelope always stores `deliver-at` as **unix epoch millisecond
 
 ## Misfire Policy (skip)
 
-On daemon start, Hi-Boss applies a **skip misfires** policy:
+On daemon start, CLIClaw applies a **skip misfires** policy:
 
 - If a schedule is enabled and its `pending_envelope_id` points to a **due** envelope (`deliver-at <= now`), that envelope is **canceled** (marked `done`) and the schedule is advanced to the next occurrence after `now`.
 
@@ -68,7 +68,8 @@ Cron envelope metadata always includes:
 
 Execution-mode behavior:
 - `inline`: materialized envelope keeps the configured `to` destination and runs through normal routing/session queues.
-- `isolated` / `clone`: materialized envelope is routed to `to = agent:<owner>` with `metadata.oneshotType` set (`isolated|clone`), and original destination stored in `metadata.cronResponseTo`.
+- `isolated` / `clone` with `to = agent:<name>`: materialized envelope keeps `to = agent:<name>` and sets `metadata.oneshotType` (`isolated|clone`) so the destination agent executes in one-shot mode.
+- `isolated` / `clone` with `to = channel:<adapter>:<chat-id>`: materialized envelope is routed to `to = agent:<owner>` with `metadata.oneshotType` set, and original channel destination stored in `metadata.cronResponseTo`.
 
 Completion + advancement:
 - Inline channel envelopes: marked `done` after adapter send, then schedule advances.
@@ -79,5 +80,5 @@ Completion + advancement:
 
 ## CLI / RPC
 
-- CLI: `hiboss cron ...` (see `openspec/specs/cli/commands.md`)
+- CLI: `cliclaw cron ...` (see `openspec/specs/cli/commands.md`)
 - RPC: `cron.*` methods (see `openspec/specs/cli/spec.md`)

@@ -1,6 +1,6 @@
 # Telegram Adapter
 
-The Telegram adapter bridges Telegram updates and Hi-Boss envelopes.
+The Telegram adapter bridges Telegram updates and CLIClaw envelopes.
 
 Key files: `src/adapters/telegram.adapter.ts`, `src/adapters/telegram/incoming.ts`, `src/adapters/telegram/outgoing.ts`, `src/daemon/bridges/channel-bridge.ts`, `src/daemon/channel-commands.ts`
 

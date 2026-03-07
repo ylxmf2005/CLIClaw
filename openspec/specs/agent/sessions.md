@@ -2,7 +2,7 @@
 
 ## Overview
 
-Hi-Boss sessions are **always chat-scoped**:
+CLIClaw sessions are **always chat-scoped**:
 
 - `channel:*` envelopes use per-chat mapping (`agent + adapter + chat-id -> session`)
 - agent-origin envelopes with `metadata.chatScope` use the same mapping with `adapter_type="internal"` and `chat_id=chatScope`
@@ -48,9 +48,10 @@ Scope semantics:
 
 ### Session Close
 
-When Hi-Boss closes the current runtime session:
+When CLIClaw closes the current runtime session:
 - compact-writes session events from append-only journal into JSON history file, marks `endedAtMs`
 - writes/updates markdown companion with `ended-at` and `summary-status: pending`
+- keeps append-only JSONL event logs for real-time and crash-safe history capture
 - does not run a background summary worker
 
 Opportunistic journal compaction during active sessions on threshold/interval triggers.
@@ -73,7 +74,7 @@ Opportunistic journal compaction during active sessions on threshold/interval tr
 
 Per-agent session history files:
 - `agents/<agent>/internal_space/history/YYYY-MM-DD/<chat-id>/<session-id>.json` — compacted events
-- `agents/<agent>/internal_space/history/YYYY-MM-DD/<chat-id>/<session-id>.events.ndjson` — append-only journal
+- `agents/<agent>/internal_space/history/YYYY-MM-DD/<chat-id>/<session-id>.events.jsonl` — append-only event log
 - `agents/<agent>/internal_space/history/YYYY-MM-DD/<chat-id>/<session-id>.md` — conversation markdown + frontmatter
 
 ## Concurrency

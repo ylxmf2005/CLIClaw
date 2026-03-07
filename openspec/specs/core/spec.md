@@ -2,7 +2,7 @@
 
 ## Product Goal
 
-Hi-Boss is a local-first daemon + `hiboss` CLI for running durable, routable messages ("envelopes") between humans (via chat adapters) and agents.
+CLIClaw is a local-first daemon + `cliclaw` CLI for running durable, routable messages ("envelopes") between humans (via chat adapters) and agents.
 
 It aims to support customizable, long-running assistants that can:
 - receive and send messages across channels,
@@ -11,9 +11,9 @@ It aims to support customizable, long-running assistants that can:
 
 ## Non-Goals
 
-- A hosted SaaS (Hi-Boss runs locally).
+- A hosted SaaS (CLIClaw runs locally).
 - A general-purpose chat application (it routes messages; it does not replace your chat client).
-- Hard multi-tenant security boundaries (protect your local machine and `~/hiboss`).
+- Hard multi-tenant security boundaries (protect your local machine and `~/cliclaw`).
 - A workflow engine or scheduler for arbitrary jobs (scheduling is for envelope delivery).
 
 ## Principles
@@ -28,7 +28,7 @@ It aims to support customizable, long-running assistants that can:
 
 - Node.js: ES2022 runtime (Node.js 18+ recommended).
 - Platforms: intended for local use (macOS/Linux first; Windows may work but is not a primary target).
-- Packaging: users should be able to install and run `hiboss` globally via npm.
+- Packaging: users should be able to install and run `cliclaw` globally via npm.
 
 ---
 
@@ -46,8 +46,8 @@ It aims to support customizable, long-running assistants that can:
                                      ┌────────────────┼────────────────┐
                                      ▼                                 ▼
                              ┌───────────────┐                 ┌──────────────┐
-                             │    SQLite     │                 │   hiboss     │
-                             │  hiboss.db    │                 │    CLI       │
+                             │    SQLite     │                 │   cliclaw     │
+                             │  cliclaw.db    │                 │    CLI       │
                              └───────────────┘                 └──────────────┘
 ```
 

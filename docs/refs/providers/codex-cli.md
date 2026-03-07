@@ -15,7 +15,7 @@ codex exec -h
 codex exec resume -h
 ```
 
-## Flags used by Hi-Boss
+## Flags used by CLIClaw
 
 - `exec --json`
 - `--skip-git-repo-check`
@@ -39,7 +39,7 @@ codex exec resume -h
 
 ## Session files
 
-- Default provider home used by Hi-Boss: `~/.codex`
+- Default provider home used by CLIClaw: `~/.codex`
 - Rollout logs (manual inspection): `~/.codex/sessions/YYYY/MM/DD/rollout-<timestamp>-<thread_id>.jsonl`
 
 ## Known gotchas

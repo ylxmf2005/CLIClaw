@@ -3,7 +3,7 @@ import type { ChildProcess } from "node:child_process";
 import { readFile, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { HIBOSS_TOKEN_ENV } from "../shared/env.js";
+import { CLICLAW_TOKEN_ENV } from "../shared/env.js";
 import { errorMessage, logEvent } from "../shared/daemon-log.js";
 import { parseCodexFailureMessage } from "./provider-cli-parsers.js";
 import { applyProviderReasoningEffortEnv } from "./reasoning-effort.js";
@@ -16,7 +16,7 @@ export interface ExecuteOneShotPromptParams {
   prompt: string;
   envOverrides?: Record<string, string>;
   model?: string;
-  reasoningEffort?: "none" | "low" | "medium" | "high" | "xhigh";
+  reasoningEffort?: "none" | "low" | "medium" | "high" | "xhigh" | "max";
   signal?: AbortSignal;
   onChildProcess?: (proc: ChildProcess) => void;
 }
@@ -59,11 +59,11 @@ function buildCodexArgs(params: {
 
 function buildTempOutputPath(): string {
   const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  return path.join(tmpdir(), `hiboss-oneshot-codex-last-message-${suffix}.txt`);
+  return path.join(tmpdir(), `cliclaw-oneshot-codex-last-message-${suffix}.txt`);
 }
 
 /**
- * Execute a one-shot provider CLI prompt without Hi-Boss system instructions and without `HIBOSS_TOKEN`.
+ * Execute a one-shot provider CLI prompt without CLIClaw system instructions and without `CLICLAW_TOKEN`.
  */
 export async function executeOneShotPrompt(params: ExecuteOneShotPromptParams): Promise<{ finalText: string }> {
   const cmd = params.provider === "claude" ? "claude" : "codex";
@@ -85,8 +85,8 @@ export async function executeOneShotPrompt(params: ExecuteOneShotPromptParams): 
     ...(process.env as Record<string, string>),
   };
 
-  // Ensure one-shot executions do not inherit the Hi-Boss token.
-  delete env[HIBOSS_TOKEN_ENV];
+  // Ensure one-shot executions do not inherit the CLIClaw token.
+  delete env[CLICLAW_TOKEN_ENV];
 
   // Start from shared default provider homes for stable behavior across machines.
   delete env.CLAUDE_CONFIG_DIR;

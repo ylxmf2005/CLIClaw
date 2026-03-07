@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "path";
 import type * as http from "node:http";
-import { HiBossDatabase } from "./db/database.js";
+import { CliClawDatabase } from "./db/database.js";
 import { IpcServer } from "./ipc/server.js";
 import { MessageRouter } from "./router/message-router.js";
 import { ChannelBridge } from "./bridges/channel-bridge.js";
@@ -16,7 +16,7 @@ import type { RpcMethodRegistry } from "./ipc/types.js";
 import { RPC_ERRORS } from "./ipc/types.js";
 import type { ChatAdapter } from "../adapters/types.js";
 import { DEFAULT_AGENT_PERMISSION_LEVEL } from "../shared/defaults.js";
-import { getHiBossPaths } from "../shared/hiboss-paths.js";
+import { getCliClawPaths } from "../shared/cliclaw-paths.js";
 import {
   DEFAULT_PERMISSION_POLICY,
   type PermissionLevel,
@@ -27,6 +27,8 @@ import {
 } from "../shared/permissions.js";
 import { errorMessage, logEvent, setDaemonLogTimeZone } from "../shared/daemon-log.js";
 import { getEnvelopeSourceFromEnvelope } from "../envelope/source.js";
+import type { Envelope } from "../envelope/types.js";
+import { formatAgentAddress } from "../adapters/types.js";
 import { PidLock, isDaemonRunning, isSocketAcceptingConnections } from "./pid-lock.js";
 import type { DaemonContext, Principal } from "./rpc/context.js";
 import { rpcError } from "./rpc/context.js";
@@ -59,16 +61,20 @@ import {
   removeAdapter as removeAdapterHelper,
 } from "./adapter-management.js";
 import { ConsoleAdapter } from "../adapters/console.adapter.js";
+import {
+  buildAgentFailureNoticeText,
+  listChannelFailureNoticeTargets,
+} from "./agent-failure-notice.js";
 
 export { isDaemonRunning, isSocketAcceptingConnections };
 /**
- * Hi-Boss daemon configuration.
+ * CLIClaw daemon configuration.
  */
 export interface DaemonConfig {
   /**
-   * Hi-Boss root directory (user-facing).
+   * CLIClaw root directory (user-facing).
    *
-   * Default: `~/hiboss` (override via `HIBOSS_DIR`).
+   * Default: `~/cliclaw` (override via `CLICLAW_DIR`).
    */
   dataDir: string;
   /**
@@ -86,7 +92,7 @@ export interface DaemonConfig {
  * Default configuration paths.
  */
 export function getDefaultConfig(): DaemonConfig {
-  const paths = getHiBossPaths();
+  const paths = getCliClawPaths();
   return {
     dataDir: paths.rootDir,
     daemonDir: paths.daemonDir,
@@ -101,10 +107,10 @@ export function getSocketPath(config: DaemonConfig = getDefaultConfig()): string
 }
 
 /**
- * Hi-Boss daemon - manages agents, messages, and platform integrations.
+ * CLIClaw daemon - manages agents, messages, and platform integrations.
  */
 export class Daemon {
-  private db: HiBossDatabase;
+  private db: CliClawDatabase;
   private ipc: IpcServer;
   private router: MessageRouter;
   private bridge: ChannelBridge;
@@ -127,12 +133,12 @@ export class Daemon {
   private relayExecutor: RelayExecutor | null = null;
 
   constructor(private config: DaemonConfig = getDefaultConfig()) {
-    const dbPath = path.join(config.daemonDir, "hiboss.db");
+    const dbPath = path.join(config.daemonDir, "cliclaw.db");
     const socketPath = path.join(config.daemonDir, "daemon.sock");
 
     this.pidLock = new PidLock({ daemonDir: config.daemonDir });
 
-    this.db = new HiBossDatabase(dbPath);
+    this.db = new CliClawDatabase(dbPath);
     this.ipc = new IpcServer(socketPath);
     this.eventBus = new DaemonEventBus();
     this.brokerManager = new BrokerManager({
@@ -150,13 +156,22 @@ export class Daemon {
     const executorEventHooks = createExecutorEventHooks(this.eventBus);
     this.executor = createAgentExecutor({
       db: this.db,
-      hibossDir: config.dataDir,
+      cliclawDir: config.dataDir,
       conversationHistory: this.conversationHistory,
       onEnvelopesDone: (envelopeIds) => {
         this.cronScheduler?.onEnvelopesDone(envelopeIds);
       },
       onRunStarted: executorEventHooks.onRunStarted,
-      onRunFinished: executorEventHooks.onRunFinished,
+      onRunFinished: async (params) => {
+        await executorEventHooks.onRunFinished(params);
+        if (params.state !== "failed") return;
+        await this.sendRunFailureNotices({
+          agentName: params.agentName,
+          runId: params.runId,
+          envelopes: params.envelopes,
+          error: params.error,
+        });
+      },
       onExecutionQueued: ({ executionId, agentName, envelopes }) => {
         return this.telegramTypingManager.onExecutionQueued({
           executionId,
@@ -172,7 +187,7 @@ export class Daemon {
     this.oneshotExecutor = createOneShotExecutor({
       db: this.db,
       router: this.router,
-      hibossDir: config.dataDir,
+      cliclawDir: config.dataDir,
       onEnvelopeDone: (envelope) => this.cronScheduler?.onEnvelopeDone(envelope),
     });
     this.scheduler = new EnvelopeScheduler(this.db, this.router, this.executor);
@@ -260,7 +275,7 @@ export class Daemon {
       this.running = true;
       this.startTimeMs = Date.now();
 
-      const daemonMode = (process.env.HIBOSS_DAEMON_MODE ?? "").trim().toLowerCase();
+      const daemonMode = (process.env.CLICLAW_DAEMON_MODE ?? "").trim().toLowerCase();
       const examplesMode = daemonMode === "examples";
       if (examplesMode) {
         // IPC-only daemon for generating deterministic docs (no schedulers/adapters/auto-execution).
@@ -277,7 +292,7 @@ export class Daemon {
         throw new Error(
           [
             `Failed to load settings.json: Settings file not found: ${settingsPath}`,
-            "Run `hiboss setup` to generate settings, then restart the daemon.",
+            "Run `cliclaw setup` to generate settings, then restart the daemon.",
           ].join("\n")
         );
       }
@@ -318,7 +333,7 @@ export class Daemon {
       this.relayExecutor = new RelayExecutor({
         broker: this.brokerManager,
         db: this.db,
-        hibossDir: this.config.dataDir,
+        cliclawDir: this.config.dataDir,
       });
 
       // Start HTTP + WebSocket server
@@ -345,7 +360,7 @@ export class Daemon {
       db: this.db,
       executor: this.executor,
       router: this.router,
-      hibossDir: this.config.dataDir,
+      cliclawDir: this.config.dataDir,
     }));
   }
 
@@ -400,6 +415,43 @@ export class Daemon {
             "agent-name": agent.name,
             error: errorMessage(err),
           });
+        });
+      }
+    }
+  }
+
+  private async sendRunFailureNotices(params: {
+    agentName: string;
+    runId: string;
+    envelopes: Envelope[];
+    error?: string;
+  }): Promise<void> {
+    const targets = listChannelFailureNoticeTargets(params.envelopes);
+    if (targets.length === 0) return;
+
+    const text = buildAgentFailureNoticeText(params.agentName, params.runId);
+
+    for (const target of targets) {
+      try {
+        await this.router.routeEnvelope({
+          from: formatAgentAddress(params.agentName),
+          to: target.toAddress,
+          fromBoss: false,
+          content: { text },
+          metadata: {
+            origin: "internal",
+            replyToEnvelopeId: target.replyToEnvelopeId,
+            deliveryFailureNotice: true,
+            failedRunId: params.runId,
+          },
+        });
+      } catch (err) {
+        logEvent("warn", "agent-run-failure-notice-send-failed", {
+          "agent-name": params.agentName,
+          "run-id": params.runId,
+          to: target.toAddress,
+          reason: params.error,
+          error: errorMessage(err),
         });
       }
     }

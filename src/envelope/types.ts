@@ -12,7 +12,7 @@ export type OneshotType = "clone" | "isolated";
  * Attachment format for envelopes.
  */
 export interface EnvelopeAttachment {
-  source: string;           // Local file path (for Telegram media, downloaded to ~/hiboss/media/)
+  source: string;           // Local file path (for Telegram media, downloaded to ~/cliclaw/media/)
   filename?: string;        // Helps with type detection and display
   telegramFileId?: string;  // Preserved for efficient re-sending via Telegram API
 }

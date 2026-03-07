@@ -3,11 +3,11 @@ import type { AgentExecutor } from "../agent/executor.js";
 import { DEFAULT_AGENT_PROVIDER } from "../shared/defaults.js";
 import { errorMessage, logEvent } from "../shared/daemon-log.js";
 import type { getUiText } from "../shared/ui-text.js";
-import type { HiBossDatabase } from "./db/database.js";
+import type { CliClawDatabase } from "./db/database.js";
 import { mutateSettingsAndSync } from "./settings-sync.js";
 
 type Provider = "claude" | "codex";
-type ReasoningEffort = "none" | "low" | "medium" | "high" | "xhigh";
+type ReasoningEffort = "none" | "low" | "medium" | "high" | "xhigh" | "max";
 
 interface ProviderSwitchArgs {
   provider: Provider;
@@ -19,7 +19,7 @@ function parseReasoningEffortToken(raw: string): ReasoningEffort | null | undefi
   const value = raw.trim().toLowerCase();
   if (!value) return undefined;
   if (value === "default") return null;
-  if (value === "none" || value === "low" || value === "medium" || value === "high" || value === "xhigh") {
+  if (value === "none" || value === "low" || value === "medium" || value === "high" || value === "xhigh" || value === "max") {
     return value;
   }
   return undefined;
@@ -144,9 +144,9 @@ function formatValueOrDefault(value: string | null | undefined): string {
 }
 
 export async function handleProviderSwitchCommand(params: {
-  db: HiBossDatabase;
+  db: CliClawDatabase;
   executor: AgentExecutor;
-  hibossDir?: string;
+  cliclawDir?: string;
   agentName: string;
   adapterType?: string;
   args?: string;
@@ -195,9 +195,9 @@ export async function handleProviderSwitchCommand(params: {
   }
 
   try {
-    if (params.hibossDir) {
+    if (params.cliclawDir) {
       await mutateSettingsAndSync({
-        hibossDir: params.hibossDir,
+        cliclawDir: params.cliclawDir,
         db: params.db,
         mutate: (settings) => {
           const target = settings.agents.find((item) => item.name.toLowerCase() === agent.name.toLowerCase());

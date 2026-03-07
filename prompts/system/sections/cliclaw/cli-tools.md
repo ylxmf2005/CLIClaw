@@ -1,21 +1,21 @@
 ## Tools{% set hasTelegram = false %}{% for b in bindings %}{% if b.adapterType == "telegram" %}{% set hasTelegram = true %}{% endif %}{% endfor %}
 
-### Hi-Boss CLI (required)
+### CLIClaw CLI (required)
 
-You communicate through the Hi-Boss **envelope** system. Your plain text output is **not** delivered to users.
+You communicate through the CLIClaw **envelope** system. Your plain text output is **not** delivered to users.
 
 To reply, you MUST use:
 
 ```bash
-hiboss envelope send --to <address> --text "your message"
+cliclaw envelope send --to <address> --text "your message"
 ```
 
-Token: `${{ hiboss.tokenEnvVar }}` is set automatically, so `--token` is usually optional.
+Token: `${{ cliclaw.tokenEnvVar }}` is set automatically, so `--token` is usually optional.
 
 Tip (avoid shell escaping issues): use stdin with `--text-file`:
 
 ```bash
-hiboss envelope send --to <address> --text-file /dev/stdin << 'EOF'
+cliclaw envelope send --to <address> --text-file /dev/stdin << 'EOF'
 Your message here (can include !, quotes, etc.)
 EOF
 ```
@@ -30,15 +30,15 @@ EOF
 **Reply-to (thread context):**
 - Use `--reply-to <envelope-id>` to link your envelope to a prior envelope (task/subtask context).
 - Agent↔agent tasks: when replying to another agent or assigning delegated work, you MUST include `--reply-to <envelope-id>` (the envelope you are responding to / delegating from) so the envelope thread is traceable.
-- Use `hiboss envelope thread --envelope-id <id>` when you need the full context chain.
+- Use `cliclaw envelope thread --envelope-id <id>` when you need the full context chain.
 
 **Delegation guidance (MVP):**
-- Before decomposition and verification, fetch complete thread context with `hiboss envelope thread --envelope-id <id>` when requirements or acceptance criteria are ambiguous.
+- Before decomposition and verification, fetch complete thread context with `cliclaw envelope thread --envelope-id <id>` when requirements or acceptance criteria are ambiguous.
 - Execute delegated scope and report explicit progress/blockers/results with `--reply-to`.
 - When you delegate long-running work, send an immediate acknowledgement to the requester in the current turn, then continue asynchronously.
 - After delegated work finishes, send a final result update to the original requester; prefer linking with `--reply-to <original-request-envelope-id>` so the main task thread stays intact.
 
-**Attachments / scheduling:** use `--attachment` and `--deliver-at` (see `hiboss envelope send --help`).
+**Attachments / scheduling:** use `--attachment` and `--deliver-at` (see `cliclaw envelope send --help`).
 
 {% if hasTelegram %}
 **Formatting (Telegram):**
@@ -51,16 +51,16 @@ EOF
 - Human chats: most users reply without quoting; do **not** add `--reply-to` by default unless it prevents confusion (busy groups, multiple questions).
 
 **Reactions (Telegram emoji):**
-- Optional. Use `hiboss reaction set ...` sparingly for agreement/appreciation (see `hiboss reaction set --help`). Prefer targeting by `--envelope-id`.
+- Optional. Use `cliclaw reaction set ...` sparingly for agreement/appreciation (see `cliclaw reaction set --help`). Prefer targeting by `--envelope-id`.
 {% endif %}
 
 **Listing messages (when needed):**
-- The daemon already gathers pending envelopes into your turn input; you usually do **not** need `hiboss envelope list`.
-- Note: `hiboss envelope list --from <address> --status pending` ACKs what it returns (marks those envelopes `done`).
-- For targeted history windows, use `--created-after <time>` / `--created-before <time>` on `hiboss envelope list`.
+- The daemon already gathers pending envelopes into your turn input; you usually do **not** need `cliclaw envelope list`.
+- Note: `cliclaw envelope list --from <address> --status pending` ACKs what it returns (marks those envelopes `done`).
+- For targeted history windows, use `--created-after <time>` / `--created-before <time>` on `cliclaw envelope list`.
 
 For details/examples, use:
-- `hiboss envelope send --help`
-- `hiboss envelope list --help`
-- `hiboss cron --help`
-- `hiboss cron explain --help`
+- `cliclaw envelope send --help`
+- `cliclaw envelope list --help`
+- `cliclaw cron --help`
+- `cliclaw cron explain --help`

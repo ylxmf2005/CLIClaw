@@ -1,7 +1,7 @@
 /**
  * Conversation history — appends envelope lifecycle events to per-session
- * journal files, periodically compacts to JSON during active sessions, and
- * finalizes JSON/Markdown files when a session is closed.
+ * JSONL event logs, periodically compacts snapshots to JSON during active
+ * sessions, and finalizes JSON/Markdown files when a session is closed.
  *
  * Layout:
  *   {{agentsDir}}/<agent>/internal_space/history/YYYY-MM-DD/<chat-id>/<sessionId>.json
@@ -29,10 +29,10 @@ import {
 } from "./chat-scope-path.js";
 import {
   appendSessionJournalEvent,
-  clearSessionJournal,
   createSessionFile,
   readSessionFile,
   listSessionFiles,
+  migrateLegacySessionJournalsInAgentsDir,
   readSessionJournalEvents,
   writeSessionFile,
 } from "./session-file-io.js";
@@ -70,6 +70,21 @@ export class ConversationHistory {
   constructor(options: ConversationHistoryOptions) {
     this.agentsDir = options.agentsDir;
     this.timezone = options.timezone ?? "UTC";
+    const migration = migrateLegacySessionJournalsInAgentsDir(this.agentsDir);
+    if (migration.failedCount > 0) {
+      logEvent("warn", "history-journal-migration-completed-with-errors", {
+        "agents-dir": this.agentsDir,
+        "renamed-count": migration.renamedCount,
+        "merged-count": migration.mergedCount,
+        "failed-count": migration.failedCount,
+      });
+    } else if (migration.renamedCount > 0 || migration.mergedCount > 0) {
+      logEvent("info", "history-journal-migration-completed", {
+        "agents-dir": this.agentsDir,
+        "renamed-count": migration.renamedCount,
+        "merged-count": migration.mergedCount,
+      });
+    }
   }
 
   setTimezone(timezone: string): void {
@@ -397,7 +412,6 @@ export class ConversationHistory {
     };
 
     writeSessionFile(filePath, sessionFile);
-    clearSessionJournal(filePath);
     params.active.pendingEvents = [];
     params.active.journalEventsSinceCompact = 0;
     params.active.lastCompactedAtMs = Date.now();

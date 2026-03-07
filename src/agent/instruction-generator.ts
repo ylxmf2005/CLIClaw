@@ -31,7 +31,7 @@ export interface InstructionContext {
     teamspaceDir: string;
   }>;
   additionalContext?: string;
-  hibossDir?: string;
+  cliclawDir?: string;
   bossTimezone?: string;
   boss?: {
     name?: string;
@@ -71,14 +71,14 @@ export function generateSystemInstructions(ctx: InstructionContext): string {
     workspaceDir: ctx.workspaceDir,
     teams: ctx.teams ?? [],
     time: { bossTimezone: ctx.bossTimezone },
-    hibossDir: ctx.hibossDir,
+    cliclawDir: ctx.cliclawDir,
     boss,
   });
 
   // Inject internal space MEMORY.md snapshot for this agent (best-effort; never prints token).
-  const hibossDir = ctx.hibossDir ?? (promptContext.hiboss as Record<string, unknown>).dir as string;
+  const cliclawDir = ctx.cliclawDir ?? (promptContext.cliclaw as Record<string, unknown>).dir as string;
   const spaceContext = promptContext.internalSpace as Record<string, unknown>;
-  const ensured = ensureAgentInternalSpaceLayout({ hibossDir, agentName: agent.name });
+  const ensured = ensureAgentInternalSpaceLayout({ cliclawDir, agentName: agent.name });
   if (!ensured.ok) {
     spaceContext.note = "";
     spaceContext.noteFence = "```";
@@ -90,7 +90,7 @@ export function generateSystemInstructions(ctx: InstructionContext): string {
     spaceContext.sessionSummariesFence = "```";
     spaceContext.sessionSummariesError = ensured.error;
   } else {
-    const snapshot = readAgentInternalMemorySnapshot({ hibossDir, agentName: agent.name });
+    const snapshot = readAgentInternalMemorySnapshot({ cliclawDir, agentName: agent.name });
     if (snapshot.ok) {
       spaceContext.note = snapshot.note;
       spaceContext.noteFence = chooseFence(snapshot.note);
@@ -101,7 +101,7 @@ export function generateSystemInstructions(ctx: InstructionContext): string {
       spaceContext.error = snapshot.error;
     }
 
-    const dailySnapshot = readAgentInternalDailyMemorySnapshot({ hibossDir, agentName: agent.name });
+    const dailySnapshot = readAgentInternalDailyMemorySnapshot({ cliclawDir, agentName: agent.name });
     if (dailySnapshot.ok) {
       spaceContext.daily = dailySnapshot.note;
       spaceContext.dailyFence = chooseFence(dailySnapshot.note);
@@ -113,7 +113,7 @@ export function generateSystemInstructions(ctx: InstructionContext): string {
     }
 
     const sessionSummarySnapshot = readAgentInternalSessionSummarySnapshot({
-      hibossDir,
+      cliclawDir,
       agentName: agent.name,
       recentDays: ctx.sessionSummaryConfig?.recentDays,
       perSessionMaxChars: ctx.sessionSummaryConfig?.perSessionMaxChars,
@@ -132,7 +132,7 @@ export function generateSystemInstructions(ctx: InstructionContext): string {
     }
   }
 
-  (promptContext.hiboss as Record<string, unknown>).additionalContext =
+  (promptContext.cliclaw as Record<string, unknown>).additionalContext =
     additionalContext ?? "";
 
   return renderPrompt({

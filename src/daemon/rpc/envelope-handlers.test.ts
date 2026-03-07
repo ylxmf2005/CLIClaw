@@ -1287,3 +1287,42 @@ test("envelope.send with agent token to team still works without mentions", asyn
   assert.deepEqual(result.ids, ["env-1", "env-2"]);
   assert.deepEqual(routed.map((item) => item.to), ["agent:alice:team:alpha", "agent:bob:team:alpha"]);
 });
+
+test("envelope.send with agent token to team ignores mentions and broadcasts to all", async () => {
+  const sender = makeAgent("sender");
+  const alice = makeAgent("alice");
+  const bob = makeAgent("bob");
+  const routed: CreateEnvelopeInput[] = [];
+  const ctx = makeContext({
+    sender,
+    knownAgents: [sender, alice, bob],
+    teams: [{ name: "alpha", members: ["sender", "alice", "bob"] }],
+    routeEnvelope: async (input) => {
+      routed.push(input);
+      return {
+        id: `env-${routed.length}`,
+        from: input.from,
+        to: input.to,
+        fromBoss: false,
+        content: input.content,
+        priority: input.priority,
+        status: "pending",
+        createdAt: Date.now(),
+        metadata: input.metadata,
+      };
+    },
+  });
+  const handlers = createEnvelopeHandlers(ctx);
+
+  // Pass mentions: ["alice"] but agent sends should broadcast to all members
+  const result = (await handlers["envelope.send"]({
+    token: sender.token,
+    to: "team:alpha",
+    text: "hello team",
+    mentions: ["alice"],
+  })) as { ids: string[] };
+
+  // Both alice and bob should receive, not just alice
+  assert.deepEqual(result.ids, ["env-1", "env-2"]);
+  assert.deepEqual(routed.map((item) => item.to), ["agent:alice:team:alpha", "agent:bob:team:alpha"]);
+});

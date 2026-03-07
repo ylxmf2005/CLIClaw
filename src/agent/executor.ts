@@ -4,10 +4,10 @@
 import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import type { Agent } from "./types.js";
-import type { HiBossDatabase } from "../daemon/db/database.js";
+import type { CliClawDatabase } from "../daemon/db/database.js";
 import type { Envelope } from "../envelope/types.js";
 import { parseAddress } from "../adapters/types.js";
-import { getHiBossDir } from "./home-setup.js";
+import { getCliClawDir } from "./home-setup.js";
 import { buildTurnInput } from "./turn-input.js";
 import {
   parseSessionPolicyConfig,
@@ -66,14 +66,14 @@ type AgentRunStartedHook = (params: {
   agentName: string;
   runId: string;
   envelopes: Envelope[];
-  db: HiBossDatabase;
+  db: CliClawDatabase;
 }) => void | Promise<void>;
 
 type AgentRunFinishedHook = (params: {
   agentName: string;
   runId: string;
   envelopes: Envelope[];
-  db: HiBossDatabase;
+  db: CliClawDatabase;
   state: RunCompletionState;
   error?: string;
 }) => void | Promise<void>;
@@ -83,7 +83,7 @@ type AgentExecutionQueuedHook = (params: {
   executionId: string;
   scope: SessionExecutionScope;
   envelopes: Envelope[];
-  db: HiBossDatabase;
+  db: CliClawDatabase;
 }) => void | Promise<void>;
 
 type AgentExecutionFinishedHook = (params: {
@@ -91,7 +91,7 @@ type AgentExecutionFinishedHook = (params: {
   executionId: string;
   scope: SessionExecutionScope;
   envelopes: Envelope[];
-  db: HiBossDatabase;
+  db: CliClawDatabase;
 }) => void | Promise<void>;
 
 type CapturedRunTrace = {
@@ -119,10 +119,10 @@ export class AgentExecutor {
   private concurrencyGlobal: number = DEFAULT_SESSION_CONCURRENCY_GLOBAL;
   private pendingSessionRefresh: Map<string, SessionRefreshRequest> = new Map();
   private pendingSessionContextReload: Map<string, SessionRefreshRequest> = new Map();
-  private db: HiBossDatabase | null;
-  private hibossDir: string;
+  private db: CliClawDatabase | null;
+  private cliclawDir: string;
   private conversationHistory: ConversationHistory | null;
-  private onEnvelopesDone?: (envelopeIds: string[], db: HiBossDatabase) => void | Promise<void>;
+  private onEnvelopesDone?: (envelopeIds: string[], db: CliClawDatabase) => void | Promise<void>;
   private onRunStarted?: AgentRunStartedHook;
   private onRunFinished?: AgentRunFinishedHook;
   private onExecutionQueued?: AgentExecutionQueuedHook;
@@ -130,10 +130,10 @@ export class AgentExecutor {
 
   constructor(
     options: {
-      db?: HiBossDatabase;
-      hibossDir?: string;
+      db?: CliClawDatabase;
+      cliclawDir?: string;
       conversationHistory?: ConversationHistory;
-      onEnvelopesDone?: (envelopeIds: string[], db: HiBossDatabase) => void | Promise<void>;
+      onEnvelopesDone?: (envelopeIds: string[], db: CliClawDatabase) => void | Promise<void>;
       onRunStarted?: AgentRunStartedHook;
       onRunFinished?: AgentRunFinishedHook;
       onExecutionQueued?: AgentExecutionQueuedHook;
@@ -143,7 +143,7 @@ export class AgentExecutor {
     } = {}
   ) {
     this.db = options.db ?? null;
-    this.hibossDir = options.hibossDir ?? getHiBossDir();
+    this.cliclawDir = options.cliclawDir ?? getCliClawDir();
     this.conversationHistory = options.conversationHistory ?? null;
     this.onEnvelopesDone = options.onEnvelopesDone;
     this.onRunStarted = options.onRunStarted;
@@ -453,14 +453,14 @@ export class AgentExecutor {
 
     const workspace = resolveAgentWorkspace({
       db,
-      hibossDir: this.hibossDir,
+      cliclawDir: this.cliclawDir,
       agent,
     });
     const bindings = db.getBindingsByAgentName(agent.name);
     const boss = getBossInfo(db, bindings);
     const teams = buildAgentTeamPromptContext({
       db,
-      hibossDir: this.hibossDir,
+      cliclawDir: this.cliclawDir,
       agent,
     });
     const instructions = generateSystemInstructions({
@@ -469,7 +469,7 @@ export class AgentExecutor {
       bindings,
       workspaceDir: workspace,
       bossTimezone: db.getBossTimezone(),
-      hibossDir: this.hibossDir,
+      cliclawDir: this.cliclawDir,
       boss,
       teams,
       sessionSummaryConfig: db.getRuntimeSessionSummaryConfig(),
@@ -495,7 +495,7 @@ export class AgentExecutor {
   /**
    * Check and dispatch pending envelopes for session-scoped execution.
    */
-  async checkAndRun(agent: Agent, db: HiBossDatabase, trigger?: AgentRunTrigger): Promise<void> {
+  async checkAndRun(agent: Agent, db: CliClawDatabase, trigger?: AgentRunTrigger): Promise<void> {
     await queueAgentTask({
       agentLocks: this.agentDispatchLocks,
       agentName: agent.name,
@@ -506,7 +506,7 @@ export class AgentExecutor {
     });
   }
 
-  private async dispatchPendingEnvelopes(agent: Agent, db: HiBossDatabase, trigger?: AgentRunTrigger): Promise<void> {
+  private async dispatchPendingEnvelopes(agent: Agent, db: CliClawDatabase, trigger?: AgentRunTrigger): Promise<void> {
     const DISPATCH_LIMIT = Math.max(MAX_ENVELOPES_PER_TURN, 50);
     const pendingRefreshReasons = await this.applyPendingSessionRefresh(agent.name);
 
@@ -597,7 +597,7 @@ export class AgentExecutor {
     return `internal:${fromAgentName ?? "unknown"}:to:${targetAgentName}`;
   }
 
-  private resolveExecutionScope(agent: Agent, db: HiBossDatabase, envelope: Envelope): SessionExecutionScope {
+  private resolveExecutionScope(agent: Agent, db: CliClawDatabase, envelope: Envelope): SessionExecutionScope {
     const metadata = envelope.metadata as Record<string, unknown> | undefined;
 
     const parsedFrom = (() => {
@@ -704,7 +704,7 @@ export class AgentExecutor {
 
   private queueSessionExecution(params: {
     agent: Agent;
-    db: HiBossDatabase;
+    db: CliClawDatabase;
     scope: SessionExecutionScope;
     envelopes: Envelope[];
     trigger?: AgentRunTrigger;
@@ -797,7 +797,7 @@ export class AgentExecutor {
 
   private async runSessionExecution(params: {
     agent: Agent;
-    db: HiBossDatabase;
+    db: CliClawDatabase;
     scope: SessionExecutionScope;
     envelopes: Envelope[];
     trigger?: AgentRunTrigger;
@@ -864,7 +864,7 @@ export class AgentExecutor {
       lastRunningTraceWriteAtMs = nowMs;
 
       try {
-        writeAgentRunTrace(this.hibossDir, {
+        writeAgentRunTrace(this.cliclawDir, {
           version: INTERNAL_VERSION,
           runId: run.id,
           agentName: params.agent.name,
@@ -953,7 +953,7 @@ export class AgentExecutor {
       }
 
       const turn = await executeCliTurn(session, turnInput, {
-        hibossDir: this.hibossDir,
+        cliclawDir: this.cliclawDir,
         agentName: params.agent.name,
         signal: inFlight.abortController.signal,
         onChildProcess: (proc) => {
@@ -1120,7 +1120,7 @@ export class AgentExecutor {
       if (runLifecycleStarted && completionState && runStartedAtMs && traceToWrite !== null) {
         const traceRecord = traceToWrite as CapturedRunTrace;
         try {
-          writeAgentRunTrace(this.hibossDir, {
+          writeAgentRunTrace(this.cliclawDir, {
             version: INTERNAL_VERSION,
             runId: run.id,
             agentName: params.agent.name,
@@ -1144,7 +1144,7 @@ export class AgentExecutor {
 
   private async getOrCreateScopedSession(
     agent: Agent,
-    db: HiBossDatabase,
+    db: CliClawDatabase,
     scope: SessionExecutionScope,
     _trigger?: AgentRunTrigger
   ): Promise<AgentSession> {
@@ -1153,10 +1153,13 @@ export class AgentExecutor {
 
   private async getOrCreateChannelSession(
     agent: Agent,
-    db: HiBossDatabase,
+    db: CliClawDatabase,
     scope: Extract<SessionExecutionScope, { kind: "channel" }>
   ): Promise<AgentSession> {
     const desiredProvider = agent.provider ?? DEFAULT_AGENT_PROVIDER;
+    const chatModelSettings = db.getChatModelSettings(agent.name, scope.chatId);
+    const desiredModel = chatModelSettings.modelOverride ?? agent.model;
+    const desiredReasoningEffort = chatModelSettings.reasoningEffortOverride ?? agent.reasoningEffort;
     const cached = this.channelSessions.get(scope.cacheKey);
     const policy = this.getSessionPolicy(agent);
     if (cached) {
@@ -1164,6 +1167,15 @@ export class AgentExecutor {
         this.channelSessions.delete(scope.cacheKey);
         db.updateAgentSessionProviderSessionId(scope.agentSessionId, null, {
           provider: desiredProvider,
+        });
+      } else if (
+        cached.model !== desiredModel ||
+        cached.reasoningEffort !== desiredReasoningEffort
+      ) {
+        this.closeActiveHistorySessionForChannel(agent.name, scope.chatId, "chat-model-settings-updated");
+        this.channelSessions.delete(scope.cacheKey);
+        db.updateAgentSessionProviderSessionId(scope.agentSessionId, null, {
+          provider: cached.provider,
         });
       } else {
         const reason = getRefreshReasonForPolicy(cached, policy, new Date());
@@ -1211,14 +1223,14 @@ export class AgentExecutor {
     }
     const workspace = resolveAgentWorkspace({
       db,
-      hibossDir: this.hibossDir,
+      cliclawDir: this.cliclawDir,
       agent,
     });
     const bindings = db.getBindingsByAgentName(agent.name);
     const boss = getBossInfo(db, bindings);
     const teams = buildAgentTeamPromptContext({
       db,
-      hibossDir: this.hibossDir,
+      cliclawDir: this.cliclawDir,
       agent,
     });
     const instructions = generateSystemInstructions({
@@ -1227,7 +1239,7 @@ export class AgentExecutor {
       bindings,
       workspaceDir: workspace,
       bossTimezone: db.getBossTimezone(),
-      hibossDir: this.hibossDir,
+      cliclawDir: this.cliclawDir,
       boss,
       teams,
       sessionSummaryConfig: db.getRuntimeSessionSummaryConfig(),
@@ -1239,8 +1251,8 @@ export class AgentExecutor {
       systemInstructions: instructions,
       workspace,
       providerEnvOverrides,
-      model: agent.model,
-      reasoningEffort: agent.reasoningEffort,
+      model: desiredModel,
+      reasoningEffort: desiredReasoningEffort,
       sessionId: providerSessionId,
       createdAtMs: persistedRow?.createdAt ?? Date.now(),
       ...(persistedRow ? { lastRunCompletedAtMs: persistedRow.lastActiveAt } : {}),
@@ -1353,10 +1365,10 @@ export class AgentExecutor {
 }
 
 export function createAgentExecutor(options?: {
-  db?: HiBossDatabase;
-  hibossDir?: string;
+  db?: CliClawDatabase;
+  cliclawDir?: string;
   conversationHistory?: ConversationHistory;
-  onEnvelopesDone?: (envelopeIds: string[], db: HiBossDatabase) => void | Promise<void>;
+  onEnvelopesDone?: (envelopeIds: string[], db: CliClawDatabase) => void | Promise<void>;
   onRunStarted?: AgentRunStartedHook;
   onRunFinished?: AgentRunFinishedHook;
   onExecutionQueued?: AgentExecutionQueuedHook;

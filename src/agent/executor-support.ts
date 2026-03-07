@@ -1,4 +1,4 @@
-import type { HiBossDatabase } from "../daemon/db/database.js";
+import type { CliClawDatabase } from "../daemon/db/database.js";
 import type { ChildProcess } from "node:child_process";
 
 export interface AgentSession {
@@ -56,7 +56,7 @@ export function readTokenUsage(usageRaw: unknown): TurnTokenUsage {
 }
 
 export function getBossInfo(
-  db: HiBossDatabase | null,
+  db: CliClawDatabase | null,
   bindings: { adapterType: string }[]
 ): { name?: string; adapterIds?: Record<string, string> } | undefined {
   if (!db) return undefined;

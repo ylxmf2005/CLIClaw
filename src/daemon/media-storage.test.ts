@@ -7,7 +7,7 @@ import test from "node:test";
 import { saveMediaFile, getMediaDir, mediaFileExists } from "./media-storage.js";
 
 function withTempDir(run: (dir: string) => void): void {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hiboss-media-test-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cliclaw-media-test-"));
   try {
     run(dir);
   } finally {

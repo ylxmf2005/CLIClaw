@@ -2,7 +2,13 @@
 
 import { useRef, useEffect, useCallback } from "react";
 import type { Envelope } from "@/lib/types";
-import { cn, formatMessageTime } from "@/lib/utils";
+import {
+  cn,
+  formatMessageTime,
+  getEnvelopeSenderKey,
+  getEnvelopeSenderName,
+  parseAddress,
+} from "@/lib/utils";
 import { getSenderColor } from "@/lib/colors";
 import {
   User,
@@ -19,16 +25,6 @@ import {
 import { EmptyState } from "@/components/shared/empty-state";
 import { MessageContent } from "@/components/shared/message-content";
 import { deriveMention, type MentionInfo } from "@/lib/mention-utils";
-
-function parseAddress(addr: string): { type: string; name: string } {
-  if (addr.startsWith("agent:"))
-    return { type: "agent", name: addr.slice(6).split(":")[0] };
-  if (addr.startsWith("team:"))
-    return { type: "team", name: addr.slice(5).split(":")[0] };
-  if (addr.startsWith("channel:"))
-    return { type: "channel", name: addr.split(":").slice(1).join(":") };
-  return { type: "unknown", name: addr };
-}
 
 /** Returns an icon for the envelope origin */
 function OriginIcon({ origin }: { origin?: string }) {
@@ -120,10 +116,13 @@ export function MessageList({
       >
         {envelopes.map((env, i) => {
           const from = parseAddress(env.from);
+          const senderName = getEnvelopeSenderName(env);
+          const senderKey = getEnvelopeSenderKey(env);
           const isFromBoss = env.fromBoss;
-          const isFromCurrentAgent = from.name === currentAgent;
+          const isFromCurrentAgent =
+            from.type === "agent" && from.name === currentAgent;
           const isSameSender =
-            i > 0 && parseAddress(envelopes[i - 1].from).name === from.name;
+            i > 0 && getEnvelopeSenderKey(envelopes[i - 1]!) === senderKey;
           const isFailed = env.status === "failed";
 
           // Derive @mention info
@@ -154,10 +153,10 @@ export function MessageList({
                   <span
                     className={cn(
                       "text-sm font-semibold",
-                      getSenderColor(from.name)
+                      getSenderColor(senderName)
                     )}
                   >
-                    {from.name}
+                    {senderName}
                   </span>
                   {isFromBoss && (
                     <span className="rounded bg-amber-pulse/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-pulse">

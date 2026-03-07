@@ -17,22 +17,22 @@ export interface AgentRunTraceRecord {
   entries: ProviderTraceEntry[];
 }
 
-function getTraceDir(hibossDir: string): string {
-  return path.join(hibossDir, ".daemon", "agent_run_traces");
+function getTraceDir(cliclawDir: string): string {
+  return path.join(cliclawDir, ".daemon", "agent_run_traces");
 }
 
-function getTracePath(hibossDir: string, runId: string): string {
-  return path.join(getTraceDir(hibossDir), `${runId}.json`);
+function getTracePath(cliclawDir: string, runId: string): string {
+  return path.join(getTraceDir(cliclawDir), `${runId}.json`);
 }
 
-export function writeAgentRunTrace(hibossDir: string, record: AgentRunTraceRecord): void {
-  const traceDir = getTraceDir(hibossDir);
+export function writeAgentRunTrace(cliclawDir: string, record: AgentRunTraceRecord): void {
+  const traceDir = getTraceDir(cliclawDir);
   fs.mkdirSync(traceDir, { recursive: true });
-  fs.writeFileSync(getTracePath(hibossDir, record.runId), JSON.stringify(record), "utf8");
+  fs.writeFileSync(getTracePath(cliclawDir, record.runId), JSON.stringify(record), "utf8");
 }
 
-export function readAgentRunTrace(hibossDir: string, runId: string): AgentRunTraceRecord | null {
-  const tracePath = getTracePath(hibossDir, runId);
+export function readAgentRunTrace(cliclawDir: string, runId: string): AgentRunTraceRecord | null {
+  const tracePath = getTracePath(cliclawDir, runId);
   if (!fs.existsSync(tracePath)) return null;
 
   try {

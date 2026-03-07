@@ -5,7 +5,7 @@ import { useAppState } from "@/providers/app-state-provider";
 import { ChatListItem } from "./chat-list-item";
 import { Input } from "@/components/ui/input";
 import { Search, ChevronDown, ChevronRight, Plus, Trash2, Pin, PinOff, ChevronsDown } from "lucide-react";
-import { cn, generateChatId, resolveDefaultChatId, formatTime } from "@/lib/utils";
+import { cn, generateChatId, resolveDefaultChatId, formatTime, formatChatLabel } from "@/lib/utils";
 import type { AgentState } from "@/components/shared/status-indicator";
 import { Avatar } from "@/components/shared/avatar";
 import * as api from "@/lib/api";
@@ -207,7 +207,7 @@ export function ChatListPanel() {
                         key={convo.chatId}
                         kind="agent"
                         name={agent.name}
-                        chatLabel={session?.label || convo.label || convo.chatId}
+                        chatLabel={session?.label || convo.label || formatChatLabel(convo.chatId)}
                         subtitle={convo.lastMessage}
                         lastMessage={convo.lastMessage}
                         lastMessageAt={convo.lastMessageAt}

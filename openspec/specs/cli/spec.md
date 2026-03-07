@@ -4,14 +4,14 @@
 
 ### Token Resolution
 
-- Most commands accept `--token`. If omitted, uses `HIBOSS_TOKEN`.
+- Most commands accept `--token`. If omitted, uses `CLICLAW_TOKEN`.
 - Admin-token access is operation-specific. Some envelope operations are allowed for admin tokens with stricter constraints (for example admin `envelope.send` only allows agent destinations).
 
 ### Clearing Nullable Overrides
 
 Some agent settings are nullable (e.g., `model`, `reasoning-effort`). To clear via CLI, use sentinel `default`:
-- `hiboss agent set --name <agent> --model default`
-- `hiboss agent set --name <agent> --reasoning-effort default`
+- `cliclaw agent set --name <agent> --model default`
+- `cliclaw agent set --name <agent> --reasoning-effort default`
 
 ### Output Stability
 
@@ -38,33 +38,33 @@ Default permission levels come from `DEFAULT_PERMISSION_POLICY`.
 
 | Command | Purpose | Token | Default Permission |
 |---------|---------|-------|--------------------|
-| `hiboss setup` | Interactive bootstrap | No | n/a |
-| `hiboss daemon start` | Start daemon | Admin | admin |
-| `hiboss daemon stop` | Stop daemon | Admin | admin |
-| `hiboss daemon status` | Daemon status | Admin | admin |
-| `hiboss envelope send` | Send envelope | Agent/Admin (restricted for admin) | restricted |
-| `hiboss envelope list` | List envelopes | Agent/Admin (restricted for admin) | restricted |
-| `hiboss envelope thread` | Show thread | Agent/Admin | restricted |
-| `hiboss cron create` | Create cron | Agent | restricted |
-| `hiboss cron explain` | Preview cron | Optional | n/a |
-| `hiboss cron list` | List cron | Agent/Admin | restricted |
-| `hiboss cron enable/disable/delete` | Manage cron | Agent | restricted |
-| `hiboss reaction set` | Set reaction | Agent | restricted |
-| `hiboss agent register` | Register agent | Admin | admin |
-| `hiboss agent set` | Update agent | Agent/Admin | privileged |
-| `hiboss agent list` | List agents | Agent/Admin | restricted |
-| `hiboss agent status` | Agent state | Agent/Admin | restricted |
-| `hiboss agent abort` | Cancel run + clear inbox | Admin | admin |
-| `hiboss agent delete` | Delete agent | Admin | admin |
-| `hiboss team register` | Create team | Agent/Admin | privileged |
-| `hiboss team set` | Update team | Agent/Admin | privileged |
-| `hiboss team add-member` | Add to team | Agent/Admin | privileged |
-| `hiboss team remove-member` | Remove from team | Agent/Admin | privileged |
-| `hiboss team status` | Team details | Agent/Admin | restricted |
-| `hiboss team list` | List teams | Agent/Admin | restricted |
-| `hiboss team list-members` | List members | Agent/Admin | restricted |
-| `hiboss team send` | Fan-out message | Agent | restricted |
-| `hiboss team delete` | Delete team | Admin | admin |
+| `cliclaw setup` | Interactive bootstrap | No | n/a |
+| `cliclaw daemon start` | Start daemon | Admin | admin |
+| `cliclaw daemon stop` | Stop daemon | Admin | admin |
+| `cliclaw daemon status` | Daemon status | Admin | admin |
+| `cliclaw envelope send` | Send envelope | Agent/Admin (restricted for admin) | restricted |
+| `cliclaw envelope list` | List envelopes | Agent/Admin (restricted for admin) | restricted |
+| `cliclaw envelope thread` | Show thread | Agent/Admin | restricted |
+| `cliclaw cron create` | Create cron | Agent | restricted |
+| `cliclaw cron explain` | Preview cron | Optional | n/a |
+| `cliclaw cron list` | List cron | Agent/Admin | restricted |
+| `cliclaw cron enable/disable/delete` | Manage cron | Agent | restricted |
+| `cliclaw reaction set` | Set reaction | Agent | restricted |
+| `cliclaw agent register` | Register agent | Admin | admin |
+| `cliclaw agent set` | Update agent | Agent/Admin | privileged |
+| `cliclaw agent list` | List agents | Agent/Admin | restricted |
+| `cliclaw agent status` | Agent state | Agent/Admin | restricted |
+| `cliclaw agent abort` | Cancel run + clear inbox | Admin | admin |
+| `cliclaw agent delete` | Delete agent | Admin | admin |
+| `cliclaw team register` | Create team | Agent/Admin | privileged |
+| `cliclaw team set` | Update team | Agent/Admin | privileged |
+| `cliclaw team add-member` | Add to team | Agent/Admin | privileged |
+| `cliclaw team remove-member` | Remove from team | Agent/Admin | privileged |
+| `cliclaw team status` | Team details | Agent/Admin | restricted |
+| `cliclaw team list` | List teams | Agent/Admin | restricted |
+| `cliclaw team list-members` | List members | Agent/Admin | restricted |
+| `cliclaw team send` | Fan-out message | Agent | restricted |
+| `cliclaw team delete` | Delete team | Admin | admin |
 
 ---
 
@@ -72,7 +72,7 @@ Default permission levels come from `DEFAULT_PERMISSION_POLICY`.
 
 ### Transport
 
-- Socket path: `~/hiboss/.daemon/daemon.sock` (or `{{HIBOSS_DIR}}/.daemon/daemon.sock`)
+- Socket path: `~/cliclaw/.daemon/daemon.sock` (or `{{CLICLAW_DIR}}/.daemon/daemon.sock`)
 - Protocol: JSON-RPC 2.0
 
 Key files: `src/daemon/ipc/server.ts`, `src/cli/ipc-client.ts`, `src/daemon/ipc/types.ts`, `src/daemon/daemon.ts`
@@ -80,7 +80,7 @@ Key files: `src/daemon/ipc/server.ts`, `src/cli/ipc-client.ts`, `src/daemon/ipc/
 ### Authentication
 
 Most RPC methods require a **token** (agent or admin):
-- CLI passes `token` in params (or uses `HIBOSS_TOKEN`)
+- CLI passes `token` in params (or uses `CLICLAW_TOKEN`)
 - Daemon resolves as **admin token** (matches `tokens[].role = admin`) or **agent token** (matches `agents.token`)
 
 Bootstrap methods (no token): `setup.check`, `admin.verify`

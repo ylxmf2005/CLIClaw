@@ -1,6 +1,6 @@
-import type { HiBossDatabase } from "../daemon/db/database.js";
+import type { CliClawDatabase } from "../daemon/db/database.js";
 
-export function countDuePendingEnvelopesForAgent(db: HiBossDatabase, agentName: string): number {
+export function countDuePendingEnvelopesForAgent(db: CliClawDatabase, agentName: string): number {
   const rawDb = (db as any).db as { prepare?: (sql: string) => { get: (...args: any[]) => unknown } };
   if (!rawDb?.prepare) return 0;
   const address = `agent:${agentName}`;

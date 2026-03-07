@@ -1,7 +1,7 @@
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { HIBOSS_DIR_ENV } from "./env.js";
+import { CLICLAW_DIR_ENV } from "./env.js";
 import {
   DEFAULT_AGENTS_DIRNAME,
   DEFAULT_DAEMON_DIRNAME,
@@ -9,7 +9,7 @@ import {
   DEFAULT_MEDIA_DIRNAME,
   DEFAULT_SOCKET_FILENAME,
   DEFAULT_PID_FILENAME,
-  getDefaultHiBossDir,
+  getDefaultCliClawDir,
 } from "./defaults.js";
 
 function expandTilde(p: string): string {
@@ -21,18 +21,18 @@ function expandTilde(p: string): string {
 }
 
 function resolveRootDirFromEnv(): { ok: true; dir: string } | { ok: false; error: string } {
-  const raw = (process.env[HIBOSS_DIR_ENV] ?? "").trim();
-  if (!raw) return { ok: true, dir: getDefaultHiBossDir() };
+  const raw = (process.env[CLICLAW_DIR_ENV] ?? "").trim();
+  if (!raw) return { ok: true, dir: getDefaultCliClawDir() };
 
   const expanded = expandTilde(raw);
   if (!path.isAbsolute(expanded)) {
-    return { ok: false, error: `Invalid ${HIBOSS_DIR_ENV} (must be an absolute path or start with ~): ${raw}` };
+    return { ok: false, error: `Invalid ${CLICLAW_DIR_ENV} (must be an absolute path or start with ~): ${raw}` };
   }
 
   return { ok: true, dir: expanded };
 }
 
-export interface HiBossPaths {
+export interface CliClawPaths {
   rootDir: string;
   daemonDir: string;
   agentsDir: string;
@@ -42,7 +42,7 @@ export interface HiBossPaths {
   pidPath: string;
 }
 
-export function getHiBossPaths(): HiBossPaths {
+export function getCliClawPaths(): CliClawPaths {
   const resolved = resolveRootDirFromEnv();
   if (!resolved.ok) {
     // Keep CLI output predictable: fail fast with a single-line error.
@@ -64,6 +64,6 @@ export function getHiBossPaths(): HiBossPaths {
   };
 }
 
-export function getHiBossRootDir(): string {
-  return getHiBossPaths().rootDir;
+export function getCliClawRootDir(): string {
+  return getCliClawPaths().rootDir;
 }

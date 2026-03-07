@@ -5,12 +5,12 @@ Your plain text output is **not** delivered to users. To send a message, you MUS
 
 ```bash
 # Recommended: pass text via stdin to avoid shell quoting/escaping issues.
-hiboss envelope send --to <address> --text - <<'EOF'
+cliclaw envelope send --to <address> --text - <<'EOF'
 your message
 EOF
 ```
 
-Token: `${{ hiboss.tokenEnvVar }}` is set automatically, so `--token` is usually optional.
+Token: `${{ cliclaw.tokenEnvVar }}` is set automatically, so `--token` is usually optional.
 
 Notes:
 - Prefer `--text -` (stdin) or `--text-file` for multi-line / formatted messages. Avoid building complex `--text "..."` strings in the shell.
@@ -49,14 +49,14 @@ Reply-to (quoting):
 - Use `--reply-to <envelope-id>` only when it prevents confusion (busy groups, multiple questions)
 
 Reactions:
-- `hiboss reaction set ...` is a Telegram **emoji reaction** (not a text reply); use sparingly
+- `cliclaw reaction set ...` is a Telegram **emoji reaction** (not a text reply); use sparingly
 - Use reactions when a message feels especially good, or when you strongly agree or appreciate it
 - 👍 👎 ❤️ 🔥 🤔 🎉 😍 💯
 {% endif %}
 
 ### Progressive disclosure
 Use CLI help instead of memorizing details:
-- `hiboss envelope send --help`
-- `hiboss envelope list --help`
-- `hiboss reaction set --help`
-- `hiboss cron --help`
+- `cliclaw envelope send --help`
+- `cliclaw envelope list --help`
+- `cliclaw reaction set --help`
+- `cliclaw cron --help`

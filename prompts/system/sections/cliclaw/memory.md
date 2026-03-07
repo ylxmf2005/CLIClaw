@@ -1,6 +1,6 @@
 ## Memory
 
-Hi-Boss provides **file-based memory** inside your `internal_space/`.
+CLIClaw provides **file-based memory** inside your `internal_space/`.
 
 Injection (session start; best-effort):
 - Long-term memory: `internal_space/MEMORY.md` (truncated to {{ internalSpace.longtermMaxChars }} chars)
@@ -14,7 +14,7 @@ If you see a `<<truncated ...>>` marker, shorten the underlying file(s).
 This file is automatically loaded into your context (may be truncated). You do **not** need to open it manually.
 
 Location:
-- `{{ hiboss.dir }}/agents/{{ agent.name }}/internal_space/MEMORY.md`
+- `{{ cliclaw.dir }}/agents/{{ agent.name }}/internal_space/MEMORY.md`
 
 Rules:
 - Keep it **high-value** and **high-information-density** (it is always injected).
@@ -26,7 +26,7 @@ Rules:
 internal-space-memory-unavailable: {{ internalSpace.error }}
 {% else %}
 
-internal-space-memory-snapshot: {{ hiboss.dir }}/agents/{{ agent.name }}/internal_space/MEMORY.md
+internal-space-memory-snapshot: {{ cliclaw.dir }}/agents/{{ agent.name }}/internal_space/MEMORY.md
 {% if internalSpace.note %}
 {{ internalSpace.noteFence }}text
 {{ internalSpace.note }}
@@ -38,7 +38,7 @@ internal-space-memory-snapshot: {{ hiboss.dir }}/agents/{{ agent.name }}/interna
 
 ### Session summary memory (`internal_space/history/YYYY-MM-DD/<chat-id>/<session-id>.md`)
 
-When sessions close, Hi-Boss records a `summary` in each session markdown frontmatter.
+When sessions close, CLIClaw records a `summary` in each session markdown frontmatter.
 These summaries are injected into new sessions to preserve continuity.
 
 Guidelines:
@@ -49,7 +49,7 @@ Guidelines:
 {% if internalSpace.sessionSummariesError %}
 internal-space-session-summaries-unavailable: {{ internalSpace.sessionSummariesError }}
 {% else %}
-internal-space-session-summaries-snapshot: {{ hiboss.dir }}/agents/{{ agent.name }}/internal_space/history/
+internal-space-session-summaries-snapshot: {{ cliclaw.dir }}/agents/{{ agent.name }}/internal_space/history/
 {% if internalSpace.sessionSummaries %}
 {{ internalSpace.sessionSummariesFence }}text
 {{ internalSpace.sessionSummaries }}
@@ -68,13 +68,13 @@ Write a daily log. Keep it extremely simple:
 - No transcripts
 
 Location:
-- `{{ hiboss.dir }}/agents/{{ agent.name }}/internal_space/memories/`
+- `{{ cliclaw.dir }}/agents/{{ agent.name }}/internal_space/memories/`
 {% if internalSpace.dailyError %}
 
 internal-space-daily-memory-unavailable: {{ internalSpace.dailyError }}
 {% else %}
 
-internal-space-daily-memory-snapshot: {{ hiboss.dir }}/agents/{{ agent.name }}/internal_space/memories/
+internal-space-daily-memory-snapshot: {{ cliclaw.dir }}/agents/{{ agent.name }}/internal_space/memories/
 {% if internalSpace.daily %}
 {{ internalSpace.dailyFence }}text
 {{ internalSpace.daily }}

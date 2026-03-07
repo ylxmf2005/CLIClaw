@@ -1,14 +1,14 @@
 <!--
-This directory is the canonical source of prompt/instruction templates used by Hi-Boss.
+This directory is the canonical source of prompt/instruction templates used by CLIClaw.
 -->
 
-# Hi-Boss Prompts
+# CLIClaw Prompts
 
-Hi-Boss uses **Nunjucks** (Jinja-like) templates under `prompts/` to generate three kinds of text:
+CLIClaw uses **Nunjucks** (Jinja-like) templates under `prompts/` to generate three kinds of text:
 
 1. **System instructions** (agent bootstrap / "system prompt")
 2. **Turn input** (what the agent SDK receives each run)
-3. **CLI envelope instructions** (what `hiboss envelope list` prints for agents to read)
+3. **CLI envelope instructions** (what `cliclaw envelope list` prints for agents to read)
 
 All agent-facing **keys** in rendered text must remain **kebab-case, lowercase** (e.g. `sender:`).
 
@@ -55,7 +55,7 @@ Turn input changes apply immediately on the next agent run.
 - Rendered by: `src/cli/instructions/format-envelope.ts`
 
 This is the agent-facing text emitted by:
-- `hiboss envelope list`
+- `cliclaw envelope list`
 
 ---
 
@@ -71,7 +71,7 @@ flowchart TD
   F --> G[Render prompts/system/base.md]
   G --> D
 
-  I[CLI: hiboss envelope list] --> J[Build envelope context]
+  I[CLI: cliclaw envelope list] --> J[Build envelope context]
   J --> K[Render prompts/envelope/instruction.md]
   K --> L[Printed to stdout]
 ```
@@ -98,11 +98,11 @@ See `prompts/VARIABLES.md` for the authoritative variable catalog per surface.
 
 ---
 
-## Customization (Hi-Boss Files)
+## Customization (CLIClaw Files)
 
-Hi-Boss stores optional agent files under its state directory (default `~/hiboss`):
+CLIClaw stores optional agent files under its state directory (default `~/cliclaw`):
 
-- `~/hiboss/agents/<agent-name>/internal_space/MEMORY.md` — auto-injected long-term memory (truncated; rendered as fenced text when non-empty)
-- `~/hiboss/agents/<agent-name>/internal_space/memories/` — per-agent daily memory files (`YYYY-MM-DD.md`)
+- `~/cliclaw/agents/<agent-name>/internal_space/MEMORY.md` — auto-injected long-term memory (truncated; rendered as fenced text when non-empty)
+- `~/cliclaw/agents/<agent-name>/internal_space/memories/` — per-agent daily memory files (`YYYY-MM-DD.md`)
 
 Note: the system prompt is intentionally minimal; prefer concise, durable guidance in `internal_space/MEMORY.md` and short daily logs in `internal_space/memories/`.

@@ -1,7 +1,7 @@
 /**
- * Media file storage for Hi-Boss uploads.
+ * Media file storage for CLIClaw uploads.
  *
- * Saves uploaded files to ~/hiboss/media/<uuid>-<filename>.
+ * Saves uploaded files to ~/cliclaw/media/<uuid>-<filename>.
  */
 
 import * as fs from "fs";

@@ -10,7 +10,7 @@ import type { PermissionLevel } from "../shared/permissions.js";
 export type AgentPermissionLevel = PermissionLevel;
 
 /**
- * Agent definition for the Hi-Boss system.
+ * Agent definition for the CLIClaw system.
  */
 export interface Agent {
   name: string;            // unique identifier (alphanumeric, hyphens)
@@ -19,7 +19,7 @@ export interface Agent {
   workspace?: string;      // provider CLI working directory (session cwd)
   provider?: 'claude' | 'codex';
   model?: string;
-  reasoningEffort?: 'none' | 'low' | 'medium' | 'high' | 'xhigh';
+  reasoningEffort?: 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
   permissionLevel?: AgentPermissionLevel;   // authorization level for CLI/RPC ops
   sessionPolicy?: SessionPolicyConfig;      // session refresh policy
   relayMode?: 'default-on' | 'default-off'; // relay mode default for new chats
@@ -37,7 +37,7 @@ export interface RegisterAgentInput {
   workspace?: string;
   provider?: 'claude' | 'codex';
   model?: string | null;
-  reasoningEffort?: 'none' | 'low' | 'medium' | 'high' | 'xhigh' | null;
+  reasoningEffort?: 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' | null;
   permissionLevel?: AgentPermissionLevel;
   sessionPolicy?: SessionPolicyConfig;
   metadata?: Record<string, unknown>;

@@ -28,7 +28,7 @@ async function loadRelayAdapter(): Promise<typeof import("@agent-relay/sdk").Rel
 }
 
 export interface BrokerManagerOptions {
-  /** Project directory for the broker (usually hiboss data dir). */
+  /** Project directory for the broker (usually cliclaw data dir). */
   cwd: string;
   /** Event bus for PTY output events. */
   eventBus: DaemonEventBus;
@@ -77,7 +77,7 @@ export class BrokerManager {
     try {
       this.adapter = new RelayAdapterClass({
         cwd: this.cwd,
-        clientName: "hiboss-daemon",
+        clientName: "cliclaw-daemon",
       });
 
       await this.adapter.start();

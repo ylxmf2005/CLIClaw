@@ -96,7 +96,7 @@ export function createAgentHandlers(ctx: DaemonContext): RpcMethodRegistry {
       const effectivePermissionLevel = agent.permissionLevel ?? DEFAULT_AGENT_PERMISSION_LEVEL;
       const effectiveWorkspace = resolveAgentWorkspace({
         db: ctx.db,
-        hibossDir: ctx.config.dataDir,
+        cliclawDir: ctx.config.dataDir,
         agent,
       });
 
@@ -233,7 +233,7 @@ export function createAgentHandlers(ctx: DaemonContext): RpcMethodRegistry {
 
       try {
         await mutateSettingsAndSync({
-          hibossDir: ctx.config.dataDir,
+          cliclawDir: ctx.config.dataDir,
           db: ctx.db,
           mutate: (settings) => {
             const target = settings.agents.find((item) => item.name.toLowerCase() === agentName.toLowerCase());
@@ -310,7 +310,7 @@ export function createAgentHandlers(ctx: DaemonContext): RpcMethodRegistry {
       }
 
       await mutateSettingsAndSync({
-        hibossDir: ctx.config.dataDir,
+        cliclawDir: ctx.config.dataDir,
         db: ctx.db,
         mutate: (settings) => {
           const target = settings.agents.find((item) => item.name.toLowerCase() === agentName.toLowerCase());
@@ -357,7 +357,7 @@ export function createAgentHandlers(ctx: DaemonContext): RpcMethodRegistry {
       const provider = agent.provider ?? DEFAULT_AGENT_PROVIDER;
       const workspace = resolveAgentWorkspace({
         db: ctx.db,
-        hibossDir: ctx.config.dataDir,
+        cliclawDir: ctx.config.dataDir,
         agent,
       });
       const reasoningEffort = agent.reasoningEffort;
@@ -424,7 +424,7 @@ export function createAgentHandlers(ctx: DaemonContext): RpcMethodRegistry {
       }
 
       await mutateSettingsAndSync({
-        hibossDir: ctx.config.dataDir,
+        cliclawDir: ctx.config.dataDir,
         db: ctx.db,
         mutate: (settings) => {
           const target = settings.agents.find((item) => item.name.toLowerCase() === agent.name.toLowerCase());

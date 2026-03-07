@@ -5,7 +5,7 @@ WEB_URL="${WEB_URL:-http://localhost:3000}"
 API_URL="${API_URL:-http://localhost:3889}"
 ADMIN_TOKEN="${ADMIN_TOKEN:-}"
 AGENT_NAME="${AGENT_NAME:-nex}"
-SESSION_NAME="${SESSION_NAME:-hiboss-e2e-console-reply}"
+SESSION_NAME="${SESSION_NAME:-cliclaw-e2e-console-reply}"
 TIMEOUT_SECONDS="${TIMEOUT_SECONDS:-120}"
 
 if [[ -z "$ADMIN_TOKEN" ]]; then

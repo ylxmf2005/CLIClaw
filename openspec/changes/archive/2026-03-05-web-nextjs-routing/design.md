@@ -1,6 +1,6 @@
 ## Context
 
-The Hi-Boss web frontend uses Next.js 16 with App Router but currently renders as a single-page app: one `page.tsx` at `/` with `AppShell` switching views via `state.view` reducer state. Meanwhile, a set of demo UI components in `src/app/demo/` were carefully designed with the correct Telegram-style layout but are only used at `/demo` with mock data. The live app rebuilt everything from scratch in `src/components/`, ignoring the demo designs.
+The CLIClaw web frontend uses Next.js 16 with App Router but currently renders as a single-page app: one `page.tsx` at `/` with `AppShell` switching views via `state.view` reducer state. Meanwhile, a set of demo UI components in `src/app/demo/` were carefully designed with the correct Telegram-style layout but are only used at `/demo` with mock data. The live app rebuilt everything from scratch in `src/components/`, ignoring the demo designs.
 
 The demo components use `useDemoContext()` for state and mock data. The live components use `useAppState()` with real API data. The goal is to bridge these: adapt the demo UI for real data, use Next.js routing properly, and fill gaps where the demo is missing features that the SPA or backend already supports.
 

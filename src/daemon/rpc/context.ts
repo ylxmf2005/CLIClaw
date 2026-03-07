@@ -5,7 +5,7 @@
  * to RPC handlers, plus shared helpers for token validation and error handling.
  */
 
-import type { HiBossDatabase } from "../db/database.js";
+import type { CliClawDatabase } from "../db/database.js";
 import type { MessageRouter } from "../router/message-router.js";
 import type { AgentExecutor } from "../../agent/executor.js";
 import type { EnvelopeScheduler } from "../scheduler/envelope-scheduler.js";
@@ -31,7 +31,7 @@ export type Principal =
  */
 export interface DaemonContext {
   // Core services
-  readonly db: HiBossDatabase;
+  readonly db: CliClawDatabase;
   readonly router: MessageRouter;
   readonly executor: AgentExecutor;
   readonly scheduler: EnvelopeScheduler;

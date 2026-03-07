@@ -3,14 +3,20 @@
 import { useParams, useRouter } from "next/navigation";
 import { useAppState } from "@/providers/app-state-provider";
 import { useEffect, useState, useCallback, useRef } from "react";
-import { cn, formatMessageTime } from "@/lib/utils";
+import {
+  cn,
+  formatMessageTime,
+  getEnvelopeSenderKey,
+  getEnvelopeSenderName,
+  parseAddress,
+} from "@/lib/utils";
 import { getSenderColor } from "@/lib/colors";
 import { deriveMention } from "@/lib/mention-utils";
 import { MessageContent } from "@/components/shared/message-content";
 import { MessageComposer } from "@/components/chat/message-composer";
 import { AgentTerminalPane } from "@/components/terminal/agent-terminal-pane";
 import type { AttachmentFile, SlashCommand } from "@/components/chat/message-composer";
-import type { Envelope, EnvelopeAttachment } from "@/lib/types";
+import type { Envelope, EnvelopeAttachment, ReasoningEffort } from "@/lib/types";
 import * as api from "@/lib/api";
 import { useToast } from "@/providers/toast-provider";
 
@@ -19,12 +25,6 @@ const SLASH_COMMANDS: SlashCommand[] = [
   { command: "abort", description: "Abort the current agent run" },
   { command: "refresh", description: "Refresh the agent session" },
 ];
-
-function parseAddr(a: string) {
-  if (a.startsWith("agent:")) return { type: "agent", name: a.slice(6).split(":")[0] };
-  if (a.startsWith("channel:")) return { type: "channel", name: a.split(":").slice(1).join(":") };
-  return { type: "unknown", name: a };
-}
 
 interface ReplyTo {
   envelopeId: string;
@@ -52,11 +52,14 @@ export default function AgentChatPage() {
   const [showBindings, setShowBindings] = useState(false);
   const [pendingAttachments, setPendingAttachments] = useState<EnvelopeAttachment[]>([]);
   const [slashExecutions, setSlashExecutions] = useState<SlashExecution[]>([]);
+  const [chatModelOverride, setChatModelOverride] = useState<string | null>(null);
+  const [chatReasoningOverride, setChatReasoningOverride] = useState<ReasoningEffort | null>(null);
 
   const [chatTransition, setChatTransition] = useState(false);
   const scrollPositions = useRef<Map<string, number>>(new Map());
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const prevChatRef = useRef<string>("");
+  const pendingChatSettingsSaveRef = useRef<Promise<void> | null>(null);
 
   const agent = state.agents.find((a) => a.name === name);
   const status = state.agentStatuses[name];
@@ -152,10 +155,65 @@ export default function AgentChatPage() {
     };
   }, [name, chatId, relayKey, dispatch]);
 
+  useEffect(() => {
+    let cancelled = false;
+    setChatModelOverride(null);
+    setChatReasoningOverride(null);
+    pendingChatSettingsSaveRef.current = null;
+
+    api.getChatSettings(name, chatId)
+      .then((result) => {
+        if (cancelled) return;
+        setChatModelOverride(result.modelOverride ?? null);
+        setChatReasoningOverride(result.reasoningEffortOverride ?? null);
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [name, chatId]);
+
+  const persistChatSettings = useCallback(
+    (nextModelOverride: string | null, nextReasoningOverride: ReasoningEffort | null) => {
+      setChatModelOverride(nextModelOverride);
+      setChatReasoningOverride(nextReasoningOverride);
+
+      const request = api.updateChatSettings(name, chatId, {
+        modelOverride: nextModelOverride,
+        reasoningEffortOverride: nextReasoningOverride,
+      })
+        .then((result) => {
+          setChatModelOverride(result.modelOverride ?? null);
+          setChatReasoningOverride(result.reasoningEffortOverride ?? null);
+        })
+        .catch((err) => {
+          toast({
+            title: "Chat settings update failed",
+            description: err instanceof Error ? err.message : "Could not update chat model settings",
+            variant: "error",
+          });
+        })
+        .finally(() => {
+          if (pendingChatSettingsSaveRef.current === request) {
+            pendingChatSettingsSaveRef.current = null;
+          }
+        });
+
+      pendingChatSettingsSaveRef.current = request;
+    },
+    [name, chatId, toast]
+  );
+
   const handleSend = useCallback(
     async (text: string, composerAttachments?: AttachmentFile[]) => {
       if (!text.trim()) return;
       try {
+        const pendingSettingsSave = pendingChatSettingsSaveRef.current;
+        if (pendingSettingsSave) {
+          await pendingSettingsSave.catch(() => undefined);
+        }
+
         const uploadedAttachments: EnvelopeAttachment[] = [];
         if (composerAttachments && composerAttachments.length > 0) {
           for (const att of composerAttachments) {
@@ -190,6 +248,11 @@ export default function AgentChatPage() {
     async (text: string, scheduledAt: Date) => {
       if (!text.trim()) return;
       try {
+        const pendingSettingsSave = pendingChatSettingsSaveRef.current;
+        if (pendingSettingsSave) {
+          await pendingSettingsSave.catch(() => undefined);
+        }
+
         const from = resolveFromAddress();
         await api.sendEnvelope({
           to: `agent:${name}:${chatId}`,
@@ -564,8 +627,11 @@ export default function AgentChatPage() {
               </div>
             )}
             {envelopes.map((env, i) => {
-              const from = parseAddr(env.from);
-              const isSameSender = i > 0 && parseAddr(envelopes[i - 1].from).name === from.name;
+              const from = parseAddress(env.from);
+              const senderName = getEnvelopeSenderName(env);
+              const senderKey = getEnvelopeSenderKey(env);
+              const isSameSender =
+                i > 0 && getEnvelopeSenderKey(envelopes[i - 1]!) === senderKey;
               const mention = deriveMention(env, name);
               const lastDeliveryError =
                 env.metadata &&
@@ -581,7 +647,7 @@ export default function AgentChatPage() {
                     onClick={() => setReplyTo({
                       envelopeId: env.id,
                       chatKey: envelopeKey,
-                      senderName: from.name,
+                      senderName,
                       preview: (env.content.text ?? "").slice(0, 80),
                     })}
                     title="Reply"
@@ -601,7 +667,7 @@ export default function AgentChatPage() {
                           }
                         </svg>
                       </span>
-                      <span className={`text-sm font-semibold ${getSenderColor(from.name)}`}>{from.name}</span>
+                      <span className={`text-sm font-semibold ${getSenderColor(senderName)}`}>{senderName}</span>
                       {env.fromBoss && (
                         <span className="rounded bg-amber-pulse/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-pulse">boss</span>
                       )}
@@ -755,6 +821,21 @@ export default function AgentChatPage() {
           draft={state.drafts[envelopeKey]}
           onDraftChange={(text) => dispatch({ type: "SET_DRAFT", key: envelopeKey, text })}
           slashCommands={SLASH_COMMANDS}
+          chatModelOverrides={
+            agent
+              ? {
+                  provider: agent.provider,
+                  agentDefaultModel: agent.model,
+                  agentDefaultReasoningEffort: agent.reasoningEffort,
+                  modelOverride: chatModelOverride,
+                  reasoningEffortOverride: chatReasoningOverride,
+                  onModelOverrideChange: (modelOverride) =>
+                    persistChatSettings(modelOverride, chatReasoningOverride),
+                  onReasoningEffortOverrideChange: (reasoningEffortOverride) =>
+                    persistChatSettings(chatModelOverride, reasoningEffortOverride),
+                }
+              : undefined
+          }
         />
       </div>
 

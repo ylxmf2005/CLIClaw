@@ -221,6 +221,11 @@ export interface SessionListItem {
   };
 }
 
+export interface ChatModelSettings {
+  modelOverride?: string;
+  reasoningEffortOverride?: Agent["reasoningEffort"];
+}
+
 export interface EnvelopeCreatedEvent {
   envelope: Envelope;
   origin: EnvelopeOrigin;
@@ -244,9 +249,9 @@ export interface EnvelopeLifecycleHooks {
 }
 
 /**
- * SQLite database wrapper for Hi-Boss.
+ * SQLite database wrapper for CLIClaw.
  */
-export class HiBossDatabase {
+export class CliClawDatabase {
   private db: Database.Database;
   private envelopeLifecycleHooks: EnvelopeLifecycleHooks = {};
 
@@ -268,8 +273,9 @@ export class HiBossDatabase {
 
   private initSchema(): void {
     this.db.exec(SCHEMA_SQL);
-    this.assertSchemaCompatible();
     this.migrateAgentSessionsColumns();
+    this.migrateChatStateColumns();
+    this.assertSchemaCompatible();
     this.reconcileStaleAgentRunsOnStartup();
   }
 
@@ -282,6 +288,18 @@ export class HiBossDatabase {
     }
     if (!names.has("pinned")) {
       this.db.exec("ALTER TABLE agent_sessions ADD COLUMN pinned INTEGER DEFAULT 0");
+    }
+  }
+
+  /** Add model/reasoning override columns to chat_state if missing (migration). */
+  private migrateChatStateColumns(): void {
+    const info = this.db.prepare("PRAGMA table_info(chat_state)").all() as Array<{ name: string }>;
+    const names = new Set(info.map((c) => c.name));
+    if (!names.has("model_override")) {
+      this.db.exec("ALTER TABLE chat_state ADD COLUMN model_override TEXT");
+    }
+    if (!names.has("reasoning_effort_override")) {
+      this.db.exec("ALTER TABLE chat_state ADD COLUMN reasoning_effort_override TEXT");
     }
   }
 
@@ -399,6 +417,8 @@ export class HiBossDatabase {
         "agent_name",
         "chat_id",
         "relay_on",
+        "model_override",
+        "reasoning_effort_override",
       ],
     };
 
@@ -432,7 +452,7 @@ export class HiBossDatabase {
       if (info.length === 0) {
         throw new Error(
           `Unsupported database schema: missing table ${table}. ` +
-            `Reset your local state by deleting your Hi-Boss directory (default ~/hiboss; override via $HIBOSS_DIR).`
+            `Reset your local state by deleting your CLIClaw directory (default ~/cliclaw; override via $CLICLAW_DIR).`
         );
       }
       const names = new Set(info.map((c) => c.name));
@@ -440,7 +460,7 @@ export class HiBossDatabase {
         if (!names.has(col)) {
           throw new Error(
             `Unsupported database schema: missing ${table}.${col}. ` +
-              `Reset your local state by deleting your Hi-Boss directory (default ~/hiboss; override via $HIBOSS_DIR).`
+              `Reset your local state by deleting your CLIClaw directory (default ~/cliclaw; override via $CLICLAW_DIR).`
           );
         }
       }
@@ -459,7 +479,7 @@ export class HiBossDatabase {
       if (!isInteger) {
         throw new Error(
           `Unsupported database schema: expected ${spec.table}.${spec.column} to be INTEGER (unix-ms), got '${col.type}'. ` +
-            `Reset your local state by deleting your Hi-Boss directory (default ~/hiboss; override via $HIBOSS_DIR).`
+            `Reset your local state by deleting your CLIClaw directory (default ~/cliclaw; override via $CLICLAW_DIR).`
         );
       }
     }
@@ -787,7 +807,7 @@ export class HiBossDatabase {
       workspace?: string | null;
       provider?: "claude" | "codex" | null;
       model?: string | null;
-      reasoningEffort?: "none" | "low" | "medium" | "high" | "xhigh" | null;
+      reasoningEffort?: "none" | "low" | "medium" | "high" | "xhigh" | "max" | null;
       relayMode?: "default-on" | "default-off" | null;
     }
   ): Agent {
@@ -1308,7 +1328,7 @@ export class HiBossDatabase {
   /**
    * List envelopes matching an exact from/to route.
    *
-   * Used by `hiboss envelope list --to/--from` to fetch conversation slices
+   * Used by `cliclaw envelope list --to/--from` to fetch conversation slices
    * relevant to the authenticated agent.
    */
   listEnvelopesByRoute(options: {
@@ -1404,8 +1424,73 @@ export class HiBossDatabase {
   }
 
   /**
-   * List distinct conversations (chatIds) for an agent from the `to` field.
-   * Returns chatIds with metadata sorted by most recent message.
+   * List a full chat timeline for one agent/chat scope (both directions).
+   *
+   * Includes:
+   * - explicit chat target envelopes (`to = agent:<name>:<chatId>`)
+   * - envelopes tagged with matching `metadata.chatScope` where the agent
+   *   is sender or receiver
+   * - legacy inbound channel envelopes addressed to `agent:<name>` with
+   *   matching `metadata.chat.id`
+   */
+  listEnvelopesForAgentChat(options: {
+    agentName: string;
+    chatId: string;
+    status: EnvelopeStatus;
+    limit: number;
+    createdAfter?: number;
+    createdBefore?: number;
+  }): Envelope[] {
+    const { agentName, chatId, status, limit, createdAfter, createdBefore } = options;
+    const agentAddress = `agent:${agentName}`;
+    const scopedAddress = `${agentAddress}:${chatId}`;
+
+    let sql = `
+      SELECT *
+      FROM envelopes
+      WHERE status = ?
+        AND (
+          "to" = ?
+          OR (
+            json_extract(metadata, '$.chatScope') = ?
+            AND ("from" = ? OR "to" = ?)
+          )
+          OR (
+            "to" = ?
+            AND CAST(json_extract(metadata, '$.chat.id') AS TEXT) = ?
+          )
+        )
+    `;
+    const params: Array<string | number> = [
+      status,
+      scopedAddress,
+      chatId,
+      agentAddress,
+      agentAddress,
+      agentAddress,
+      chatId,
+    ];
+
+    if (typeof createdAfter === "number") {
+      sql += " AND created_at >= ?";
+      params.push(createdAfter);
+    }
+
+    if (typeof createdBefore === "number") {
+      sql += " AND created_at <= ?";
+      params.push(createdBefore);
+    }
+
+    sql += " ORDER BY created_at DESC LIMIT ?";
+    params.push(limit);
+
+    const rows = this.db.prepare(sql).all(...params) as EnvelopeRow[];
+    return rows.map((row) => this.rowToEnvelope(row));
+  }
+
+  /**
+   * List distinct conversations (chatIds) for an agent from both incoming and
+   * outgoing envelopes. Returns chatIds sorted by most recent message.
    */
   listConversationsForAgent(agentName: string): Array<{
     chatId: string;
@@ -1413,42 +1498,93 @@ export class HiBossDatabase {
     lastMessageText: string | null;
     messageCount: number;
   }> {
-    const prefix = `agent:${agentName}:%`;
+    const agentAddress = `agent:${agentName}`;
+    const scopedPrefix = `${agentAddress}:%`;
+
     const sql = `
       SELECT
         "to" as to_address,
-        MAX(created_at) as last_message_at,
-        COUNT(*) as message_count
+        metadata,
+        content_text,
+        created_at
       FROM envelopes
-      WHERE "to" LIKE ?
-      GROUP BY "to"
-      ORDER BY last_message_at DESC
+      WHERE status = 'done'
+        AND (
+          "to" LIKE ?
+          OR "to" = ?
+          OR "from" = ?
+        )
+      ORDER BY created_at DESC
     `;
-    const stmt = this.db.prepare(sql);
-    const rows = stmt.all(prefix) as Array<{
+    const rows = this.db.prepare(sql).all(scopedPrefix, agentAddress, agentAddress) as Array<{
       to_address: string;
-      last_message_at: number;
-      message_count: number;
+      metadata: string | null;
+      content_text: string | null;
+      created_at: number;
     }>;
 
-    return rows
-      .map((row) => {
-        // Extract chatId from "agent:<name>:<chatId>"
-        const parts = row.to_address.split(":");
-        const chatId = parts.length >= 3 ? parts.slice(2).join(":") : row.to_address;
+    const byChat = new Map<string, {
+      chatId: string;
+      lastMessageAt: number;
+      lastMessageText: string | null;
+      messageCount: number;
+    }>();
 
-        // Get last message text
-        const lastMsg = this.db.prepare(
-          `SELECT content_text FROM envelopes WHERE "to" = ? ORDER BY created_at DESC LIMIT 1`
-        ).get(row.to_address) as { content_text: string | null } | undefined;
-
-        return {
-          chatId,
-          lastMessageAt: row.last_message_at,
-          lastMessageText: lastMsg?.content_text ?? null,
-          messageCount: row.message_count,
-        };
+    for (const row of rows) {
+      const chatId = this.resolveConversationChatIdForAgent({
+        agentAddress,
+        toAddress: row.to_address,
+        metadataRaw: row.metadata,
       });
+      if (!chatId || chatId.startsWith("team:")) continue;
+
+      const existing = byChat.get(chatId);
+      if (existing) {
+        existing.messageCount += 1;
+        continue;
+      }
+
+      byChat.set(chatId, {
+        chatId,
+        lastMessageAt: row.created_at,
+        lastMessageText: row.content_text ?? null,
+        messageCount: 1,
+      });
+    }
+
+    return [...byChat.values()].sort((a, b) => b.lastMessageAt - a.lastMessageAt);
+  }
+
+  private resolveConversationChatIdForAgent(params: {
+    agentAddress: string;
+    toAddress: string;
+    metadataRaw: string | null;
+  }): string | null {
+    const scopedPrefix = `${params.agentAddress}:`;
+    if (params.toAddress.startsWith(scopedPrefix) && params.toAddress.length > scopedPrefix.length) {
+      return params.toAddress.slice(scopedPrefix.length);
+    }
+
+    if (!params.metadataRaw) return null;
+    try {
+      const metadata = JSON.parse(params.metadataRaw) as Record<string, unknown>;
+      if (typeof metadata.chatScope === "string" && metadata.chatScope.trim().length > 0) {
+        return metadata.chatScope.trim();
+      }
+      const chat = metadata.chat;
+      if (chat && typeof chat === "object") {
+        const chatId = (chat as Record<string, unknown>).id;
+        if (typeof chatId === "string" && chatId.trim().length > 0) {
+          return chatId.trim();
+        }
+        if (typeof chatId === "number" && Number.isFinite(chatId)) {
+          return String(chatId);
+        }
+      }
+    } catch {
+      // Ignore invalid JSON metadata.
+    }
+    return null;
   }
 
   /**
@@ -3093,6 +3229,21 @@ export class HiBossDatabase {
 
   // ==================== Chat State Operations ====================
 
+  private normalizeChatReasoningEffort(
+    raw: unknown
+  ): Agent["reasoningEffort"] | undefined {
+    if (
+      raw === "none" ||
+      raw === "low" ||
+      raw === "medium" ||
+      raw === "high" ||
+      raw === "xhigh"
+    ) {
+      return raw;
+    }
+    return undefined;
+  }
+
   /**
    * Get the relay state for a specific agent+chat pair.
    */
@@ -3102,6 +3253,69 @@ export class HiBossDatabase {
     );
     const row = stmt.get(agentName, chatId) as { relay_on: number } | undefined;
     return row ? row.relay_on === 1 : false;
+  }
+
+  /**
+   * Get model/reasoning overrides for a specific agent+chat pair.
+   */
+  getChatModelSettings(agentName: string, chatId: string): ChatModelSettings {
+    const stmt = this.db.prepare(
+      "SELECT model_override, reasoning_effort_override FROM chat_state WHERE agent_name = ? AND chat_id = ?"
+    );
+    const row = stmt.get(agentName, chatId) as
+      | { model_override: string | null; reasoning_effort_override: string | null }
+      | undefined;
+
+    if (!row) {
+      return {};
+    }
+
+    const modelOverride = typeof row.model_override === "string" && row.model_override.trim().length > 0
+      ? row.model_override.trim()
+      : undefined;
+    const reasoningEffortOverride = this.normalizeChatReasoningEffort(row.reasoning_effort_override ?? undefined);
+    return {
+      ...(modelOverride ? { modelOverride } : {}),
+      ...(reasoningEffortOverride ? { reasoningEffortOverride } : {}),
+    };
+  }
+
+  /**
+   * Upsert model/reasoning overrides for a specific agent+chat pair.
+   */
+  setChatModelSettings(
+    agentName: string,
+    chatId: string,
+    settings: {
+      modelOverride?: string | null;
+      reasoningEffortOverride?: Agent["reasoningEffort"] | null;
+    }
+  ): void {
+    const modelOverride = typeof settings.modelOverride === "string"
+      ? settings.modelOverride.trim() || null
+      : null;
+    const reasoningEffortOverride = settings.reasoningEffortOverride ?? null;
+
+    const stmt = this.db.prepare(`
+      INSERT INTO chat_state (agent_name, chat_id, relay_on, model_override, reasoning_effort_override)
+      VALUES (
+        ?, ?,
+        COALESCE((SELECT relay_on FROM chat_state WHERE agent_name = ? AND chat_id = ?), 0),
+        ?, ?
+      )
+      ON CONFLICT(agent_name, chat_id)
+      DO UPDATE SET
+        model_override = excluded.model_override,
+        reasoning_effort_override = excluded.reasoning_effort_override
+    `);
+    stmt.run(
+      agentName,
+      chatId,
+      agentName,
+      chatId,
+      modelOverride,
+      reasoningEffortOverride
+    );
   }
 
   /**

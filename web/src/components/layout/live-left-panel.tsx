@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAppState } from "@/providers/app-state-provider";
 import { useRouteSelection } from "@/hooks/use-route-selection";
@@ -12,12 +12,12 @@ import * as api from "@/lib/api";
 import { ChatListItem } from "@/components/chats/chat-list-item";
 import type { BottomTab } from "@/lib/types";
 import type { AgentState } from "@/components/shared/status-indicator";
-import { cn, formatTime } from "@/lib/utils";
+import { cn, formatTime, formatChatLabel } from "@/lib/utils";
 import { getAvatarColor, getInitials } from "@/lib/colors";
 import {
   User,
   Users,
-  MessageCircle,
+
   Settings,
   Settings2,
   Plus,
@@ -30,12 +30,28 @@ import {
   Trash2,
   Pin,
   PinOff,
-  Check,
-  X,
+  Pencil,
   ChevronsDown,
 } from "lucide-react";
 import { AgentDetailSheet } from "@/components/agents/agent-detail-sheet";
-import type { Agent } from "@/lib/types";
+import {
+  ContextMenu,
+  ContextMenuTrigger,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+} from "@/components/ui/context-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  DialogClose,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import type { Agent, AgentSession } from "@/lib/types";
 
 // ─── Bottom Tab Bar ────────────────────────────────────────
 const TABS: { id: BottomTab; label: string; icon: typeof User }[] = [
@@ -65,7 +81,7 @@ export function LiveLeftPanel({ onCreateAgent, onCreateTeam }: LiveLeftPanelProp
           </svg>
         </div>
         <div className="flex-1">
-          <h1 className="text-sm font-bold tracking-tight text-foreground">Hi-Boss</h1>
+          <h1 className="text-sm font-bold tracking-tight text-foreground">CLIClaw</h1>
           <div className="flex items-center gap-1.5">
             <span className={`h-2 w-2 rounded-full ${isConnected ? "bg-emerald-signal pulse-emerald" : "bg-rose-alert"}`} />
             <span className="text-[10px] text-muted-foreground">
@@ -82,7 +98,7 @@ export function LiveLeftPanel({ onCreateAgent, onCreateTeam }: LiveLeftPanelProp
         {activeTab === "settings" && <LiveSettingsPanel />}
       </div>
 
-      {/* Bottom tab bar */}
+      {/* Bottom tab bar — taller to align with composer input box */}
       <nav aria-label="Main navigation" role="tablist" className="flex border-t border-sidebar-border">
         {TABS.map(({ id, label, icon: Icon }) => {
           const active = activeTab === id;
@@ -94,7 +110,7 @@ export function LiveLeftPanel({ onCreateAgent, onCreateTeam }: LiveLeftPanelProp
               aria-label={label}
               onClick={() => setActiveTab(id)}
               className={cn(
-                "relative flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] transition-colors focus-visible:ring-2 focus-visible:ring-cyan-400/50 focus-visible:outline-none",
+                "relative flex flex-1 flex-col items-center justify-center gap-1 py-4 text-[10px] transition-colors focus-visible:ring-2 focus-visible:ring-cyan-400/50 focus-visible:outline-none",
                 active ? "text-cyan-glow" : "text-muted-foreground hover:text-muted-foreground"
               )}
             >
@@ -141,7 +157,7 @@ function LiveChatList() {
         id: session.id,
         name: agentName,
         chatId: routeChatId,
-        chatLabel: routeChatId,
+        chatLabel: formatChatLabel(routeChatId),
         subtitle: convo?.lastMessage,
         lastMessage: convo?.lastMessage,
         lastMessageAt: convo?.lastMessageAt ?? session.lastActivityAt ?? session.createdAt,
@@ -214,6 +230,20 @@ function LiveChatList() {
 
 const CHATS_PER_PAGE = 8;
 
+interface SessionChatRow {
+  key: string;
+  sessionId: string;
+  routeChatId: string;
+  chatIds: string[];
+  pinned: boolean;
+  rawLabel: string;
+  displayLabel: string;
+  lastMessage?: string;
+  lastMessageAt: number;
+  unreadCount: number;
+  adapterTypes: string[];
+}
+
 function LiveAgentList({ onCreateAgent }: { onCreateAgent?: () => void }) {
   const { state, loadSessions, loadConversations } = useAppState();
   const router = useRouter();
@@ -222,8 +252,8 @@ function LiveAgentList({ onCreateAgent }: { onCreateAgent?: () => void }) {
   const [detailAgent, setDetailAgent] = useState<Agent | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [chatLimits, setChatLimits] = useState<Record<string, number>>({});
-  const [confirmDelete, setConfirmDelete] = useState<{ agentName: string; chatId: string; sessionId: string } | null>(null);
-  const [renamingChat, setRenamingChat] = useState<{ agentName: string; chatId: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ agentName: string; sessionId: string; chatIds: string[]; label: string } | null>(null);
+  const [renamingChat, setRenamingChat] = useState<{ agentName: string; sessionId: string } | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const renameInputRef = useRef<HTMLInputElement>(null);
 
@@ -232,25 +262,44 @@ function LiveAgentList({ onCreateAgent }: { onCreateAgent?: () => void }) {
     setDetailOpen(true);
   };
 
-  const handleDeleteChat = useCallback(async (agentName: string, sessionId: string, chatId: string) => {
+  const getVisibleBindings = useCallback((session: AgentSession) => {
+    return (session.bindings || []).filter((binding) => binding.adapterType !== "internal");
+  }, []);
+
+  const getRouteChatId = useCallback((session: AgentSession): string | null => {
+    const bindings = getVisibleBindings(session);
+    if (bindings.length === 0) return null;
+    const preferred = bindings.find((binding) => binding.adapterType !== "console") ?? bindings[0];
+    return preferred?.chatId ?? null;
+  }, [getVisibleBindings]);
+
+  const handleDeleteChat = useCallback(async (agentName: string, sessionId: string, sessionChatIds: string[]) => {
     try {
       await api.deleteSession(agentName, sessionId);
-      await loadSessions(agentName);
-      await loadConversations(agentName);
-      // Navigate away if the deleted chat was selected
-      if (selAgent === agentName && selChat === chatId) {
-        const convos = state.conversations[agentName]?.filter(c => c.chatId !== chatId) || [];
-        if (convos.length > 0) {
-          router.push(`/agents/${agentName}/${convos[0].chatId}`);
-        } else {
-          router.push(`/agents/${agentName}/default`);
+      await Promise.all([loadSessions(agentName), loadConversations(agentName)]);
+
+      // Navigate away if current route points at any binding of the deleted session.
+      if (selAgent === agentName && selChat && sessionChatIds.includes(selChat)) {
+        const remainingSessions = [...(state.sessions[agentName] || [])]
+          .filter((session) => session.id !== sessionId)
+          .sort((a, b) => (b.lastActivityAt ?? b.createdAt) - (a.lastActivityAt ?? a.createdAt));
+
+        let nextChatId: string | null = null;
+        for (const session of remainingSessions) {
+          const routeChatId = getRouteChatId(session);
+          if (routeChatId) {
+            nextChatId = routeChatId;
+            break;
+          }
         }
+
+        router.push(`/agents/${agentName}/${nextChatId ?? "default"}`);
       }
     } catch {
       // silent
     }
-    setConfirmDelete(null);
-  }, [loadSessions, loadConversations, selAgent, selChat, state.conversations, router]);
+    setDeleteTarget(null);
+  }, [getRouteChatId, loadConversations, loadSessions, router, selAgent, selChat, state.sessions]);
 
   const handlePinChat = useCallback(async (agentName: string, sessionId: string, currentPinned: boolean) => {
     try {
@@ -272,8 +321,8 @@ function LiveAgentList({ onCreateAgent }: { onCreateAgent?: () => void }) {
     setRenamingChat(null);
   }, [loadSessions, loadConversations]);
 
-  const startRename = useCallback((agentName: string, chatId: string, currentLabel: string) => {
-    setRenamingChat({ agentName, chatId });
+  const startRename = useCallback((agentName: string, sessionId: string, currentLabel: string) => {
+    setRenamingChat({ agentName, sessionId });
     setRenameValue(currentLabel);
     setTimeout(() => renameInputRef.current?.focus(), 50);
   }, []);
@@ -308,22 +357,48 @@ function LiveAgentList({ onCreateAgent }: { onCreateAgent?: () => void }) {
           const initials = getInitials(agent.name);
           const agentConvos = state.conversations[agent.name] || [];
           const sessions = state.sessions[agent.name] || [];
-          const hasChats = agentConvos.length > 0;
+
+          const sessionRows = sessions
+            .map((session): SessionChatRow | null => {
+              const visibleBindings = getVisibleBindings(session);
+              const routeChatId = getRouteChatId(session);
+              if (visibleBindings.length === 0 || !routeChatId) return null;
+
+              const chatIds = visibleBindings.map((binding) => binding.chatId);
+              const matchedConvos = agentConvos.filter((convo) => chatIds.includes(convo.chatId));
+              const latestConvo = matchedConvos
+                .slice()
+                .sort((a, b) => (b.lastMessageAt ?? b.createdAt) - (a.lastMessageAt ?? a.createdAt))[0];
+              const unreadCount = matchedConvos.reduce((sum, convo) => sum + (convo.unreadCount ?? 0), 0);
+              const rawLabel = session.label?.trim() ?? "";
+              const displayLabel = rawLabel || formatChatLabel(routeChatId);
+
+              return {
+                key: session.id,
+                sessionId: session.id,
+                routeChatId,
+                chatIds,
+                pinned: !!session.pinned,
+                rawLabel,
+                displayLabel,
+                lastMessage: latestConvo?.lastMessage,
+                lastMessageAt: latestConvo?.lastMessageAt ?? session.lastActivityAt ?? session.createdAt,
+                unreadCount,
+                adapterTypes: Array.from(new Set(visibleBindings.map((binding) => binding.adapterType))),
+              };
+            })
+            .filter((row): row is SessionChatRow => row !== null)
+            .sort((a, b) => {
+              if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+              return b.lastMessageAt - a.lastMessageAt;
+            });
+
+          const hasChats = sessionRows.length > 0;
           const isExpanded = expandedAgents.has(agent.name);
 
-          // Sort: pinned first, then by recency
-          const sortedConvos = [...agentConvos].sort((a, b) => {
-            const aSession = sessions.find(s => s.bindings.some(bind => bind.chatId === a.chatId));
-            const bSession = sessions.find(s => s.bindings.some(bind => bind.chatId === b.chatId));
-            const aPinned = aSession?.pinned ? 1 : 0;
-            const bPinned = bSession?.pinned ? 1 : 0;
-            if (aPinned !== bPinned) return bPinned - aPinned;
-            return (b.lastMessageAt ?? b.createdAt) - (a.lastMessageAt ?? a.createdAt);
-          });
-
           const limit = chatLimits[agent.name] || CHATS_PER_PAGE;
-          const visibleConvos = sortedConvos.slice(0, limit);
-          const hasMore = sortedConvos.length > limit;
+          const visibleRows = sessionRows.slice(0, limit);
+          const hasMore = sessionRows.length > limit;
 
           return (
             <div key={agent.name}>
@@ -393,148 +468,128 @@ function LiveAgentList({ onCreateAgent }: { onCreateAgent?: () => void }) {
               </button>
 
               {hasChats && isExpanded && (
-                <div className="ml-6 space-y-0.5 border-l border-sidebar-border pl-3 py-1">
-                  {visibleConvos.map((convo) => {
-                    const isChatSelected = selAgent === agent.name && selChat === convo.chatId;
-                    const session = sessions.find(s => s.bindings.some(b => b.chatId === convo.chatId));
-                    const isPinned = session?.pinned ?? false;
-                    const sessionLabel = session?.label || convo.label;
-                    const displayLabel = sessionLabel || convo.chatId;
-                    const isRenaming = renamingChat?.agentName === agent.name && renamingChat?.chatId === convo.chatId;
-                    const isDeleting = confirmDelete?.agentName === agent.name && confirmDelete?.chatId === convo.chatId;
-                    const adapterTypes = session ? Array.from(new Set(session.bindings.map(b => b.adapterType).filter(t => t !== "internal"))) : [];
+                <div className="ml-6 space-y-px border-l border-sidebar-border/50 pl-2 py-0.5">
+                  {visibleRows.map((chat) => {
+                    const isChatSelected = selAgent === agent.name && !!selChat && chat.chatIds.includes(selChat);
+                    const isRenaming = renamingChat?.agentName === agent.name && renamingChat?.sessionId === chat.sessionId;
 
                     return (
-                      <div key={convo.chatId} className="group/chat relative">
-                        {/* Delete confirmation overlay */}
-                        {isDeleting && (
-                          <div className="absolute inset-0 z-10 flex items-center justify-center rounded-md bg-background/95 backdrop-blur-sm px-2">
-                            <span className="text-[10px] text-rose-alert mr-2">Delete?</span>
-                            <button
-                              onClick={() => handleDeleteChat(agent.name, confirmDelete.sessionId, convo.chatId)}
-                              className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-rose-alert/15 text-rose-alert hover:bg-rose-alert/25 transition-colors mr-1"
-                            >
-                              Yes
-                            </button>
-                            <button
-                              onClick={() => setConfirmDelete(null)}
-                              className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-accent text-muted-foreground hover:text-foreground transition-colors"
-                            >
-                              No
-                            </button>
-                          </div>
-                        )}
-
-                        <button
-                          onClick={() => router.push(`/agents/${agent.name}/${convo.chatId}`)}
-                          onDoubleClick={(e) => {
-                            e.preventDefault();
-                            if (session) startRename(agent.name, convo.chatId, sessionLabel || "");
-                          }}
-                          className={cn(
-                            "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left transition-colors",
-                            isChatSelected ? "bg-cyan-glow/10 text-cyan-glow" : "hover:bg-sidebar-accent text-muted-foreground"
-                          )}
-                        >
-                          <MessageCircle className="h-3 w-3 shrink-0" />
-                          <div className="min-w-0 flex-1">
-                            {/* Chat label row */}
-                            <div className="flex items-center gap-1">
-                              {isPinned && <Pin className="h-2.5 w-2.5 shrink-0 text-cyan-glow/60" />}
-                              {isRenaming ? (
-                                <form
-                                  className="flex items-center gap-1 flex-1"
-                                  onSubmit={(e) => {
-                                    e.preventDefault();
-                                    if (session) handleRenameChat(agent.name, session.id, renameValue);
-                                  }}
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  <input
-                                    ref={renameInputRef}
-                                    value={renameValue}
-                                    onChange={(e) => setRenameValue(e.target.value)}
-                                    className="h-5 flex-1 rounded border border-cyan-glow/30 bg-background px-1 text-xs text-foreground outline-none focus:border-cyan-glow"
-                                    onKeyDown={(e) => {
-                                      if (e.key === "Escape") setRenamingChat(null);
-                                    }}
-                                    onBlur={() => {
-                                      if (session) handleRenameChat(agent.name, session.id, renameValue);
-                                    }}
-                                  />
-                                </form>
-                              ) : (
-                                <span className={cn(
-                                  "block truncate text-xs font-medium",
-                                  convo.unreadCount ? "font-semibold text-foreground" : ""
-                                )}>
-                                  {displayLabel}
-                                </span>
-                              )}
-                              {/* Adapter badges */}
-                              {adapterTypes.length > 0 && (
-                                <span className="flex items-center gap-0.5 shrink-0">
-                                  {adapterTypes.map((at) => (
-                                    <span
-                                      key={at}
-                                      className="rounded bg-accent/80 px-0.5 py-0 text-[7px] font-medium uppercase tracking-wider text-muted-foreground/60"
-                                    >
-                                      {at === "telegram" ? "TG" : at === "console" ? "WEB" : at.slice(0, 3).toUpperCase()}
+                      <ContextMenu key={chat.key}>
+                        <ContextMenuTrigger asChild disabled={isRenaming}>
+                          <div
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => {
+                              router.push(`/agents/${agent.name}/${chat.routeChatId}`);
+                            }}
+                            onDoubleClick={(e) => {
+                              e.preventDefault();
+                              startRename(agent.name, chat.sessionId, chat.rawLabel);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                router.push(`/agents/${agent.name}/${chat.routeChatId}`);
+                              }
+                            }}
+                            className={cn(
+                              "flex w-full items-center gap-2 rounded-md px-3 py-2.5 text-left transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-cyan-400/50 focus-visible:outline-none",
+                              isChatSelected ? "bg-cyan-glow/10 text-cyan-glow" : "hover:bg-sidebar-accent text-muted-foreground"
+                            )}
+                          >
+                              <div className="min-w-0 flex-1">
+                                {/* Line 1: label + badges + time */}
+                                <div className="flex items-center justify-between gap-1.5">
+                                  <span className="flex items-center gap-1.5 min-w-0">
+                                    {chat.pinned && <Pin className="h-3 w-3 shrink-0 text-cyan-glow/60" />}
+                                    {isRenaming ? (
+                                      <form
+                                        className="flex items-center gap-1 flex-1"
+                                        onSubmit={(e) => {
+                                          e.preventDefault();
+                                          handleRenameChat(agent.name, chat.sessionId, renameValue);
+                                        }}
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        <input
+                                          ref={renameInputRef}
+                                          value={renameValue}
+                                          onChange={(e) => setRenameValue(e.target.value)}
+                                          className="h-6 flex-1 rounded border border-cyan-glow/30 bg-background px-1.5 text-sm text-foreground outline-none focus:border-cyan-glow"
+                                          onKeyDown={(e) => {
+                                            if (e.key === "Escape") setRenamingChat(null);
+                                          }}
+                                          onBlur={() => {
+                                            handleRenameChat(agent.name, chat.sessionId, renameValue);
+                                          }}
+                                        />
+                                      </form>
+                                    ) : (
+                                      <span className={cn(
+                                        "block truncate text-sm",
+                                        isChatSelected ? "text-cyan-glow font-medium" : chat.unreadCount > 0 ? "font-semibold text-foreground" : "font-medium"
+                                      )}>
+                                        {chat.displayLabel}
+                                      </span>
+                                    )}
+                                    {chat.adapterTypes.length > 0 && (
+                                      <span className="flex items-center gap-0.5 shrink-0">
+                                        {chat.adapterTypes.map((at) => (
+                                          <span
+                                            key={at}
+                                            className="rounded bg-accent/60 px-1 py-px text-[8px] font-medium uppercase tracking-wider text-muted-foreground/60"
+                                          >
+                                            {at === "telegram" ? "TG" : at === "console" ? "WEB" : at.slice(0, 3).toUpperCase()}
+                                          </span>
+                                        ))}
+                                      </span>
+                                    )}
+                                  </span>
+                                  {!!chat.lastMessageAt && (
+                                    <span className="text-[10px] text-muted-foreground/50 shrink-0">{formatTime(chat.lastMessageAt)}</span>
+                                  )}
+                                </div>
+                                {/* Line 2: message preview + unread badge */}
+                                <div className="mt-0.5 flex items-center justify-between gap-2">
+                                  <p className={cn(
+                                    "truncate text-xs",
+                                    chat.lastMessage ? "text-muted-foreground/70" : "text-muted-foreground/30 italic"
+                                  )}>
+                                    {chat.lastMessage || "No messages yet"}
+                                  </p>
+                                  {chat.unreadCount > 0 && (
+                                    <span className="flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-cyan-glow px-1 text-[9px] font-bold text-background">
+                                      {chat.unreadCount}
                                     </span>
-                                  ))}
-                                </span>
-                              )}
-                            </div>
-                            {/* Second row: preview + meta */}
-                            <div className="flex items-center justify-between gap-1">
-                              <p className="truncate text-[10px] text-muted-foreground">
-                                {convo.lastMessage || "No messages yet"}
-                              </p>
-                              <div className="flex items-center gap-1 shrink-0">
-                                {convo.messageCount != null && convo.messageCount > 0 && (
-                                  <span className="text-[9px] text-muted-foreground/50">{convo.messageCount}</span>
-                                )}
-                                {convo.lastMessageAt && (
-                                  <span className="text-[9px] text-muted-foreground/50">{formatTime(convo.lastMessageAt)}</span>
-                                )}
+                                  )}
+                                </div>
                               </div>
-                            </div>
                           </div>
+                        </ContextMenuTrigger>
 
-                          {/* Unread badge */}
-                          {!!convo.unreadCount && (
-                            <span className="flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-cyan-glow px-1 text-[9px] font-bold text-background">
-                              {convo.unreadCount}
-                            </span>
-                          )}
-
-                          {/* Hover action icons */}
-                          {!isRenaming && !isDeleting && session && (
-                            <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover/chat:opacity-100 transition-opacity">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handlePinChat(agent.name, session.id, isPinned);
-                                }}
-                                title={isPinned ? "Unpin" : "Pin"}
-                                className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/50 hover:text-cyan-glow hover:bg-cyan-glow/10 transition-colors"
-                              >
-                                {isPinned ? <PinOff className="h-2.5 w-2.5" /> : <Pin className="h-2.5 w-2.5" />}
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setConfirmDelete({ agentName: agent.name, chatId: convo.chatId, sessionId: session.id });
-                                }}
-                                title="Delete chat"
-                                className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/50 hover:text-rose-alert hover:bg-rose-alert/10 transition-colors"
-                              >
-                                <Trash2 className="h-2.5 w-2.5" />
-                              </button>
-                            </div>
-                          )}
-                        </button>
-                      </div>
+                        <ContextMenuContent>
+                          <ContextMenuItem
+                            onClick={() => startRename(agent.name, chat.sessionId, chat.rawLabel)}
+                          >
+                            <Pencil className="h-4 w-4" />
+                            Rename
+                          </ContextMenuItem>
+                          <ContextMenuItem
+                            onClick={() => handlePinChat(agent.name, chat.sessionId, chat.pinned)}
+                          >
+                            {chat.pinned ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
+                            {chat.pinned ? "Unpin" : "Pin"}
+                          </ContextMenuItem>
+                          <ContextMenuSeparator />
+                          <ContextMenuItem
+                            variant="destructive"
+                            onClick={() => setDeleteTarget({ agentName: agent.name, sessionId: chat.sessionId, chatIds: chat.chatIds, label: chat.displayLabel })}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            Delete
+                          </ContextMenuItem>
+                        </ContextMenuContent>
+                      </ContextMenu>
                     );
                   })}
 
@@ -545,7 +600,7 @@ function LiveAgentList({ onCreateAgent }: { onCreateAgent?: () => void }) {
                       className="flex w-full items-center justify-center gap-1.5 rounded-md px-2.5 py-1.5 text-left text-muted-foreground/60 transition-colors hover:bg-sidebar-accent hover:text-muted-foreground"
                     >
                       <ChevronsDown className="h-3 w-3" />
-                      <span className="text-[10px]">Show more ({sortedConvos.length - limit} remaining)</span>
+                      <span className="text-[10px]">Show more ({sessionRows.length - limit} remaining)</span>
                     </button>
                   )}
 
@@ -554,7 +609,7 @@ function LiveAgentList({ onCreateAgent }: { onCreateAgent?: () => void }) {
                     onClick={async () => {
                       try {
                         const created = await api.createAgentSession(agent.name, { adapterType: "console" });
-                        await loadSessions(agent.name);
+                        await Promise.all([loadSessions(agent.name), loadConversations(agent.name)]);
                         router.push(`/agents/${agent.name}/${created.chatId}`);
                       } catch {
                         // silent
@@ -587,6 +642,32 @@ function LiveAgentList({ onCreateAgent }: { onCreateAgent?: () => void }) {
         open={detailOpen}
         onOpenChange={setDetailOpen}
       />
+
+      <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete chat</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete &ldquo;{deleteTarget?.label}&rdquo;? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline">Cancel</Button>
+            </DialogClose>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (deleteTarget) {
+                  void handleDeleteChat(deleteTarget.agentName, deleteTarget.sessionId, deleteTarget.chatIds);
+                }
+              }}
+            >
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

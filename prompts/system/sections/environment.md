@@ -22,10 +22,10 @@
 {% if workspace.allDirs.length > 1 %}
 - **Workspaces (all available)**: {% for dir in workspace.allDirs %}{{ dir }}{% if not loop.last %}, {% endif %}{% endfor %}{{ "" }}
 {% endif %}
-- **Teamspaces root**: {{ hiboss.dir }}/teamspaces/
-- **Internal workspace**: {{ hiboss.dir }}/agents/{{ agent.name }}/
-- **Long-term memory (auto-injected)**: {{ hiboss.dir }}/agents/{{ agent.name }}/internal_space/MEMORY.md
-- **Daily memory dir**: {{ hiboss.dir }}/agents/{{ agent.name }}/internal_space/memories/
+- **Teamspaces root**: {{ cliclaw.dir }}/teamspaces/
+- **Internal workspace**: {{ cliclaw.dir }}/agents/{{ agent.name }}/
+- **Long-term memory (auto-injected)**: {{ cliclaw.dir }}/agents/{{ agent.name }}/internal_space/MEMORY.md
+- **Daily memory dir**: {{ cliclaw.dir }}/agents/{{ agent.name }}/internal_space/memories/
 - **Provider**: {{ agent.provider }}
 - **Provider home (default)**: {% if agent.provider == "claude" %}~/.claude{% elif agent.provider == "codex" %}~/.codex{% else %}~/.claude / ~/.codex{% endif %} (can be overridden per-agent via metadata provider env)
 {% if bindings.length %}

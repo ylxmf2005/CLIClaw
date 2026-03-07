@@ -2,7 +2,7 @@ import * as net from "net";
 import type { JsonRpcRequest, JsonRpcResponse } from "../daemon/ipc/types.js";
 
 /**
- * IPC client for communicating with the Hi-Boss daemon.
+ * IPC client for communicating with the CLIClaw daemon.
  */
 export class IpcClient {
   private requestId = 0;
@@ -66,7 +66,7 @@ export class IpcClient {
 
       socket.on("error", (err) => {
         if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-          reject(new Error("Daemon is not running. Start it with: hiboss daemon start"));
+          reject(new Error("Daemon is not running. Start it with: cliclaw daemon start"));
         } else if ((err as NodeJS.ErrnoException).code === "ECONNREFUSED") {
           reject(new Error("Cannot connect to daemon. Try restarting it."));
         } else {

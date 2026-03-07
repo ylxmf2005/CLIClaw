@@ -170,7 +170,7 @@ async function createTempWorkspace(fillerWords: number, keepWorkspace: boolean):
   dir: string;
   cleanup: () => Promise<void>;
 }> {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "hiboss-usage-verify-"));
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "cliclaw-usage-verify-"));
 
   const filler = buildFiller(fillerWords);
   const common = [

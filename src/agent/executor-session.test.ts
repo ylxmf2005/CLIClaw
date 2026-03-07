@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { HiBossDatabase } from "../daemon/db/database.js";
+import { CliClawDatabase } from "../daemon/db/database.js";
 import { ConversationHistory } from "../daemon/history/conversation-history.js";
 import { createSessionFile, readSessionFile } from "../daemon/history/session-file-io.js";
 import type { Envelope } from "../envelope/types.js";
@@ -12,15 +12,15 @@ import type { AgentSession } from "./executor-support.js";
 import { AgentExecutor } from "./executor.js";
 import type { Agent } from "./types.js";
 
-async function withTempDb(run: (params: { db: HiBossDatabase; hibossDir: string }) => Promise<void>): Promise<void> {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hiboss-executor-session-test-"));
-  const dbPath = path.join(dir, "hiboss.db");
-  const hibossDir = path.join(dir, "hiboss-home");
-  fs.mkdirSync(hibossDir, { recursive: true });
-  let db: HiBossDatabase | null = null;
+async function withTempDb(run: (params: { db: CliClawDatabase; cliclawDir: string }) => Promise<void>): Promise<void> {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cliclaw-executor-session-test-"));
+  const dbPath = path.join(dir, "cliclaw.db");
+  const cliclawDir = path.join(dir, "cliclaw-home");
+  fs.mkdirSync(cliclawDir, { recursive: true });
+  let db: CliClawDatabase | null = null;
   try {
-    db = new HiBossDatabase(dbPath);
-    await run({ db, hibossDir });
+    db = new CliClawDatabase(dbPath);
+    await run({ db, cliclawDir });
   } finally {
     db?.close();
     fs.rmSync(dir, { recursive: true, force: true });
@@ -39,12 +39,12 @@ type ChannelExecutionScope = {
 type ExecutorInternals = {
   resolveExecutionScope: (
     agent: Agent,
-    db: HiBossDatabase,
+    db: CliClawDatabase,
     envelope: Envelope
   ) => ChannelExecutionScope;
   getOrCreateChannelSession: (
     agent: Agent,
-    db: HiBossDatabase,
+    db: CliClawDatabase,
     scope: ChannelExecutionScope
   ) => Promise<AgentSession>;
 };
@@ -52,7 +52,7 @@ type ExecutorInternals = {
 async function resolveAndGetChannelSession(params: {
   executor: AgentExecutor;
   agent: Agent;
-  db: HiBossDatabase;
+  db: CliClawDatabase;
   envelope: Envelope;
 }): Promise<AgentSession> {
   const internals = params.executor as unknown as ExecutorInternals;
@@ -61,7 +61,7 @@ async function resolveAndGetChannelSession(params: {
 }
 
 test("getOrCreateChannelSession does not clear other channel provider handles when session policy is expired", async () => {
-  await withTempDb(async ({ db, hibossDir }) => {
+  await withTempDb(async ({ db, cliclawDir }) => {
     db.registerAgent({
       name: "nex",
       provider: "codex",
@@ -85,14 +85,14 @@ test("getOrCreateChannelSession does not clear other channel provider handles wh
     db.updateAgentSessionProviderSessionId(s1.id, "thread-chat-1", { provider: "codex" });
     db.updateAgentSessionProviderSessionId(s2.id, "thread-chat-2", { provider: "codex" });
 
-    const executor = new AgentExecutor({ db, hibossDir });
+    const executor = new AgentExecutor({ db, cliclawDir });
     const agent = db.getAgentByName("nex");
     assert.ok(agent);
 
     const session = await (executor as unknown as {
       getOrCreateChannelSession: (
         agent: Agent,
-        db: HiBossDatabase,
+        db: CliClawDatabase,
         scope: {
           kind: "channel";
           cacheKey: string;
@@ -118,7 +118,7 @@ test("getOrCreateChannelSession does not clear other channel provider handles wh
 });
 
 test("getOrCreateChannelSession policy refresh is scope-local for persisted channel sessions", async () => {
-  await withTempDb(async ({ db, hibossDir }) => {
+  await withTempDb(async ({ db, cliclawDir }) => {
     db.registerAgent({
       name: "nex",
       provider: "codex",
@@ -143,7 +143,7 @@ test("getOrCreateChannelSession policy refresh is scope-local for persisted chan
     db.updateAgentSessionProviderSessionId(s2.id, "thread-chat-2", { provider: "codex" });
     db.touchAgentSession(s1.id, { lastActiveAt: Date.now() - 10_000 });
 
-    const executor = new AgentExecutor({ db, hibossDir });
+    const executor = new AgentExecutor({ db, cliclawDir });
     const agent = db.getAgentByName("nex");
     assert.ok(agent);
 
@@ -169,7 +169,7 @@ test("getOrCreateChannelSession policy refresh is scope-local for persisted chan
 });
 
 test("getOrCreateChannelSession daily-reset-at closes only the scoped history session", async () => {
-  await withTempDb(async ({ db, hibossDir }) => {
+  await withTempDb(async ({ db, cliclawDir }) => {
     const now = new Date();
     const hour = now.getHours();
     const minute = now.getMinutes();
@@ -209,7 +209,7 @@ test("getOrCreateChannelSession daily-reset-at closes only the scoped history se
     db.touchAgentSession(s1.id, { lastActiveAt: boundaryMs - 1 });
 
     const conversationHistory = new ConversationHistory({
-      agentsDir: path.join(hibossDir, "agents"),
+      agentsDir: path.join(cliclawDir, "agents"),
       timezone: "UTC",
     });
     conversationHistory.ensureActiveSession("nex", "chat-1");
@@ -219,7 +219,7 @@ test("getOrCreateChannelSession daily-reset-at closes only the scoped history se
     assert.ok(historySessionBeforeChat1);
     assert.ok(historySessionBeforeChat2);
 
-    const executor = new AgentExecutor({ db, hibossDir, conversationHistory });
+    const executor = new AgentExecutor({ db, cliclawDir, conversationHistory });
     const agent = db.getAgentByName("nex");
     assert.ok(agent);
 
@@ -249,7 +249,7 @@ test("getOrCreateChannelSession daily-reset-at closes only the scoped history se
 });
 
 test("refreshSession closes all recovered history chat scopes after restart", async () => {
-  await withTempDb(async ({ db, hibossDir }) => {
+  await withTempDb(async ({ db, cliclawDir }) => {
     db.registerAgent({
       name: "nex",
       provider: "codex",
@@ -258,7 +258,7 @@ test("refreshSession closes all recovered history chat scopes after restart", as
     const dateStr = new Date().toISOString().slice(0, 10);
     const startedAtMs = Date.now() - 1_000;
     const chat1Path = path.join(
-      hibossDir,
+      cliclawDir,
       "agents",
       "nex",
       "internal_space",
@@ -268,7 +268,7 @@ test("refreshSession closes all recovered history chat scopes after restart", as
       "s-chat-1.json",
     );
     const chat2Path = path.join(
-      hibossDir,
+      cliclawDir,
       "agents",
       "nex",
       "internal_space",
@@ -292,10 +292,10 @@ test("refreshSession closes all recovered history chat scopes after restart", as
     });
 
     const conversationHistory = new ConversationHistory({
-      agentsDir: path.join(hibossDir, "agents"),
+      agentsDir: path.join(cliclawDir, "agents"),
       timezone: "UTC",
     });
-    const executor = new AgentExecutor({ db, hibossDir, conversationHistory });
+    const executor = new AgentExecutor({ db, cliclawDir, conversationHistory });
 
     await executor.refreshSession("nex", "test-restart-refresh");
 

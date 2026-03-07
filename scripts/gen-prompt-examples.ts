@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { HiBossDatabase } from "../src/daemon/db/database.js";
+import { CliClawDatabase } from "../src/daemon/db/database.js";
 import { SESSION_FILE_VERSION } from "../src/daemon/history/types.js";
 import { buildCliEnvelopePromptContext, buildSystemPromptContext, buildTurnPromptContext } from "../src/shared/prompt-context.js";
 import { renderPrompt } from "../src/shared/prompt-renderer.js";
@@ -53,7 +53,7 @@ function chooseFence(text: string): string {
   return fence;
 }
 
-function seedExampleSessionHistory(hibossDir: string, agentName: string): void {
+function seedExampleSessionHistory(cliclawDir: string, agentName: string): void {
   const sessions = [
     {
       sessionId: "7f9a1b2c",
@@ -75,7 +75,7 @@ function seedExampleSessionHistory(hibossDir: string, agentName: string): void {
 
   for (const session of sessions) {
     const dir = path.join(
-      hibossDir,
+      cliclawDir,
       "agents",
       agentName,
       "internal_space",
@@ -131,7 +131,7 @@ async function main(): Promise<void> {
   }
 
   const fixture = await createExampleFixture();
-  const db = new HiBossDatabase(path.join(fixture.hibossDir, ".daemon", "hiboss.db"));
+  const db = new CliClawDatabase(path.join(fixture.cliclawDir, ".daemon", "cliclaw.db"));
 
   try {
     const agent = db.getAgentByName("nex");
@@ -141,7 +141,7 @@ async function main(): Promise<void> {
     const bossName = db.getBossName() ?? "";
     const bossTelegramId = db.getAdapterBossId("telegram") ?? "";
     const bossTimezone = db.getBossTimezone();
-    seedExampleSessionHistory(fixture.hibossDir, agent.name);
+    seedExampleSessionHistory(fixture.cliclawDir, agent.name);
 
     // =============================================================================
     // System prompt examples
@@ -163,12 +163,12 @@ async function main(): Promise<void> {
           bindings: adapterConfig.bindings,
           time: { bossTimezone },
           boss: { name: bossName, adapterIds: { telegram: bossTelegramId } },
-          hibossDir: fixture.hibossDir,
+          cliclawDir: fixture.cliclawDir,
         });
 
         // Mirror real session behavior: best-effort inject a snapshot of internal_space/MEMORY.md.
         const spaceContext = promptContext.internalSpace as Record<string, unknown>;
-        const ensured = ensureAgentInternalSpaceLayout({ hibossDir: fixture.hibossDir, agentName: agent.name });
+        const ensured = ensureAgentInternalSpaceLayout({ cliclawDir: fixture.cliclawDir, agentName: agent.name });
         if (!ensured.ok) {
           spaceContext.note = "";
           spaceContext.noteFence = "```";
@@ -180,7 +180,7 @@ async function main(): Promise<void> {
           spaceContext.sessionSummariesFence = "```";
           spaceContext.sessionSummariesError = ensured.error;
         } else {
-          const snapshot = readAgentInternalMemorySnapshot({ hibossDir: fixture.hibossDir, agentName: agent.name });
+          const snapshot = readAgentInternalMemorySnapshot({ cliclawDir: fixture.cliclawDir, agentName: agent.name });
           if (snapshot.ok) {
             spaceContext.note = snapshot.note;
             spaceContext.noteFence = chooseFence(snapshot.note);
@@ -191,7 +191,7 @@ async function main(): Promise<void> {
             spaceContext.error = snapshot.error;
           }
 
-          const dailySnapshot = readAgentInternalDailyMemorySnapshot({ hibossDir: fixture.hibossDir, agentName: agent.name });
+          const dailySnapshot = readAgentInternalDailyMemorySnapshot({ cliclawDir: fixture.cliclawDir, agentName: agent.name });
           if (dailySnapshot.ok) {
             spaceContext.daily = dailySnapshot.note;
             spaceContext.dailyFence = chooseFence(dailySnapshot.note);
@@ -204,7 +204,7 @@ async function main(): Promise<void> {
 
           const summaryRuntime = db.getRuntimeSessionSummaryConfig();
           const summarySnapshot = readAgentInternalSessionSummarySnapshot({
-            hibossDir: fixture.hibossDir,
+            cliclawDir: fixture.cliclawDir,
             agentName: agent.name,
             recentDays: summaryRuntime.recentDays,
             perSessionMaxChars: summaryRuntime.perSessionMaxChars,

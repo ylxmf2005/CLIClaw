@@ -1,4 +1,4 @@
-import type { HiBossDatabase } from "../db/database.js";
+import type { CliClawDatabase } from "../db/database.js";
 import { RPC_ERRORS } from "../ipc/types.js";
 import { rpcError } from "./context.js";
 import {
@@ -59,7 +59,7 @@ function buildAmbiguousEnvelopeIdPrefixData(params: {
  * Resolve a user/agent-facing envelope id input (short id, longer prefix, or full UUID)
  * into a full envelope UUID.
  */
-export function resolveEnvelopeIdInput(db: HiBossDatabase, rawId: string): string {
+export function resolveEnvelopeIdInput(db: CliClawDatabase, rawId: string): string {
   const trimmed = rawId.trim();
   if (!trimmed) {
     rpcError(RPC_ERRORS.INVALID_PARAMS, "Invalid envelope-id");

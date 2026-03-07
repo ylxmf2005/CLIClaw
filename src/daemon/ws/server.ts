@@ -66,21 +66,7 @@ export function createWsServer(
 
     // Handle incoming messages (currently only agent.pty.input)
     ws.on("message", (raw) => {
-      try {
-        const msg = JSON.parse(String(raw)) as {
-          type?: string;
-          payload?: { name?: string; chatId?: string; data?: string };
-        };
-        if (msg.type === "agent.pty.input" && msg.payload?.name && msg.payload?.data) {
-          eventBus.emit("agent.pty.input", {
-            name: msg.payload.name,
-            chatId: msg.payload.chatId,
-            data: msg.payload.data,
-          });
-        }
-      } catch {
-        // Ignore malformed messages
-      }
+      void handleInboundMessage(ws, raw, daemonCtx, eventBus);
     });
 
     ws.on("close", () => {
@@ -129,6 +115,63 @@ export function createWsServer(
   };
 
   return { cleanup };
+}
+
+async function handleInboundMessage(
+  ws: WebSocket,
+  raw: unknown,
+  daemonCtx: DaemonContext,
+  eventBus: DaemonEventBus,
+): Promise<void> {
+  try {
+    const msg = JSON.parse(String(raw)) as {
+      type?: string;
+      payload?: { name?: string; chatId?: string; data?: string };
+    };
+
+    if (msg.type !== "agent.pty.input" || !msg.payload?.name || !msg.payload?.data) {
+      return;
+    }
+
+    const { name, chatId, data } = msg.payload;
+
+    // For chat-bound PTY sessions, route through RelayExecutor so we can
+    // self-heal stale in-memory relay session state after daemon restarts.
+    if (chatId && daemonCtx.relayExecutor) {
+      const result = await daemonCtx.relayExecutor.sendInput(name, chatId, data);
+      if (!result.success) {
+        sendPtyErrorToClient(ws, name, chatId, result.error ?? "Relay input failed");
+      }
+      return;
+    }
+
+    // Backward-compatible passthrough for non-chat PTY streams.
+    eventBus.emit("agent.pty.input", {
+      name,
+      chatId,
+      data,
+    });
+  } catch {
+    // Ignore malformed messages
+  }
+}
+
+function sendPtyErrorToClient(
+  ws: WebSocket,
+  agentName: string,
+  chatId: string,
+  error: string,
+): void {
+  if (ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({
+    type: "agent.pty.output",
+    payload: {
+      name: agentName,
+      chatId,
+      data: `\r\n[relay input failed: ${error}]\r\n`,
+    },
+    timestamp: Date.now(),
+  }));
 }
 
 function sendSnapshot(ws: WebSocket, ctx: DaemonContext): void {

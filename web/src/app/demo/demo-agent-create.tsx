@@ -56,7 +56,7 @@ export function DemoAgentCreate({ open, onOpenChange, onCreate }: DemoAgentCreat
       <DialogContent className="sm:max-w-[420px]">
         <DialogHeader>
           <DialogTitle>Create Agent</DialogTitle>
-          <DialogDescription>Add a new agent to Hi-Boss (demo).</DialogDescription>
+          <DialogDescription>Add a new agent to CLIClaw (demo).</DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">

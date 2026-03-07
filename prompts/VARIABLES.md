@@ -5,7 +5,7 @@ This document lists the context variables available to templates under `prompts/
 Notes:
 - Template language is **Nunjucks** (Jinja-like).
 - Most “optional” fields are provided as empty strings or empty arrays/objects, so templates can safely do `{% if ... %}` checks.
-- `auth.agentToken` is sensitive; prefer `hiboss.tokenEnvVar` guidance instead of printing the token.
+- `auth.agentToken` is sensitive; prefer `cliclaw.tokenEnvVar` guidance instead of printing the token.
 
 ---
 
@@ -13,16 +13,16 @@ Notes:
 
 | Variable | Type | Meaning |
 |---------|------|---------|
-| `hiboss.dir` | string | Hi-Boss state directory (default `~/hiboss`) |
-| `hiboss.tokenEnvVar` | string | Environment variable name for the agent token (`HIBOSS_TOKEN`) |
-| `hiboss.additionalContext` | string | Optional extra context appended by code (usually empty) |
-| `internalSpace.note` | string | Snapshot of `{{hiboss.dir}}/agents/{{agent.name}}/internal_space/MEMORY.md` (or empty) |
+| `cliclaw.dir` | string | CLIClaw state directory (default `~/cliclaw`) |
+| `cliclaw.tokenEnvVar` | string | Environment variable name for the agent token (`CLICLAW_TOKEN`) |
+| `cliclaw.additionalContext` | string | Optional extra context appended by code (usually empty) |
+| `internalSpace.note` | string | Snapshot of `{{cliclaw.dir}}/agents/{{agent.name}}/internal_space/MEMORY.md` (or empty) |
 | `internalSpace.noteFence` | string | Markdown code fence delimiter for `internalSpace.note` (e.g., ``` or ````) |
 | `internalSpace.error` | string | Internal space snapshot error message (or empty) |
-| `internalSpace.daily` | string | Snapshot of recent `{{hiboss.dir}}/agents/{{agent.name}}/internal_space/memories/YYYY-MM-DD.md` files (or empty) |
+| `internalSpace.daily` | string | Snapshot of recent `{{cliclaw.dir}}/agents/{{agent.name}}/internal_space/memories/YYYY-MM-DD.md` files (or empty) |
 | `internalSpace.dailyFence` | string | Markdown code fence delimiter for `internalSpace.daily` (e.g., ``` or ````) |
 | `internalSpace.dailyError` | string | Daily memory snapshot error message (or empty) |
-| `internalSpace.sessionSummaries` | string | Snapshot of recent session summaries from `{{hiboss.dir}}/agents/{{agent.name}}/internal_space/history/**/<session-id>.md` (or empty) |
+| `internalSpace.sessionSummaries` | string | Snapshot of recent session summaries from `{{cliclaw.dir}}/agents/{{agent.name}}/internal_space/history/**/<session-id>.md` (or empty) |
 | `internalSpace.sessionSummariesFence` | string | Markdown code fence delimiter for `internalSpace.sessionSummaries` (e.g., ``` or ````) |
 | `internalSpace.sessionSummariesError` | string | Session summary snapshot error message (or empty) |
 | `internalSpace.longtermMaxChars` | number | Truncation limit (chars) for injected `internal_space/MEMORY.md` snapshot |
@@ -59,7 +59,7 @@ Notes:
 | `teams` | array | Active team memberships for this agent (may be empty) |
 | `teams[].name` | string | Team name |
 | `teams[].members` | array | Team member agent names |
-| `teams[].teamspaceDir` | string | Team shared workspace directory (`{{hiboss.dir}}/teamspaces/<team-name>/`) |
+| `teams[].teamspaceDir` | string | Team shared workspace directory (`{{cliclaw.dir}}/teamspaces/<team-name>/`) |
 | `workspace.dir` | string | Effective workspace directory (same as `agent.workspace`) |
 | `workspace.configuredDir` | string | Agent's configured personal workspace (or empty) |
 | `workspace.teamDirs` | array | Active team workspace directories |
@@ -88,7 +88,7 @@ Notes:
 | `envelopes[].groupName` | string | Group name (or empty for direct/agent messages) |
 | `envelopes[].authorName` | string | Sender display name without boss marker (or empty) |
 | `envelopes[].authorLine` | string | Sender with `[boss]` suffix for group messages (or empty) |
-| `envelopes[].senderLine` | string | Sender line for channel messages (e.g. `Alice (@alice) in group "hiboss-test"` or `Alice (@alice) in private chat`) (or empty) |
+| `envelopes[].senderLine` | string | Sender line for channel messages (e.g. `Alice (@alice) in group "cliclaw-test"` or `Alice (@alice) in private chat`) (or empty) |
 | `envelopes[].createdAt.iso` | string | Created-at formatted in boss timezone offset (ISO 8601) |
 | `envelopes[].deliverAt.present` | boolean | Whether deliver-at is present |
 | `envelopes[].deliverAt.iso` | string | Deliver-at formatted in boss timezone offset (ISO 8601) (or empty) |
@@ -121,7 +121,7 @@ Notes:
 | `envelope.groupName` | string | Group name (or empty for direct/agent messages) |
 | `envelope.authorName` | string | Sender display name without boss marker (or empty) |
 | `envelope.authorLine` | string | Sender with `[boss]` suffix for group messages (or empty) |
-| `envelope.senderLine` | string | Sender line for channel messages (e.g. `Alice (@alice) in group "hiboss-test"` or `Alice (@alice) in private chat`) (or empty) |
+| `envelope.senderLine` | string | Sender line for channel messages (e.g. `Alice (@alice) in group "cliclaw-test"` or `Alice (@alice) in private chat`) (or empty) |
 | `envelope.createdAt.iso` | string | Created-at formatted in boss timezone offset (ISO 8601) |
 | `envelope.deliverAt.present` | boolean | Whether deliver-at is present |
 | `envelope.deliverAt.iso` | string | Deliver-at formatted in boss timezone offset (ISO 8601) (or empty) |

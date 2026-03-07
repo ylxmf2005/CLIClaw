@@ -43,7 +43,7 @@ export function LeftPanel({ onCreateAgent, onCreateTeam }: LeftPanelProps) {
         </div>
         <div className="flex-1">
           <h1 className="text-sm font-bold tracking-tight text-foreground">
-            Hi-Boss
+            CLIClaw
           </h1>
           <div className="flex items-center gap-1.5">
             {status === "connected" ? (

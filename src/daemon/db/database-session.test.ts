@@ -4,14 +4,16 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { HiBossDatabase } from "./database.js";
+import Database from "better-sqlite3";
 
-function withTempDb(run: (db: HiBossDatabase) => void): void {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hiboss-db-session-test-"));
-  const dbPath = path.join(dir, "hiboss.db");
-  let db: HiBossDatabase | null = null;
+import { CliClawDatabase } from "./database.js";
+
+function withTempDb(run: (db: CliClawDatabase) => void): void {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cliclaw-db-session-test-"));
+  const dbPath = path.join(dir, "cliclaw.db");
+  let db: CliClawDatabase | null = null;
   try {
-    db = new HiBossDatabase(dbPath);
+    db = new CliClawDatabase(dbPath);
     run(db);
   } finally {
     db?.close();
@@ -150,6 +152,76 @@ test("list sessions scope respects current chat, owner, and agent-wide visibilit
       2
     );
   });
+});
+
+test("listConversationsForAgent excludes team chat scopes", () => {
+  withTempDb((db) => {
+    db.registerAgent({
+      name: "nex",
+      provider: "codex",
+    });
+
+    db.createEnvelope({
+      from: "channel:web:boss",
+      to: "agent:nex:chat-1",
+      fromBoss: true,
+      content: { text: "direct chat" },
+    });
+
+    db.createEnvelope({
+      from: "channel:web:boss",
+      to: "agent:nex:team:alpha",
+      fromBoss: true,
+      content: { text: "team chat" },
+    });
+
+    const conversations = db.listConversationsForAgent("nex");
+    assert.deepEqual(
+      conversations.map((item) => item.chatId),
+      ["chat-1"]
+    );
+  });
+});
+
+test("opening a legacy database migrates agent session label fields before schema validation", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cliclaw-db-session-legacy-"));
+  const dbPath = path.join(dir, "cliclaw.db");
+
+  const legacyDb = new Database(dbPath);
+  legacyDb.exec(`
+    CREATE TABLE agent_sessions (
+      id TEXT PRIMARY KEY,
+      agent_name TEXT NOT NULL,
+      provider TEXT NOT NULL,
+      provider_session_id TEXT,
+      created_at INTEGER NOT NULL,
+      last_active_at INTEGER NOT NULL,
+      last_adapter_type TEXT,
+      last_chat_id TEXT
+    );
+  `);
+  legacyDb.close();
+
+  let db: CliClawDatabase | null = null;
+  let migratedDb: Database.Database | null = null;
+  try {
+    db = new CliClawDatabase(dbPath);
+    db.close();
+    db = null;
+
+    migratedDb = new Database(dbPath, { readonly: true });
+    const columns = migratedDb
+      .prepare("PRAGMA table_info(agent_sessions)")
+      .all() as Array<{ name: string }>;
+    const columnNames = new Set(columns.map((column) => column.name));
+
+    assert.equal(columnNames.has("label"), true);
+    assert.equal(columnNames.has("pinned"), true);
+  } finally {
+    migratedDb?.close();
+    db?.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("runtime session concurrency falls back to defaults and persists configured values", () => {

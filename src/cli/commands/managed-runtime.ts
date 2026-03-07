@@ -99,7 +99,7 @@ function readDeploymentConfig(): DeploymentConfig | null {
 }
 
 function shouldBypassManagedRuntime(): boolean {
-  const explicit = (process.env.HIBOSS_MANAGED_RUNTIME ?? "").trim().toLowerCase();
+  const explicit = (process.env.CLICLAW_MANAGED_RUNTIME ?? "").trim().toLowerCase();
   if (explicit === "1" || explicit === "true" || explicit === "force") {
     return false;
   }
@@ -167,32 +167,32 @@ function pm2ProcessExists(name: string, env: NodeJS.ProcessEnv): boolean {
 function runPm2(action: ManagedDaemonAction, outputDir: string): void {
   const ecosystemPath = path.join(outputDir, "ecosystem.config.cjs");
   const daemonConfig = getDefaultConfig();
-  const hibossDir = (process.env.HIBOSS_DIR ?? "").trim() || daemonConfig.dataDir;
+  const cliclawDir = (process.env.CLICLAW_DIR ?? "").trim() || daemonConfig.dataDir;
   const pm2Env: NodeJS.ProcessEnv = {
     ...process.env,
-    HIBOSS_DIR: hibossDir,
-    PM2_HOME: (process.env.PM2_HOME ?? "").trim() || path.join(hibossDir, ".pm2"),
+    CLICLAW_DIR: cliclawDir,
+    PM2_HOME: (process.env.PM2_HOME ?? "").trim() || path.join(cliclawDir, ".pm2"),
   };
 
   if (action === "status") {
-    runPm2Command(["describe", "hiboss-daemon"], { env: pm2Env });
+    runPm2Command(["describe", "cliclaw-daemon"], { env: pm2Env });
     return;
   }
 
   if (action === "stop") {
-    if (!pm2ProcessExists("hiboss-daemon", pm2Env)) {
-      console.log("hiboss-daemon is already stopped.");
+    if (!pm2ProcessExists("cliclaw-daemon", pm2Env)) {
+      console.log("cliclaw-daemon is already stopped.");
       return;
     }
-    runPm2Command(["stop", "hiboss-daemon"], { env: pm2Env });
+    runPm2Command(["stop", "cliclaw-daemon"], { env: pm2Env });
     return;
   }
 
   if (!fs.existsSync(ecosystemPath)) {
-    throw new Error(`ecosystem.config.cjs not found at ${ecosystemPath}. Run 'hiboss setup' maintenance first.`);
+    throw new Error(`ecosystem.config.cjs not found at ${ecosystemPath}. Run 'cliclaw setup' maintenance first.`);
   }
 
-  runPm2Command(["startOrReload", ecosystemPath, "--only", "hiboss-daemon", "--update-env"], {
+  runPm2Command(["startOrReload", ecosystemPath, "--only", "cliclaw-daemon", "--update-env"], {
     env: pm2Env,
   });
 }

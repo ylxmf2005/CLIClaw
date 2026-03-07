@@ -14,7 +14,7 @@ ADMIN_TOKEN="${ADMIN_TOKEN:-}"
 TEAM_NAME="${TEAM_NAME:-e2e-mentions-api}"
 AGENT1="${AGENT1:-nex}"
 AGENT2="${AGENT2:-echo-e2e}"
-HIBOSS_DATA_DIR="${HIBOSS_DATA_DIR:-/Users/EthanLee/hiboss-test}"
+CLICLAW_DATA_DIR="${CLICLAW_DATA_DIR:-/Users/EthanLee/cliclaw-test}"
 
 if [[ -z "$ADMIN_TOKEN" ]]; then
   echo "ADMIN_TOKEN is required" >&2
@@ -54,9 +54,9 @@ echo "=== Setup ==="
 
 echo "Ensuring agents exist..."
 for agent in "$AGENT1" "$AGENT2"; do
-  mkdir -p "${HIBOSS_DATA_DIR}/agents/${agent}/workspace"
+  mkdir -p "${CLICLAW_DATA_DIR}/agents/${agent}/workspace"
   api POST "/api/agents" \
-    -d "{\"name\":\"${agent}\",\"description\":\"Mention e2e agent\",\"workspace\":\"${HIBOSS_DATA_DIR}/agents/${agent}/workspace\",\"provider\":\"claude\"}" \
+    -d "{\"name\":\"${agent}\",\"description\":\"Mention e2e agent\",\"workspace\":\"${CLICLAW_DATA_DIR}/agents/${agent}/workspace\",\"provider\":\"claude\"}" \
     >/dev/null 2>/dev/null || true
 done
 
@@ -172,8 +172,8 @@ http_code="$(curl -s -o /dev/null -w '%{http_code}' -X POST "${API_URL}/api/enve
   -H "Content-Type: application/json" \
   -d "{\"to\":\"team:${TEAM_NAME}\",\"from\":\"${console_from}\",\"text\":\"no mentions\"}")"
 
-if [[ "$http_code" != "400" && "$http_code" != "500" ]]; then
-  echo "FAIL: Expected 400/500 for missing mentions, got ${http_code}" >&2
+if [[ "$http_code" != "400" ]]; then
+  echo "FAIL: Expected 400 for missing mentions, got ${http_code}" >&2
   exit 1
 fi
 

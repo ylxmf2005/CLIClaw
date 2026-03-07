@@ -12,7 +12,7 @@ export function registerAgentCommands(program: Command): void {
   // Agent commands
   const agent = program.command("agent").description("Agent management");
 
-  // Remove `hiboss agent help` (keep `hiboss agent --help` / `-h`).
+  // Remove `cliclaw agent help` (keep `cliclaw agent --help` / `-h`).
   // Commander has both `helpCommand` and `addHelpCommand` APIs across versions; disable defensively.
   if (typeof (agent as any).helpCommand === "function") {
     (agent as any).helpCommand(false);
@@ -26,7 +26,7 @@ export function registerAgentCommands(program: Command): void {
     .description("Register a new agent")
     .requiredOption("--name <name>", "Agent name (alphanumeric with hyphens)")
     .requiredOption("--provider <provider>", "Provider (claude or codex)")
-    .option("--token <token>", "Token (defaults to HIBOSS_TOKEN)")
+    .option("--token <token>", "Token (defaults to CLICLAW_TOKEN)")
     .option("--description <description>", "Agent description")
     .option("--workspace <path>", "Workspace directory for provider CLI runs")
     .option("--model <model>", "Model name (provider-specific)")
@@ -81,7 +81,7 @@ export function registerAgentCommands(program: Command): void {
     .command("set")
     .description("Update agent settings and bindings")
     .requiredOption("--name <name>", "Agent name")
-    .option("--token <token>", "Token (defaults to HIBOSS_TOKEN)")
+    .option("--token <token>", "Token (defaults to CLICLAW_TOKEN)")
     .option("--description <description>", "Agent description")
     .option("--workspace <path>", "Workspace directory for provider CLI runs")
     .option("--provider <provider>", "Provider (claude or codex)")
@@ -149,7 +149,7 @@ export function registerAgentCommands(program: Command): void {
   agent
     .command("list")
     .description("List all agents")
-    .option("--token <token>", "Token (defaults to HIBOSS_TOKEN)")
+    .option("--token <token>", "Token (defaults to CLICLAW_TOKEN)")
     .action((options) => {
       listAgents({ token: options.token });
     });
@@ -158,7 +158,7 @@ export function registerAgentCommands(program: Command): void {
     .command("delete")
     .description("Delete an agent")
     .requiredOption("--name <name>", "Agent name")
-    .option("--token <token>", "Token (defaults to HIBOSS_TOKEN)")
+    .option("--token <token>", "Token (defaults to CLICLAW_TOKEN)")
     .action((options) => {
       deleteAgent({ token: options.token, name: options.name });
     });
@@ -167,7 +167,7 @@ export function registerAgentCommands(program: Command): void {
     .command("status")
     .description("Show runtime status for an agent")
     .requiredOption("--name <name>", "Agent name")
-    .option("--token <token>", "Token (defaults to HIBOSS_TOKEN)")
+    .option("--token <token>", "Token (defaults to CLICLAW_TOKEN)")
     .action((options) => {
       agentStatus({ token: options.token, name: options.name });
     });
@@ -176,7 +176,7 @@ export function registerAgentCommands(program: Command): void {
     .command("abort")
     .description("Cancel current run and clear pending inbox for an agent")
     .requiredOption("--name <name>", "Agent name")
-    .option("--token <token>", "Token (defaults to HIBOSS_TOKEN)")
+    .option("--token <token>", "Token (defaults to CLICLAW_TOKEN)")
     .action((options) => {
       abortAgent({ token: options.token, name: options.name });
     });

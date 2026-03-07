@@ -1,12 +1,12 @@
 ## MODIFIED Requirements
 
 ### Requirement: Team Messaging
-`hiboss team send` fans out one envelope per team member (sender excluded). Each envelope targets `agent:<member>` and stamps `metadata.chatScope = team:<name>`.
+`cliclaw team send` fans out one envelope per team member (sender excluded). Each envelope targets `agent:<member>` and stamps `metadata.chatScope = team:<name>`.
 
-- `hiboss team send --name <team>` → broadcast fan-out (all members excluding sender)
-- `hiboss team send --interrupt-now` is supported (applied per recipient); mutually exclusive with `--deliver-at`
-- `hiboss envelope send --to team:<name>` → broadcast fan-out in team chat scope (does not support `--interrupt-now`)
-- `hiboss envelope send --to team:<name>:<agent>` → single target in team chat scope (supports `--interrupt-now`)
+- `cliclaw team send --name <team>` → broadcast fan-out (all members excluding sender)
+- `cliclaw team send --interrupt-now` is supported (applied per recipient); mutually exclusive with `--deliver-at`
+- `cliclaw envelope send --to team:<name>` → broadcast fan-out in team chat scope (does not support `--interrupt-now`)
+- `cliclaw envelope send --to team:<name>:<agent>` → single target in team chat scope (supports `--interrupt-now`)
 - Archived teams reject `team send`
 - Best-effort fan-out: one failure does not abort remaining sends
 
@@ -21,7 +21,7 @@ When the `mentions` parameter is provided via RPC/API (not CLI):
 - **THEN** the backend SHALL reject with error "Team messages require at least one mention"
 
 #### Scenario: CLI team send does not require mentions
-- **WHEN** `hiboss team send --name core-dev --text "hello"` is called
+- **WHEN** `cliclaw team send --name core-dev --text "hello"` is called
 - **THEN** the send SHALL proceed as broadcast (backward compatible)
 
 #### Scenario: Agent-origin team send does not require mentions

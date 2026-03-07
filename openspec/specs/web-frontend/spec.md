@@ -1,6 +1,6 @@
 # Web Frontend
 
-A web management console and chat interface for Hi-Boss, backed by the daemon's built-in HTTP and WebSocket servers.
+A web management console and chat interface for CLIClaw, backed by the daemon's built-in HTTP and WebSocket servers.
 
 ## Capabilities
 
@@ -34,7 +34,7 @@ Key implementation files:
 
 ## HTTP Server Behavior
 
-- Default listen port: `3889` (override with `HIBOSS_HTTP_PORT`)
+- Default listen port: `3889` (override with `CLICLAW_HTTP_PORT`)
 - JSON request parsing for `Content-Type: application/json`
 - Bearer-token extraction from `Authorization: Bearer <token>`
 - CORS headers for browser clients (`GET, POST, PATCH, DELETE, OPTIONS`)
@@ -50,7 +50,7 @@ Key implementation files:
 ## Authentication Model
 
 - Login endpoint validates an admin token via `admin.verify`.
-- Frontend stores token in `sessionStorage` key `hiboss_token`.
+- Frontend stores token in `sessionStorage` key `cliclaw_token`.
 - API calls send `Authorization: Bearer <token>`.
 - WebSocket connection uses query token: `/ws?token=<token>`.
 - WebSocket upgrade currently requires a valid admin token.

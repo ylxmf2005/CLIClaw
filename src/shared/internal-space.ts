@@ -21,20 +21,20 @@ function getErrorMessage(err: unknown): string {
   return String(err);
 }
 
-function getAgentInternalSpaceDir(hibossDir: string, agentName: string): string {
-  return path.join(hibossDir, "agents", agentName, "internal_space");
+function getAgentInternalSpaceDir(cliclawDir: string, agentName: string): string {
+  return path.join(cliclawDir, "agents", agentName, "internal_space");
 }
 
-function getAgentMemoryPath(hibossDir: string, agentName: string): string {
-  return path.join(getAgentInternalSpaceDir(hibossDir, agentName), MEMORY_FILENAME);
+function getAgentMemoryPath(cliclawDir: string, agentName: string): string {
+  return path.join(getAgentInternalSpaceDir(cliclawDir, agentName), MEMORY_FILENAME);
 }
 
-function getAgentDailyMemoriesDir(hibossDir: string, agentName: string): string {
-  return path.join(getAgentInternalSpaceDir(hibossDir, agentName), DAILY_MEMORIES_DIRNAME);
+function getAgentDailyMemoriesDir(cliclawDir: string, agentName: string): string {
+  return path.join(getAgentInternalSpaceDir(cliclawDir, agentName), DAILY_MEMORIES_DIRNAME);
 }
 
-function getAgentHistoryDir(hibossDir: string, agentName: string): string {
-  return path.join(getAgentInternalSpaceDir(hibossDir, agentName), "history");
+function getAgentHistoryDir(cliclawDir: string, agentName: string): string {
+  return path.join(getAgentInternalSpaceDir(cliclawDir, agentName), "history");
 }
 
 function truncateWithMarker(input: string, maxChars: number, marker: string): string {
@@ -44,18 +44,18 @@ function truncateWithMarker(input: string, maxChars: number, marker: string): st
 }
 
 export function ensureAgentInternalSpaceLayout(params: {
-  hibossDir: string;
+  cliclawDir: string;
   agentName: string;
 }): { ok: true } | { ok: false; error: string } {
   try {
     assertValidAgentName(params.agentName);
 
-    const dir = getAgentInternalSpaceDir(params.hibossDir, params.agentName);
-    const memoryPath = getAgentMemoryPath(params.hibossDir, params.agentName);
+    const dir = getAgentInternalSpaceDir(params.cliclawDir, params.agentName);
+    const memoryPath = getAgentMemoryPath(params.cliclawDir, params.agentName);
 
     fs.mkdirSync(dir, { recursive: true });
 
-    const dailyDir = getAgentDailyMemoriesDir(params.hibossDir, params.agentName);
+    const dailyDir = getAgentDailyMemoriesDir(params.cliclawDir, params.agentName);
     fs.mkdirSync(dailyDir, { recursive: true });
     if (fs.existsSync(dailyDir) && !fs.statSync(dailyDir).isDirectory()) {
       return { ok: false, error: `Expected directory at ${dailyDir}` };
@@ -77,7 +77,7 @@ export function ensureAgentInternalSpaceLayout(params: {
 }
 
 export function readAgentInternalMemorySnapshot(params: {
-  hibossDir: string;
+  cliclawDir: string;
   agentName: string;
 }):
   | { ok: true; note: string }
@@ -85,7 +85,7 @@ export function readAgentInternalMemorySnapshot(params: {
   try {
     assertValidAgentName(params.agentName);
 
-    const memoryPath = getAgentMemoryPath(params.hibossDir, params.agentName);
+    const memoryPath = getAgentMemoryPath(params.cliclawDir, params.agentName);
 
     let raw = "";
     if (fs.existsSync(memoryPath)) {
@@ -108,7 +108,7 @@ export function readAgentInternalMemorySnapshot(params: {
 }
 
 export function readAgentInternalDailyMemorySnapshot(params: {
-  hibossDir: string;
+  cliclawDir: string;
   agentName: string;
 }):
   | { ok: true; note: string }
@@ -118,7 +118,7 @@ export function readAgentInternalDailyMemorySnapshot(params: {
 
     const dailyMaxChars = DEFAULT_MEMORY_SHORTTERM_PER_DAY_MAX_CHARS * DEFAULT_MEMORY_SHORTTERM_DAYS;
 
-    const dailyDir = getAgentDailyMemoriesDir(params.hibossDir, params.agentName);
+    const dailyDir = getAgentDailyMemoriesDir(params.cliclawDir, params.agentName);
     if (!fs.existsSync(dailyDir)) {
       return { ok: true, note: "" };
     }
@@ -167,7 +167,7 @@ export function readAgentInternalDailyMemorySnapshot(params: {
 }
 
 export function readAgentInternalSessionSummarySnapshot(params: {
-  hibossDir: string;
+  cliclawDir: string;
   agentName: string;
   recentDays?: number;
   perSessionMaxChars?: number;
@@ -180,7 +180,7 @@ export function readAgentInternalSessionSummarySnapshot(params: {
     const recentDays = params.recentDays ?? DEFAULT_SESSION_SUMMARY_RECENT_DAYS;
     const perSessionMaxChars = params.perSessionMaxChars ?? DEFAULT_SESSION_SUMMARY_PER_SESSION_MAX_CHARS;
 
-    const historyDir = getAgentHistoryDir(params.hibossDir, params.agentName);
+    const historyDir = getAgentHistoryDir(params.cliclawDir, params.agentName);
     if (!fs.existsSync(historyDir)) {
       return { ok: true, note: "" };
     }

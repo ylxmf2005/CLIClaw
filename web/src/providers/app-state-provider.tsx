@@ -6,7 +6,9 @@ import React, {
   useReducer,
   useEffect,
   useCallback,
+  useMemo,
 } from "react";
+import { usePathname } from "next/navigation";
 import type {
   Agent,
   AgentSession,
@@ -23,7 +25,7 @@ import type {
   WsEvent,
 } from "@/lib/types";
 import * as api from "@/lib/api";
-import { setBossTimezone } from "@/lib/utils";
+import { parseAddress, setBossTimezone } from "@/lib/utils";
 import { useWebSocket } from "./ws-provider";
 
 // ─── State Shape ─────────────────────────────────────────────
@@ -79,7 +81,7 @@ type Action =
   | { type: "ADD_AGENT"; agent: Agent }
   | { type: "REMOVE_AGENT"; name: string }
   | { type: "SET_ENVELOPES"; key: string; envelopes: Envelope[] }
-  | { type: "ADD_ENVELOPE"; envelope: Envelope }
+  | { type: "ADD_ENVELOPE"; envelope: Envelope; activeChat?: ChatSelection | null }
   | { type: "SET_TEAMS"; teams: Team[] }
   | { type: "SET_CRON"; schedules: CronSchedule[] }
   | { type: "SET_DAEMON_STATUS"; status: DaemonStatus }
@@ -98,6 +100,78 @@ type Action =
   | { type: "PTY_OUTPUT"; agentName: string; chatId?: string; data: string }
   | { type: "UPDATE_ENVELOPE"; envelope: Envelope }
   | { type: "SET_SESSIONS"; agentName: string; sessions: AgentSession[] };
+
+function parseActiveChatSelection(pathname: string): ChatSelection | null {
+  const match = pathname.match(/^\/agents\/([^/]+)\/([^/]+)$/);
+  if (!match) return null;
+  const agentNameRaw = match[1];
+  const chatIdRaw = match[2];
+  if (!agentNameRaw || !chatIdRaw) return null;
+  let agentName: string;
+  let chatId: string;
+  try {
+    agentName = decodeURIComponent(agentNameRaw);
+    chatId = decodeURIComponent(chatIdRaw);
+  } catch {
+    return null;
+  }
+  return {
+    agentName,
+    chatId,
+  };
+}
+
+function parseAgentAddress(address: string): { name: string; chatId: string | null } | null {
+  if (!address.startsWith("agent:")) return null;
+  const parts = address.split(":");
+  const name = parts[1]?.trim();
+  if (!name) return null;
+  const rawChatId = parts.length > 2 ? parts.slice(2).join(":").trim() : "";
+  return { name, chatId: rawChatId || null };
+}
+
+function resolveEnvelopeChatId(envelope: Envelope): string {
+  const metadata = envelope.metadata && typeof envelope.metadata === "object"
+    ? (envelope.metadata as Record<string, unknown>)
+    : undefined;
+
+  if (typeof metadata?.chatScope === "string" && metadata.chatScope.trim()) {
+    return metadata.chatScope.trim();
+  }
+
+  const fromAddress = parseAddress(envelope.from);
+  if (fromAddress.type === "channel" && fromAddress.chatId.trim()) {
+    return fromAddress.chatId.trim();
+  }
+
+  const toAddress = parseAddress(envelope.to);
+  if (toAddress.type === "channel" && toAddress.chatId.trim()) {
+    return toAddress.chatId.trim();
+  }
+
+  const fromAgent = parseAgentAddress(envelope.from);
+  if (fromAgent?.chatId) {
+    return fromAgent.chatId;
+  }
+
+  const toAgent = parseAgentAddress(envelope.to);
+  if (toAgent?.chatId) {
+    return toAgent.chatId;
+  }
+
+  const chat = metadata?.chat;
+  if (chat && typeof chat === "object") {
+    const rawChatId = (chat as Record<string, unknown>).id;
+    if (typeof rawChatId === "string" && rawChatId.trim()) {
+      return rawChatId.trim();
+    }
+    if (typeof rawChatId === "number" && Number.isFinite(rawChatId)) {
+      return String(rawChatId);
+    }
+  }
+
+  return "default";
+}
 
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
@@ -137,9 +211,10 @@ function reducer(state: AppState, action: Action): AppState {
     case "ADD_ENVELOPE": {
       // Route envelope to both sender's and receiver's conversation views
       const env = action.envelope;
-      const chatId = (env.metadata?.chatScope as string) || "default";
-      const fromAgent = env.from?.startsWith("agent:") ? env.from.slice(6).split(":")[0] : null;
-      const toAgent = env.to?.startsWith("agent:") ? env.to.slice(6).split(":")[0] : null;
+      const chatId = resolveEnvelopeChatId(env);
+      const fromAgent = parseAgentAddress(env.from)?.name ?? null;
+      const toAgent = parseAgentAddress(env.to)?.name ?? null;
+      const activeChat = action.activeChat ?? state.selectedChat;
 
       const newEnvelopes = { ...state.envelopes };
 
@@ -196,8 +271,8 @@ function reducer(state: AppState, action: Action): AppState {
         const convos = [...(newConversations[agentName] || [])];
         const idx = convos.findIndex((c) => c.chatId === chatId);
         const isSelected =
-          state.selectedChat?.agentName === agentName &&
-          state.selectedChat?.chatId === chatId;
+          activeChat?.agentName === agentName &&
+          activeChat?.chatId === chatId;
 
         if (idx >= 0) {
           convos[idx] = {
@@ -360,6 +435,8 @@ const AppContext = createContext<AppContextValue | null>(null);
 export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(reducer, initialState);
   const { subscribe } = useWebSocket();
+  const pathname = usePathname();
+  const activeChat = useMemo(() => parseActiveChatSelection(pathname), [pathname]);
 
   const refreshAgents = useCallback(async () => {
     const { agents } = await api.listAgents();
@@ -435,15 +512,26 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const loadEnvelopes = useCallback(
     async (address: string, chatId?: string) => {
       try {
-        const { envelopes } = await api.listEnvelopes({
-          to: address,
-          chatId,
-          status: "done",
-          limit: 50,
-        });
+        const trimmedAddress = address.trim();
+        const agentMatch = /^agent:([^:]+)$/.exec(trimmedAddress);
+        const result = (chatId && agentMatch)
+          ? await api.getAgentChatMessages({
+              agentName: agentMatch[1],
+              chatId,
+              status: "done",
+              limit: 200,
+            })
+          : await api.listEnvelopes({
+              to: trimmedAddress,
+              chatId,
+              status: "done",
+              limit: 50,
+            });
+
+        const { envelopes } = result;
         // API returns newest-first; reverse for chronological chat display
         const sorted = [...envelopes].reverse();
-        const key = chatId ? `${address}:${chatId}` : address;
+        const key = chatId ? `${trimmedAddress}:${chatId}` : trimmedAddress;
         dispatch({ type: "SET_ENVELOPES", key, envelopes: sorted });
       } catch {
         // silent
@@ -552,7 +640,11 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         }
         case "envelope.new": {
           const envPayload = event.payload as { envelope: Envelope };
-          dispatch({ type: "ADD_ENVELOPE", envelope: envPayload.envelope });
+          dispatch({
+            type: "ADD_ENVELOPE",
+            envelope: envPayload.envelope,
+            activeChat,
+          });
           break;
         }
         case "envelope.done": {
@@ -585,6 +677,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
               ...p.envelope,
               metadata,
             },
+            activeChat,
           });
           break;
         }
@@ -592,7 +685,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           break;
       }
     });
-  }, [subscribe]);
+  }, [subscribe, activeChat]);
 
   return (
     <AppContext.Provider

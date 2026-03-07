@@ -1,4 +1,4 @@
-import type { HiBossDatabase } from "../db/database.js";
+import type { CliClawDatabase } from "../db/database.js";
 import type { CronSchedule, CreateCronScheduleInput } from "../../cron/types.js";
 import { getCronExecutionMode } from "../../cron/types.js";
 import type { Envelope } from "../../envelope/types.js";
@@ -22,7 +22,7 @@ export class CronScheduler {
   private onEnvelopeCreated?: (envelope: Envelope) => void;
 
   constructor(
-    private readonly db: HiBossDatabase,
+    private readonly db: CliClawDatabase,
     private readonly envelopeScheduler: EnvelopeScheduler,
     options?: CronSchedulerOptions
   ) {
@@ -79,12 +79,15 @@ export class CronScheduler {
     const execMode = getCronExecutionMode(schedule.metadata);
     const isOneshot = execMode !== "inline";
 
-    // For one-shot cron: route to the agent handler so OneShotExecutor picks it up.
-    // Store the original destination in metadata for response routing.
+    // For one-shot cron:
+    // - agent destination: execute the destination agent in one-shot mode
+    // - non-agent destination (channel): execute owner in one-shot mode and route response to destination
+    const destination = parseAddress(schedule.to);
+    const runOwnerOneshot = isOneshot && destination.type !== "agent";
     const from = formatAgentAddress(schedule.agentName);
-    const to = isOneshot ? formatAgentAddress(schedule.agentName) : schedule.to;
+    const to = runOwnerOneshot ? formatAgentAddress(schedule.agentName) : schedule.to;
 
-    if (isOneshot && schedule.to !== to) {
+    if (runOwnerOneshot) {
       metadata.cronResponseTo = schedule.to;
     }
 

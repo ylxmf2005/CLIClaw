@@ -1,6 +1,6 @@
 # Provider CLI References
 
-This directory contains third-party CLI reference notes used by Hi-Boss integration work.
+This directory contains third-party CLI reference notes used by CLIClaw integration work.
 
 These docs are **non-canonical**. If a reference conflicts with behavior docs, `docs/spec/provider-clis.md` is the source of truth.
 

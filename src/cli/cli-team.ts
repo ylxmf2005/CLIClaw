@@ -26,7 +26,7 @@ export function registerTeamCommands(program: Command): void {
     .description("Create a team and initialize its teamspace")
     .requiredOption("--name <name>", "Team name (alphanumeric with hyphens)")
     .option("--description <description>", "Team description")
-    .option("--token <token>", "Token (defaults to HIBOSS_TOKEN)")
+    .option("--token <token>", "Token (defaults to CLICLAW_TOKEN)")
     .action((options) => {
       registerTeam({
         token: options.token,
@@ -42,7 +42,7 @@ export function registerTeamCommands(program: Command): void {
     .option("--description <description>", "Team description")
     .option("--clear-description", "Clear description")
     .option("--status <status>", "Team status (active|archived)")
-    .option("--token <token>", "Token (defaults to HIBOSS_TOKEN)")
+    .option("--token <token>", "Token (defaults to CLICLAW_TOKEN)")
     .action((options) => {
       const description =
         options.clearDescription ? null : options.description;
@@ -58,7 +58,7 @@ export function registerTeamCommands(program: Command): void {
     .command("delete")
     .description("Delete a team and remove its teamspace directory")
     .requiredOption("--name <name>", "Team name")
-    .option("--token <token>", "Token (defaults to HIBOSS_TOKEN)")
+    .option("--token <token>", "Token (defaults to CLICLAW_TOKEN)")
     .action((options) => {
       deleteTeam({
         token: options.token,
@@ -71,7 +71,7 @@ export function registerTeamCommands(program: Command): void {
     .description("Add an agent to a team")
     .requiredOption("--name <name>", "Team name")
     .requiredOption("--agent <agent>", "Agent name")
-    .option("--token <token>", "Token (defaults to HIBOSS_TOKEN)")
+    .option("--token <token>", "Token (defaults to CLICLAW_TOKEN)")
     .action((options) => {
       addTeamMember({
         token: options.token,
@@ -85,7 +85,7 @@ export function registerTeamCommands(program: Command): void {
     .description("Remove an agent from a team")
     .requiredOption("--name <name>", "Team name")
     .requiredOption("--agent <agent>", "Agent name")
-    .option("--token <token>", "Token (defaults to HIBOSS_TOKEN)")
+    .option("--token <token>", "Token (defaults to CLICLAW_TOKEN)")
     .action((options) => {
       removeTeamMember({
         token: options.token,
@@ -98,7 +98,7 @@ export function registerTeamCommands(program: Command): void {
     .command("status")
     .description("Show team details")
     .requiredOption("--name <name>", "Team name")
-    .option("--token <token>", "Token (defaults to HIBOSS_TOKEN)")
+    .option("--token <token>", "Token (defaults to CLICLAW_TOKEN)")
     .action((options) => {
       teamStatus({
         token: options.token,
@@ -110,7 +110,7 @@ export function registerTeamCommands(program: Command): void {
     .command("list-members")
     .description("List team members")
     .requiredOption("--name <name>", "Team name")
-    .option("--token <token>", "Token (defaults to HIBOSS_TOKEN)")
+    .option("--token <token>", "Token (defaults to CLICLAW_TOKEN)")
     .action((options) => {
       listTeamMembers({
         token: options.token,
@@ -122,7 +122,7 @@ export function registerTeamCommands(program: Command): void {
     .command("send")
     .description("Send an envelope to all team members")
     .requiredOption("--name <name>", "Team name")
-    .option("--token <token>", "Token (defaults to HIBOSS_TOKEN)")
+    .option("--token <token>", "Token (defaults to CLICLAW_TOKEN)")
     .option("--text <text>", "Envelope text (use - to read from stdin)")
     .option("--text-file <path>", "Read envelope text from file")
     .option(
@@ -154,7 +154,7 @@ export function registerTeamCommands(program: Command): void {
     .command("list")
     .description("List teams")
     .option("--status <status>", "Filter by status (active|archived)")
-    .option("--token <token>", "Token (defaults to HIBOSS_TOKEN)")
+    .option("--token <token>", "Token (defaults to CLICLAW_TOKEN)")
     .action((options) => {
       listTeams({
         token: options.token,

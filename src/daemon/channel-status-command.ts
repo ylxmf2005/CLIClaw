@@ -16,7 +16,7 @@ import { formatShortId } from "../shared/id-format.js";
 import { formatUnixMsAsTimeZoneOffset } from "../shared/time.js";
 import { resolveUiLocale } from "../shared/ui-locale.js";
 import { getUiText } from "../shared/ui-text.js";
-import type { HiBossDatabase } from "./db/database.js";
+import type { CliClawDatabase } from "./db/database.js";
 
 interface CodexModelProviderDetails {
   name: string | null;
@@ -174,7 +174,7 @@ function formatValueOrDefault(value: string | null | undefined): string {
   return value ?? "default";
 }
 
-export function buildAgentStatusText(params: { db: HiBossDatabase; executor: AgentExecutor; agentName: string }): string {
+export function buildAgentStatusText(params: { db: CliClawDatabase; executor: AgentExecutor; agentName: string }): string {
   const ui = getUiText(resolveUiLocale(params.db.getConfig("ui_locale")));
   const agent = params.db.getAgentByNameCaseInsensitive(params.agentName);
   if (!agent) {

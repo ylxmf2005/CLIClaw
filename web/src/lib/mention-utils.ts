@@ -1,4 +1,5 @@
 import type { Envelope } from "./types";
+import { formatChannelMentionTarget, parseAddress } from "./utils";
 
 export interface MentionInfo {
   /** The name to display after @ */
@@ -23,8 +24,8 @@ export function deriveMention(
   envelope: Envelope,
   currentAgent: string
 ): MentionInfo | null {
-  const from = parseAddr(envelope.from);
-  const to = parseAddr(envelope.to);
+  const from = parseAddress(envelope.from);
+  const to = parseAddress(envelope.to);
 
   // Boss sending to this agent — no mention needed
   if (envelope.fromBoss && to.name === currentAgent) {
@@ -33,7 +34,10 @@ export function deriveMention(
 
   // Agent sending to a channel
   if (to.type === "channel") {
-    return { target: to.name, direction: "outbound" };
+    return {
+      target: formatChannelMentionTarget(to.adapterType, to.chatId),
+      direction: "outbound",
+    };
   }
 
   // Agent sending to a team
@@ -61,14 +65,4 @@ export function deriveMention(
   }
 
   return null;
-}
-
-function parseAddr(addr: string): { type: string; name: string } {
-  if (addr.startsWith("agent:"))
-    return { type: "agent", name: addr.slice(6).split(":")[0] };
-  if (addr.startsWith("team:"))
-    return { type: "team", name: addr.slice(5).split(":")[0] };
-  if (addr.startsWith("channel:"))
-    return { type: "channel", name: addr.split(":").slice(1).join(":") };
-  return { type: "unknown", name: addr };
 }

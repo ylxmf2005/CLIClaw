@@ -4,7 +4,7 @@ The turn input is rendered by the prompt template entrypoint:
 
 - `prompts/turn/turn.md`
 
-Hi-Boss supplies fields as template variables (see `prompts/VARIABLES.md`).
+CLIClaw supplies fields as template variables (see `prompts/VARIABLES.md`).
 
 ## Sections
 
@@ -77,7 +77,7 @@ pending-envelopes: 1
 ---
 envelope-id: 4b7c2d1a
 from: channel:telegram:6447779930
-sender: Kevin (@kky1024) [boss] in group "hiboss-test"
+sender: Kevin (@kky1024) [boss] in group "cliclaw-test"
 created-at: 2026-01-28T20:08:45+08:00
 
 Here's the weekly report.
@@ -113,7 +113,7 @@ pending-envelopes: 3
 ---
 envelope-id: 4b7c2d1a
 from: channel:telegram:6447779930
-sender: Alice (@alice) in group "hiboss-test"
+sender: Alice (@alice) in group "cliclaw-test"
 created-at: 2026-01-28T20:10:12+08:00
 
 Can you take a look at this?
@@ -122,7 +122,7 @@ Can you take a look at this?
 
 envelope-id: 7aa9f102
 from: channel:telegram:6447779930
-sender: Kevin (@kky1024) [boss] in group "hiboss-test"
+sender: Kevin (@kky1024) [boss] in group "cliclaw-test"
 created-at: 2026-01-28T20:11:30+08:00
 
 Sure — what’s the context?

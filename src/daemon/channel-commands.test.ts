@@ -5,14 +5,14 @@ import path from "node:path";
 import test from "node:test";
 
 import { createChannelCommandHandler } from "./channel-commands.js";
-import { HiBossDatabase } from "./db/database.js";
+import { CliClawDatabase } from "./db/database.js";
 import { writeAgentRunTrace } from "../shared/agent-run-trace.js";
 import { INTERNAL_VERSION } from "../shared/version.js";
 
-function withTempDb(run: (db: HiBossDatabase) => Promise<void> | void): Promise<void> {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hiboss-channel-cmd-test-"));
-  const dbPath = path.join(dir, "hiboss.db");
-  const db = new HiBossDatabase(dbPath);
+function withTempDb(run: (db: CliClawDatabase) => Promise<void> | void): Promise<void> {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cliclaw-channel-cmd-test-"));
+  const dbPath = path.join(dir, "cliclaw.db");
+  const db = new CliClawDatabase(dbPath);
   return Promise.resolve()
     .then(() => run(db))
     .finally(() => {
@@ -343,7 +343,7 @@ test("/trace returns usage when args are provided", async () => {
         invalidateChannelSessionCache: () => undefined,
       } as any,
       router: { routeEnvelope: async () => undefined } as any,
-      hibossDir: os.tmpdir(),
+      cliclawDir: os.tmpdir(),
     });
 
     const response = await handler({
@@ -360,13 +360,13 @@ test("/trace returns usage when args are provided", async () => {
 });
 
 test("/trace reads latest finished run trace", async () => {
-  const hibossDir = fs.mkdtempSync(path.join(os.tmpdir(), "hiboss-trace-test-"));
+  const cliclawDir = fs.mkdtempSync(path.join(os.tmpdir(), "cliclaw-trace-test-"));
   await withTempDb(async (db) => {
     try {
       db.registerAgent({ name: "nex", provider: "claude" });
       const run = db.createAgentRun("nex", ["env-1"]);
       db.completeAgentRun(run.id, "done", 1234);
-      writeAgentRunTrace(hibossDir, {
+      writeAgentRunTrace(cliclawDir, {
         version: INTERNAL_VERSION,
         runId: run.id,
         agentName: "nex",
@@ -388,7 +388,7 @@ test("/trace reads latest finished run trace", async () => {
           invalidateChannelSessionCache: () => undefined,
         } as any,
         router: { routeEnvelope: async () => undefined } as any,
-        hibossDir,
+        cliclawDir,
       });
 
       const response = await handler({
@@ -405,18 +405,18 @@ test("/trace reads latest finished run trace", async () => {
       assert.equal(response?.text?.includes("entry-1-type: assistant"), true);
       assert.equal(response?.text?.includes("entry-2-type: tool-call"), true);
     } finally {
-      fs.rmSync(hibossDir, { recursive: true, force: true });
+      fs.rmSync(cliclawDir, { recursive: true, force: true });
     }
   });
 });
 
 test("/trace shows live entries when current run is in progress", async () => {
-  const hibossDir = fs.mkdtempSync(path.join(os.tmpdir(), "hiboss-trace-live-test-"));
+  const cliclawDir = fs.mkdtempSync(path.join(os.tmpdir(), "cliclaw-trace-live-test-"));
   await withTempDb(async (db) => {
     try {
       db.registerAgent({ name: "nex", provider: "claude" });
       const run = db.createAgentRun("nex", ["env-1"]);
-      writeAgentRunTrace(hibossDir, {
+      writeAgentRunTrace(cliclawDir, {
         version: INTERNAL_VERSION,
         runId: run.id,
         agentName: "nex",
@@ -438,7 +438,7 @@ test("/trace shows live entries when current run is in progress", async () => {
           invalidateChannelSessionCache: () => undefined,
         } as any,
         router: { routeEnvelope: async () => undefined } as any,
-        hibossDir,
+        cliclawDir,
       });
 
       const response = await handler({
@@ -454,19 +454,19 @@ test("/trace shows live entries when current run is in progress", async () => {
       assert.equal(response?.text?.includes("entry-1-type: assistant"), true);
       assert.equal(response?.text?.includes("entry-2-type: tool-call"), true);
     } finally {
-      fs.rmSync(hibossDir, { recursive: true, force: true });
+      fs.rmSync(cliclawDir, { recursive: true, force: true });
     }
   });
 });
 
 test("/trace reads Codex run traces", async () => {
-  const hibossDir = fs.mkdtempSync(path.join(os.tmpdir(), "hiboss-trace-codex-test-"));
+  const cliclawDir = fs.mkdtempSync(path.join(os.tmpdir(), "cliclaw-trace-codex-test-"));
   await withTempDb(async (db) => {
     try {
       db.registerAgent({ name: "nex", provider: "codex" });
       const run = db.createAgentRun("nex", ["env-1"]);
       db.completeAgentRun(run.id, "done", 1234);
-      writeAgentRunTrace(hibossDir, {
+      writeAgentRunTrace(cliclawDir, {
         version: INTERNAL_VERSION,
         runId: run.id,
         agentName: "nex",
@@ -488,7 +488,7 @@ test("/trace reads Codex run traces", async () => {
           invalidateChannelSessionCache: () => undefined,
         } as any,
         router: { routeEnvelope: async () => undefined } as any,
-        hibossDir,
+        cliclawDir,
       });
 
       const response = await handler({
@@ -504,19 +504,19 @@ test("/trace reads Codex run traces", async () => {
       assert.equal(response?.text?.includes("provider: codex"), true);
       assert.equal(response?.text?.includes("entry-2-tool: bash"), true);
     } finally {
-      fs.rmSync(hibossDir, { recursive: true, force: true });
+      fs.rmSync(cliclawDir, { recursive: true, force: true });
     }
   });
 });
 
 test("/trace displays the latest 20 entries when trace is longer", async () => {
-  const hibossDir = fs.mkdtempSync(path.join(os.tmpdir(), "hiboss-trace-latest-test-"));
+  const cliclawDir = fs.mkdtempSync(path.join(os.tmpdir(), "cliclaw-trace-latest-test-"));
   await withTempDb(async (db) => {
     try {
       db.registerAgent({ name: "nex", provider: "claude" });
       const run = db.createAgentRun("nex", ["env-1"]);
       db.completeAgentRun(run.id, "done", 1234);
-      writeAgentRunTrace(hibossDir, {
+      writeAgentRunTrace(cliclawDir, {
         version: INTERNAL_VERSION,
         runId: run.id,
         agentName: "nex",
@@ -538,7 +538,7 @@ test("/trace displays the latest 20 entries when trace is longer", async () => {
           invalidateChannelSessionCache: () => undefined,
         } as any,
         router: { routeEnvelope: async () => undefined } as any,
-        hibossDir,
+        cliclawDir,
       });
 
       const response = await handler({
@@ -555,14 +555,14 @@ test("/trace displays the latest 20 entries when trace is longer", async () => {
       assert.equal(response?.text?.includes("entry-20-text: step-25"), true);
       assert.equal(/entry-\d+-text: step-1\b/.test(response?.text ?? ""), false);
     } finally {
-      fs.rmSync(hibossDir, { recursive: true, force: true });
+      fs.rmSync(cliclawDir, { recursive: true, force: true });
     }
   });
 });
 
 test("/status resolves effective codex model/reasoning from CODEX_HOME config", async () => {
   await withTempDb(async (db) => {
-    const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), "hiboss-codex-home-"));
+    const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), "cliclaw-codex-home-"));
     try {
       fs.writeFileSync(
         path.join(codexHome, "config.toml"),

@@ -77,7 +77,7 @@ export function runMagicInventoryCli(argv: string[]): void {
         }
       }
 
-      // Capture computed env var keys (e.g., { [HIBOSS_TOKEN_ENV]: ... })
+      // Capture computed env var keys (e.g., { [CLICLAW_TOKEN_ENV]: ... })
       if (ts.isComputedPropertyName(node)) {
         const name = resolveConstString(checker, node.expression);
         if (name && /^[A-Z0-9_]+$/.test(name)) {
@@ -270,7 +270,7 @@ export function runMagicInventoryCli(argv: string[]): void {
     .sort((a, b) => a.key.localeCompare(b.key));
 
   const pathGroups: Array<{ title: string; predicate: (p: string) => boolean }> = [
-    { title: "`~/hiboss` (default state dir)", predicate: (p) => p.startsWith("~/hiboss") },
+    { title: "`~/cliclaw` (default state dir)", predicate: (p) => p.startsWith("~/cliclaw") },
     { title: "`~/.codex`", predicate: (p) => p.startsWith("~/.codex") },
     { title: "`~/.claude`", predicate: (p) => p.startsWith("~/.claude") },
     { title: "`prompts/` (repo templates)", predicate: (p) => p === "prompts" || p.toLowerCase().includes("/prompts") },

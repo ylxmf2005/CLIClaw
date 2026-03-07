@@ -1,4 +1,4 @@
-// REST API client for Hi-Boss daemon HTTP server
+// REST API client for CLIClaw daemon HTTP server
 
 import type {
   Agent,
@@ -8,6 +8,7 @@ import type {
   CronSchedule,
   DaemonStatus,
   Envelope,
+  ChatSettings,
   Provider,
   ReasoningEffort,
   SessionBinding,
@@ -201,6 +202,21 @@ export async function listEnvelopes(params: {
   return apiFetch(`/api/envelopes?${query}`);
 }
 
+export async function getAgentChatMessages(params: {
+  agentName: string;
+  chatId: string;
+  status?: "pending" | "done";
+  limit?: number;
+}): Promise<{ envelopes: Envelope[] }> {
+  const query = new URLSearchParams();
+  if (params.status) query.set("status", params.status);
+  if (typeof params.limit === "number") query.set("limit", String(params.limit));
+  const querySuffix = query.toString() ? `?${query.toString()}` : "";
+  return apiFetch(
+    `/api/agents/${encodeURIComponent(params.agentName)}/chats/${encodeURIComponent(params.chatId)}/messages${querySuffix}`
+  );
+}
+
 export async function getThread(
   envelopeId: string
 ): Promise<{ envelopes: Envelope[]; totalCount: number }> {
@@ -232,6 +248,29 @@ export async function getRelayState(
 ): Promise<{ agentName: string; chatId: string; relayOn: boolean }> {
   return apiFetch(
     `/api/agents/${encodeURIComponent(agentName)}/chats/${encodeURIComponent(chatId)}/relay`
+  );
+}
+
+export async function getChatSettings(
+  agentName: string,
+  chatId: string
+): Promise<ChatSettings> {
+  return apiFetch(
+    `/api/agents/${encodeURIComponent(agentName)}/chats/${encodeURIComponent(chatId)}/settings`
+  );
+}
+
+export async function updateChatSettings(
+  agentName: string,
+  chatId: string,
+  params: {
+    modelOverride?: string | null;
+    reasoningEffortOverride?: ReasoningEffort | null;
+  }
+): Promise<ChatSettings & { success: boolean }> {
+  return apiFetch(
+    `/api/agents/${encodeURIComponent(agentName)}/chats/${encodeURIComponent(chatId)}/settings`,
+    { method: "PATCH", body: JSON.stringify(params) }
   );
 }
 

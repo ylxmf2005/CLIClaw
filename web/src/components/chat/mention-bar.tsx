@@ -5,8 +5,6 @@ import { MentionChip } from "./mention-chip";
 interface MentionBarProps {
   mentions: string[];
   onRemove: (name: string) => void;
-  onTriggerAutocomplete: () => void;
-  teamMembers: string[];
   disabled?: boolean;
 }
 

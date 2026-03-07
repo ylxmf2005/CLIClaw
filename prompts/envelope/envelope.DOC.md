@@ -4,7 +4,7 @@ The envelope is rendered by the prompt template entrypoint:
 
 - `prompts/envelope/instruction.md`
 
-Hi-Boss supplies fields as template variables (see `prompts/VARIABLES.md`).
+CLIClaw supplies fields as template variables (see `prompts/VARIABLES.md`).
 
 ## Sections
 
@@ -15,9 +15,9 @@ Hi-Boss supplies fields as template variables (see `prompts/VARIABLES.md`).
 
 | Field | Shown | Description |
 |-------|-------|-------------|
-| `envelope-id` | Always | Envelope id (short id). Use with `--reply-to <envelope-id>` for threading/quoting and `hiboss reaction set --envelope-id ...` |
+| `envelope-id` | Always | Envelope id (short id). Use with `--reply-to <envelope-id>` for threading/quoting and `cliclaw reaction set --envelope-id ...` |
 | `from` | Always | Raw address for routing (use with `--to` when replying) |
-| `sender` | Only for channel messages | Sender and chat context (e.g. `Alice (@alice) in group "hiboss-test"` or `Alice (@alice) in private chat`) |
+| `sender` | Only for channel messages | Sender and chat context (e.g. `Alice (@alice) in group "cliclaw-test"` or `Alice (@alice) in private chat`) |
 | `chat` | Optional | Internal chat scope for agent-origin routing (e.g. `agent-chat-...`, `team:research`) |
 | `created-at` | Always | Timestamp (boss timezone offset) |
 | `deliver-at` | Only for scheduled messages | Requested delivery time |
@@ -34,7 +34,7 @@ Attachment format: `- [type] filename (source)` where type is `image`, `audio`, 
 ```text
 envelope-id: 4b7c2d1a
 from: channel:telegram:6447779930
-sender: Kevin (@kky1024) [boss] in group "hiboss-test"
+sender: Kevin (@kky1024) [boss] in group "cliclaw-test"
 created-at: 2026-01-28T20:08:45+08:00
 
 Here's the weekly report and the updated diagram.
@@ -45,7 +45,7 @@ attachments:
 
 ## Multiple Envelopes (list output)
 
-`hiboss envelope list` prints one envelope instruction per envelope, separated by a blank line. In group chats, multiple messages appear as multiple envelopes, each repeating the same `from:` / `sender:` header.
+`cliclaw envelope list` prints one envelope instruction per envelope, separated by a blank line. In group chats, multiple messages appear as multiple envelopes, each repeating the same `from:` / `sender:` header.
 
 ## Full Example (direct message)
 

@@ -5,8 +5,8 @@ import type { Envelope, EnvelopeAttachment } from "../envelope/types.js";
 import { detectAttachmentType } from "../adapters/types.js";
 import { formatUnixMsAsTimeZoneOffset } from "./time.js";
 import { getDaemonIanaTimeZone } from "./timezone.js";
-import { HIBOSS_TOKEN_ENV } from "./env.js";
-import { getHiBossDir } from "../agent/home-setup.js";
+import { CLICLAW_TOKEN_ENV } from "./env.js";
+import { getCliClawDir } from "../agent/home-setup.js";
 import {
   DEFAULT_AGENT_PROVIDER,
   DEFAULT_MEMORY_LONGTERM_MAX_CHARS,
@@ -197,13 +197,13 @@ export function buildSystemPromptContext(params: {
   time?: {
     bossTimezone?: string;
   };
-  hibossDir?: string;
+  cliclawDir?: string;
   boss?: {
     name?: string;
     adapterIds?: Record<string, string>;
   };
 }): Record<string, unknown> {
-  const hibossDir = params.hibossDir ?? getHiBossDir();
+  const cliclawDir = params.cliclawDir ?? getCliClawDir();
   const bossTimeZone = (params.time?.bossTimezone ?? "").trim() || getDaemonIanaTimeZone();
   const daemonTimeZone = getDaemonIanaTimeZone();
 
@@ -238,9 +238,9 @@ export function buildSystemPromptContext(params: {
       bossTimezone: bossTimeZone,
       daemonTimezone: daemonTimeZone,
     },
-    hiboss: {
-      dir: hibossDir,
-      tokenEnvVar: HIBOSS_TOKEN_ENV,
+    cliclaw: {
+      dir: cliclawDir,
+      tokenEnvVar: CLICLAW_TOKEN_ENV,
       additionalContext: "",
     },
     internalSpace: {

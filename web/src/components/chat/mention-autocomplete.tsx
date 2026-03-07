@@ -31,7 +31,7 @@ export function MentionAutocomplete({
   // Build filtered item list: @all first, then unmentioned members
   const items: Array<{ label: string; value: string; isAll: boolean }> = [];
 
-  if (!hasAll && !currentSet.has("@all")) {
+  if (!hasAll) {
     items.push({ label: "@all", value: "@all", isAll: true });
   }
 

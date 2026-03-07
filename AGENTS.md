@@ -30,7 +30,7 @@ All specs live under `openspec/specs/`:
 ## Core architecture (mental model)
 
 - Daemon owns state and routing; CLI is a thin JSON-RPC client.
-- SQLite is the durable queue + audit log (`~/hiboss/.daemon/hiboss.db`).
+- SQLite is the durable queue + audit log (`~/cliclaw/.daemon/cliclaw.db`).
 - Scheduler wakes due `deliver-at` envelopes.
 - Agent executor runs provider sessions and marks envelopes done.
 - Adapters bridge chat apps ↔ envelopes (e.g. Telegram).
@@ -66,11 +66,11 @@ Short IDs (must follow):
 ## Important settings / operational invariants
 
 - Runtime: Node.js 18+ (ES2022) recommended.
-- Tokens are printed once by `hiboss setup` / `hiboss agent register` (no "show token" command).
-- `HIBOSS_TOKEN` is used when `--token` is omitted.
+- Tokens are printed once by `cliclaw setup` / `cliclaw agent register` (no "show token" command).
+- `CLICLAW_TOKEN` is used when `--token` is omitted.
 - Sending to `channel:<adapter>:...` is only allowed if the sending agent is bound to that adapter type.
 - `--deliver-at` supports relative (`+2h`, `+1Y2M3D`) and ISO 8601; units are case-sensitive (`Y/M/D/h/m/s`).
-- Security: agent tokens are stored plaintext in `~/hiboss/.daemon/hiboss.db`; protect `~/hiboss/`.
+- Security: agent tokens are stored plaintext in `~/cliclaw/.daemon/cliclaw.db`; protect `~/cliclaw/`.
 
 ## Dev workflow
 
@@ -84,9 +84,9 @@ Fast path (dev):
 npm i
 npm run build && npm link
 
-hiboss setup
-hiboss daemon start --token <boss-token>
-hiboss agent register --token <boss-token> --name nex --description "AI assistant" --workspace "$PWD"
+cliclaw setup
+cliclaw daemon start --token <boss-token>
+cliclaw agent register --token <boss-token> --name nex --description "AI assistant" --workspace "$PWD"
 ```
 
 Useful checks (run when relevant):
@@ -105,18 +105,18 @@ Real provider verification policy (required for provider/dependency/runtime chan
 - By default, use the official provider homes: `~/.codex` and `~/.claude`.
   - Do not pass `--codex-home` / `--claude-home` unless explicitly testing overrides.
 - Keep tests isolated from normal operator state:
-  - Use a dedicated temporary Hi-Boss directory: `export HIBOSS_DIR="$(mktemp -d /tmp/hiboss-verify-XXXX)"`
-  - Never run destructive reset commands against default `~/hiboss` during verification.
+  - Use a dedicated temporary CLIClaw directory: `export CLICLAW_DIR="$(mktemp -d /tmp/cliclaw-verify-XXXX)"`
+  - Never run destructive reset commands against default `~/cliclaw` during verification.
 - Minimum real-request verification checklist:
   - `npm run verify:token-usage:real -- --provider both --session-mode fresh --turns 1`
   - `npm run verify:token-usage:real -- --provider both --session-mode continuous --turns 2`
-  - Run one isolated daemon-level smoke flow (setup/start/register/send/list) in the temp `HIBOSS_DIR` and confirm both provider-backed agents complete at least one run.
+  - Run one isolated daemon-level smoke flow (setup/start/register/send/list) in the temp `CLICLAW_DIR` and confirm both provider-backed agents complete at least one run.
 
 
 ## Repo layout (what lives where)
 
-- `bin/` — TypeScript CLI entry for dev (`npm run hiboss`)
-- `dist/` — build output used by the published `hiboss` binary (do not hand-edit)
+- `bin/` — TypeScript CLI entry for dev (`npm run cliclaw`)
+- `dist/` — build output used by the published `cliclaw` binary (do not hand-edit)
 - `scripts/` — dev/CI helper scripts (prompt validation, inventory generation, etc.)
 - `src/daemon/` — daemon core (routing, scheduler, IPC server, DB)
 - `src/cli/` — CLI surface, RPC calls, and instruction rendering
@@ -128,18 +128,18 @@ Real provider verification policy (required for provider/dependency/runtime chan
 
 ## State & debugging
 
-Default data dir: `~/hiboss/` (override via `HIBOSS_DIR`; no `--data-dir` flag today)
+Default data dir: `~/cliclaw/` (override via `CLICLAW_DIR`; no `--data-dir` flag today)
 
 | Item | Path |
 |------|------|
-| DB | `~/hiboss/.daemon/hiboss.db` |
-| IPC socket | `~/hiboss/.daemon/daemon.sock` |
-| Daemon PID | `~/hiboss/.daemon/daemon.pid` |
-| Daemon log | `~/hiboss/.daemon/daemon.log` |
-| Media downloads | `~/hiboss/media/` |
-| Per-agent homes | `~/hiboss/agents/<agent-name>/` |
+| DB | `~/cliclaw/.daemon/cliclaw.db` |
+| IPC socket | `~/cliclaw/.daemon/daemon.sock` |
+| Daemon PID | `~/cliclaw/.daemon/daemon.pid` |
+| Daemon log | `~/cliclaw/.daemon/daemon.log` |
+| Media downloads | `~/cliclaw/media/` |
+| Per-agent homes | `~/cliclaw/agents/<agent-name>/` |
 
 Reset:
 ```bash
-hiboss daemon stop --token <boss-token> && rm -rf ~/hiboss && hiboss setup
+cliclaw daemon stop --token <boss-token> && rm -rf ~/cliclaw && cliclaw setup
 ```

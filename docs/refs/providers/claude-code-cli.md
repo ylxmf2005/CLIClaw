@@ -14,7 +14,7 @@ Experiments:
 claude -h
 ```
 
-## Flags used by Hi-Boss
+## Flags used by CLIClaw
 
 - `-p`
 - `--append-system-prompt <text>`
@@ -36,7 +36,7 @@ claude -h
 
 ## Session files
 
-- Default provider home used by Hi-Boss: `~/.claude`
+- Default provider home used by CLIClaw: `~/.claude`
 - Session logs (manual inspection): `~/.claude/projects/<project-slug>/<session_id>.jsonl`
 
 ## Known gotcha

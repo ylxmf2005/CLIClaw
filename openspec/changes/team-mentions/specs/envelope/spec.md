@@ -22,7 +22,7 @@ The `envelope.send` RPC and `POST /api/envelopes` endpoint SHALL accept an optio
 ## MODIFIED Requirements
 
 ### Requirement: Team fan-out routing
-`hiboss envelope send --to team:<name>` fans out one envelope per team member (sender excluded). Each envelope targets `agent:<member>` and stamps `metadata.chatScope = team:<name>`.
+`cliclaw envelope send --to team:<name>` fans out one envelope per team member (sender excluded). Each envelope targets `agent:<member>` and stamps `metadata.chatScope = team:<name>`.
 
 When a `mentions` array is provided (via RPC/API):
 - `["@all"]` → broadcast fan-out to all members excluding sender (existing behavior)
@@ -31,7 +31,7 @@ When a `mentions` array is provided (via RPC/API):
 CLI `team send` and `envelope send --to team:<name>` without `mentions` continue to broadcast to all members (backward compatible).
 
 #### Scenario: CLI team send broadcasts without mentions
-- **WHEN** `hiboss team send --name core-dev --text "hello"` is called (no mentions parameter)
+- **WHEN** `cliclaw team send --name core-dev --text "hello"` is called (no mentions parameter)
 - **THEN** envelopes SHALL be created for all team members excluding sender (existing behavior preserved)
 
 #### Scenario: API team send with targeted mentions

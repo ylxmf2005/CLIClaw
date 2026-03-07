@@ -86,7 +86,7 @@ export function createTeamHandlers(ctx: DaemonContext): RpcMethodRegistry {
       });
 
       const ensured = ensureTeamspaceDir({
-        hibossDir: ctx.config.dataDir,
+        cliclawDir: ctx.config.dataDir,
         teamName: team.name,
       });
       if (!ensured.ok) {
@@ -160,7 +160,7 @@ export function createTeamHandlers(ctx: DaemonContext): RpcMethodRegistry {
       const membersBeforeDelete = ctx.db.listTeamMemberAgentNames(team.name);
 
       const removed = removeTeamspaceDir({
-        hibossDir: ctx.config.dataDir,
+        cliclawDir: ctx.config.dataDir,
         teamName: team.name,
       });
       if (!removed.ok) {

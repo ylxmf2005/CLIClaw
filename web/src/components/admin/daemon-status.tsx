@@ -118,7 +118,7 @@ export function DaemonStatusView() {
             {/* Data directory */}
             <DetailCard title="Data Directory" icon={<Database className="h-4 w-4" />}>
               <code className="text-xs font-mono text-muted-foreground">
-                {ds?.dataDir || "~/hiboss/"}
+                {ds?.dataDir || "~/cliclaw/"}
               </code>
             </DetailCard>
 

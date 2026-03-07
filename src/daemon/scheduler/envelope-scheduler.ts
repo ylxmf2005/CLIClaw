@@ -1,5 +1,5 @@
 import type { Envelope } from "../../envelope/types.js";
-import type { HiBossDatabase } from "../db/database.js";
+import type { CliClawDatabase } from "../db/database.js";
 import type { MessageRouter } from "../router/message-router.js";
 import type { AgentExecutor } from "../../agent/executor.js";
 import { delayUntilUnixMs } from "../../shared/time.js";
@@ -17,7 +17,7 @@ export class EnvelopeScheduler {
   private tickQueued = false;
 
   constructor(
-    private readonly db: HiBossDatabase,
+    private readonly db: CliClawDatabase,
     private readonly router: MessageRouter,
     private readonly executor: AgentExecutor
   ) {}

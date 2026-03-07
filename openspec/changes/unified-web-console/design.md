@@ -1,6 +1,6 @@
 ## Context
 
-Hi-Boss daemon already has HTTP REST server (port 3889), WebSocket server, event bus, and relay broker manager implemented. The web frontend has working auth, agent list, chat view, and terminal. The Telegram adapter is the only external adapter.
+CLIClaw daemon already has HTTP REST server (port 3889), WebSocket server, event bus, and relay broker manager implemented. The web frontend has working auth, agent list, chat view, and terminal. The Telegram adapter is the only external adapter.
 
 Missing pieces:
 1. No console adapter — the web cannot act as a channel adapter.
@@ -67,9 +67,9 @@ Bindings managed via `POST/DELETE /api/agents/:name/sessions/:id/bindings`. No a
 
 Slash commands (`/abort`, `/refresh`, `/interrupt`) are sent from the composer, handled client-side in the chat page, and call the correct API endpoints. The issue is that some RPC handlers may not properly handle admin-token invocations. Fix: ensure all slash command RPC endpoints accept admin token principal.
 
-### 7. Relay PTY wiring: Hi-Boss as relay proxy
+### 7. Relay PTY wiring: CLIClaw as relay proxy
 
-All PTY data flows through Hi-Boss's single WS connection:
+All PTY data flows through CLIClaw's single WS connection:
 - `agent.pty.output` (server -> client): raw PTY chunks from relay broker
 - `agent.pty.input` (client -> server): keystrokes from browser terminal
 

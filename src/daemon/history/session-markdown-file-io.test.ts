@@ -16,7 +16,7 @@ import {
 const TEST_TIMEZONE = "Asia/Shanghai";
 
 function withTempDir(run: (dir: string) => void): void {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hiboss-session-md-test-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cliclaw-session-md-test-"));
   try {
     run(dir);
   } finally {

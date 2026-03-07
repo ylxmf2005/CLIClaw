@@ -6,7 +6,6 @@
 
 import type { ConversationHistory } from "./conversation-history.js";
 import {
-  clearSessionJournal,
   closeSessionFile,
   readSessionFile,
   readSessionJournalEvents,
@@ -41,7 +40,6 @@ export function closeSessionByPath(params: {
         events: mergedEvents,
         endedAtMs: endedAt,
       });
-      clearSessionJournal(params.filePath);
     }
     closeSessionFile(params.filePath, endedAtMs);
     markSessionMarkdownClosedBySessionJsonPath({

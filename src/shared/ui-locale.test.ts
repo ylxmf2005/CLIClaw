@@ -14,15 +14,15 @@ test("normalizeUiLocale falls back to en for unknown values", () => {
 });
 
 test("resolveUiLocale prioritizes env over config", () => {
-  const previous = process.env.HIBOSS_UI_LOCALE;
-  process.env.HIBOSS_UI_LOCALE = "zh-CN";
+  const previous = process.env.CLICLAW_UI_LOCALE;
+  process.env.CLICLAW_UI_LOCALE = "zh-CN";
   try {
     assert.equal(resolveUiLocale("en"), "zh-CN");
   } finally {
     if (typeof previous === "string") {
-      process.env.HIBOSS_UI_LOCALE = previous;
+      process.env.CLICLAW_UI_LOCALE = previous;
     } else {
-      delete process.env.HIBOSS_UI_LOCALE;
+      delete process.env.CLICLAW_UI_LOCALE;
     }
   }
 });

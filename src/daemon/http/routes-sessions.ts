@@ -10,6 +10,10 @@ import { RPC_ERRORS } from "../ipc/types.js";
 import { requireTokenFromCtx } from "./route-helpers.js";
 import { generateUUID } from "../../shared/uuid.js";
 import { isKnownAdapterType } from "../../shared/adapter-types.js";
+import { logEvent } from "../../shared/daemon-log.js";
+import { isValidAgentName, AGENT_NAME_ERROR_MESSAGE } from "../../shared/validation.js";
+
+const VALID_REASONING_EFFORTS = new Set(["none", "low", "medium", "high", "xhigh", "max"]);
 
 /**
  * Register session and chat-state routes.
@@ -19,6 +23,52 @@ export function registerSessionRoutes(
   rpc: RpcMethodRegistry,
   daemonCtx: DaemonContext,
 ): void {
+  // GET /api/agents/:name/chats/:chatId/messages — list full chat timeline
+  router.get("/api/agents/:name/chats/:chatId/messages", async (ctx) => {
+    const token = requireTokenFromCtx(ctx);
+    const principal = daemonCtx.resolvePrincipal(token);
+    daemonCtx.assertOperationAllowed("envelope.list", principal);
+
+    const agentName = (ctx.params.name ?? "").trim();
+    if (!agentName || !isValidAgentName(agentName)) {
+      rpcError(RPC_ERRORS.INVALID_PARAMS, AGENT_NAME_ERROR_MESSAGE);
+    }
+
+    const chatId = (ctx.params.chatId ?? "").trim();
+    if (!chatId) {
+      rpcError(RPC_ERRORS.INVALID_PARAMS, "chatId is required");
+    }
+
+    const agent = daemonCtx.db.getAgentByNameCaseInsensitive(agentName);
+    if (!agent) {
+      rpcError(RPC_ERRORS.NOT_FOUND, "Agent not found");
+    }
+
+    if (principal.kind === "agent" && principal.agent.name !== agent.name) {
+      rpcError(RPC_ERRORS.UNAUTHORIZED, "Access denied");
+    }
+
+    const rawLimit = ctx.query.get("limit");
+    const parsedLimit = rawLimit ? Number.parseInt(rawLimit, 10) : Number.NaN;
+    const limit = Number.isFinite(parsedLimit)
+      ? Math.max(1, Math.min(500, Math.trunc(parsedLimit)))
+      : 200;
+
+    const statusRaw = (ctx.query.get("status") ?? "done").trim();
+    if (statusRaw !== "done" && statusRaw !== "pending") {
+      rpcError(RPC_ERRORS.INVALID_PARAMS, "Invalid status (expected pending or done)");
+    }
+
+    const envelopes = daemonCtx.db.listEnvelopesForAgentChat({
+      agentName: agent.name,
+      chatId,
+      status: statusRaw,
+      limit,
+    });
+
+    return { envelopes };
+  });
+
   // GET /api/sessions?agentName=<name>
   router.get("/api/sessions", async (ctx) => {
     const token = requireTokenFromCtx(ctx);
@@ -55,8 +105,140 @@ export function registerSessionRoutes(
       rpcError(RPC_ERRORS.NOT_FOUND, "Agent not found");
     }
 
-    const relayOn = daemonCtx.db.getChatRelayState(agent.name, chatId);
+    let relayOn = daemonCtx.db.getChatRelayState(agent.name, chatId);
+
+    // Relay state is persisted in DB, while active relay workers are in-memory.
+    // After daemon restart, relayOn may still be true but the PTY worker is gone.
+    // Ensure the worker exists so the terminal can attach to a live Codex/Claude session.
+    if (relayOn && daemonCtx.relayAvailable && daemonCtx.relayExecutor) {
+      const chatModelSettings = daemonCtx.db.getChatModelSettings(agent.name, chatId);
+      const effectiveModel = chatModelSettings.modelOverride ?? agent.model;
+      const result = await daemonCtx.relayExecutor.ensureSession({
+        agentName: agent.name,
+        chatId,
+        provider: agent.provider ?? "claude",
+        workspace: agent.workspace,
+        model: effectiveModel,
+      });
+      if (!result.success) {
+        logEvent("warn", "relay-session-restore-failed", {
+          "agent-name": agent.name,
+          "chat-id": chatId,
+          error: result.error ?? "unknown error",
+        });
+        daemonCtx.db.setChatRelayState(agent.name, chatId, false);
+        relayOn = false;
+      }
+    }
+
     return { agentName: agent.name, chatId, relayOn };
+  });
+
+  // GET /api/agents/:name/chats/:chatId/settings — get chat model/reasoning overrides
+  router.get("/api/agents/:name/chats/:chatId/settings", async (ctx) => {
+    const token = requireTokenFromCtx(ctx);
+    const principal = daemonCtx.resolvePrincipal(token);
+    daemonCtx.assertOperationAllowed("chat.relay-toggle", principal);
+
+    const agentName = ctx.params.name ?? "";
+    const chatId = ctx.params.chatId ?? "";
+    if (!agentName || !chatId) {
+      rpcError(RPC_ERRORS.INVALID_PARAMS, "agentName and chatId are required");
+    }
+
+    const agent = daemonCtx.db.getAgentByNameCaseInsensitive(agentName);
+    if (!agent) {
+      rpcError(RPC_ERRORS.NOT_FOUND, "Agent not found");
+    }
+
+    const settings = daemonCtx.db.getChatModelSettings(agent.name, chatId);
+    return {
+      agentName: agent.name,
+      chatId,
+      ...(settings.modelOverride ? { modelOverride: settings.modelOverride } : {}),
+      ...(settings.reasoningEffortOverride ? { reasoningEffortOverride: settings.reasoningEffortOverride } : {}),
+    };
+  });
+
+  // PATCH /api/agents/:name/chats/:chatId/settings — update chat model/reasoning overrides
+  router.patch("/api/agents/:name/chats/:chatId/settings", async (ctx) => {
+    const token = requireTokenFromCtx(ctx);
+    const principal = daemonCtx.resolvePrincipal(token);
+    daemonCtx.assertOperationAllowed("chat.relay-toggle", principal);
+
+    const agentName = ctx.params.name ?? "";
+    const chatId = ctx.params.chatId ?? "";
+    if (!agentName || !chatId) {
+      rpcError(RPC_ERRORS.INVALID_PARAMS, "agentName and chatId are required");
+    }
+
+    const agent = daemonCtx.db.getAgentByNameCaseInsensitive(agentName);
+    if (!agent) {
+      rpcError(RPC_ERRORS.NOT_FOUND, "Agent not found");
+    }
+
+    const body = (ctx.body ?? {}) as Record<string, unknown>;
+    if (!("modelOverride" in body) && !("reasoningEffortOverride" in body)) {
+      rpcError(RPC_ERRORS.INVALID_PARAMS, "Provide at least one of modelOverride or reasoningEffortOverride");
+    }
+
+    let modelOverride: string | null | undefined;
+    if ("modelOverride" in body) {
+      if (body.modelOverride === null || body.modelOverride === undefined) {
+        modelOverride = null;
+      } else if (typeof body.modelOverride === "string") {
+        modelOverride = body.modelOverride.trim() || null;
+      } else {
+        rpcError(RPC_ERRORS.INVALID_PARAMS, "modelOverride must be string|null");
+      }
+    }
+
+    let reasoningEffortOverride: "none" | "low" | "medium" | "high" | "xhigh" | "max" | null | undefined;
+    if ("reasoningEffortOverride" in body) {
+      if (body.reasoningEffortOverride === null || body.reasoningEffortOverride === undefined) {
+        reasoningEffortOverride = null;
+      } else if (typeof body.reasoningEffortOverride === "string") {
+        const normalized = body.reasoningEffortOverride.trim().toLowerCase();
+        if (!VALID_REASONING_EFFORTS.has(normalized)) {
+          rpcError(RPC_ERRORS.INVALID_PARAMS, "Invalid reasoningEffortOverride");
+        }
+        reasoningEffortOverride = normalized as "none" | "low" | "medium" | "high" | "xhigh" | "max";
+      } else {
+        rpcError(RPC_ERRORS.INVALID_PARAMS, "reasoningEffortOverride must be string|null");
+      }
+    }
+
+    daemonCtx.db.setChatModelSettings(agent.name, chatId, {
+      ...(modelOverride !== undefined ? { modelOverride } : {}),
+      ...(reasoningEffortOverride !== undefined ? { reasoningEffortOverride } : {}),
+    });
+
+    // Force the next turn for this chat to start with fresh provider args.
+    const channelSession = daemonCtx.db.getOrCreateChannelSession({
+      agentName: agent.name,
+      adapterType: "internal",
+      chatId,
+      provider: agent.provider ?? "claude",
+      touchExistingSession: false,
+    });
+    daemonCtx.db.updateAgentSessionProviderSessionId(channelSession.session.id, null, {
+      provider: channelSession.session.provider,
+    });
+    daemonCtx.executor.invalidateChannelSessionCache(agent.name, "internal", chatId);
+    daemonCtx.executor.closeActiveHistorySessionForChannel(
+      agent.name,
+      chatId,
+      "chat-model-settings-updated"
+    );
+
+    const settings = daemonCtx.db.getChatModelSettings(agent.name, chatId);
+    return {
+      success: true,
+      agentName: agent.name,
+      chatId,
+      ...(settings.modelOverride ? { modelOverride: settings.modelOverride } : {}),
+      ...(settings.reasoningEffortOverride ? { reasoningEffortOverride: settings.reasoningEffortOverride } : {}),
+    };
   });
 
   // 4.1: GET /api/agents/:name/sessions — list sessions with bindings

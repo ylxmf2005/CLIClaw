@@ -1,8 +1,8 @@
 # Agent: File-Based Memory Protocol
 
-Hi-Boss agent memory is stored as **plain Markdown files** inside each agent's `internal_space/`. These files are the durable, human-editable source of truth; indexes/caches are optional accelerators and rebuildable.
+CLIClaw agent memory is stored as **plain Markdown files** inside each agent's `internal_space/`. These files are the durable, human-editable source of truth; indexes/caches are optional accelerators and rebuildable.
 
-This is the **v1 private memory protocol** (per-agent). Team shared workspace is handled via `{{HIBOSS_DIR}}/teamspaces/<team-name>/`.
+This is the **v1 private memory protocol** (per-agent). Team shared workspace is handled via `{{CLICLAW_DIR}}/teamspaces/<team-name>/`.
 
 ## Goals
 
@@ -15,7 +15,7 @@ This is the **v1 private memory protocol** (per-agent). Team shared workspace is
 ## Directory Layout
 
 ```text
-{{HIBOSS_DIR}}/agents/<agent-name>/internal_space/
+{{CLICLAW_DIR}}/agents/<agent-name>/internal_space/
   MEMORY.md                     # long-term (core) memory (auto-injected)
   memories/                     # daily memory (auto-injected: latest N files; truncated)
     2026-02-11.md
@@ -24,14 +24,14 @@ This is the **v1 private memory protocol** (per-agent). Team shared workspace is
     2026-03-03/
       <chat-id>/
         <session-id>.json
-        <session-id>.events.ndjson
+        <session-id>.events.jsonl
         <session-id>.md
 ```
 
 Notes:
 - `internal_space/` is included in provider CLI `--add-dir`, so agents can read/write these files.
 - `memories/` is append-friendly and safe to prune/archive later.
-- Hi-Boss ensures internal space layout exists during setup and at session start. Missing `MEMORY.md` is created empty.
+- CLIClaw ensures internal space layout exists during setup and at session start. Missing `MEMORY.md` is created empty.
 
 ## Memory Tiers
 
@@ -62,7 +62,7 @@ Rules:
 
 ## Prompt Injection
 
-On each new session, Hi-Boss injects:
+On each new session, CLIClaw injects:
 1. Truncated `MEMORY.md` (long-term)
 2. Truncated recent daily memory (latest N files)
 3. Session summary snapshots from recent history markdown files
@@ -86,6 +86,6 @@ Recovery-capable backup needs:
 - `internal_space/memories/*.md`
 - `internal_space/history/**/*.md`
 - `internal_space/history/**/*.json`
-- `internal_space/history/**/*.events.ndjson`
+- `internal_space/history/**/*.events.jsonl`
 
 Everything else (SQLite, indexes) is rebuildable runtime state.

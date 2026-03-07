@@ -15,7 +15,7 @@ export const MOCK_AGENTS: Agent[] = [
   {
     name: "nex",
     description: "Primary AI assistant",
-    workspace: "/home/projects/hi-boss",
+    workspace: "/home/projects/cliclaw",
     provider: "claude",
     model: "claude-sonnet-4-20250514",
     permissionLevel: "privileged",
@@ -26,7 +26,7 @@ export const MOCK_AGENTS: Agent[] = [
   {
     name: "shieru",
     description: "Code review specialist",
-    workspace: "/home/projects/hi-boss",
+    workspace: "/home/projects/cliclaw",
     provider: "claude",
     permissionLevel: "standard",
     bindings: [],
@@ -144,7 +144,7 @@ export const MOCK_DAEMON: DaemonStatus = {
     { agentName: "nex", adapterType: "telegram" },
     { agentName: "cron-bot", adapterType: "telegram" },
   ],
-  dataDir: "~/hiboss/",
+  dataDir: "~/cliclaw/",
 };
 
 export const MOCK_CONVERSATIONS: ChatConversation[] = [

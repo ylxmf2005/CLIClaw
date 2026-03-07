@@ -1,5 +1,5 @@
 /**
- * SQLite schema definitions for Hi-Boss.
+ * SQLite schema definitions for CLIClaw.
  */
 
 import {
@@ -173,6 +173,8 @@ CREATE TABLE IF NOT EXISTS chat_state (
   agent_name TEXT NOT NULL,
   chat_id TEXT NOT NULL,
   relay_on INTEGER DEFAULT 0,
+  model_override TEXT,
+  reasoning_effort_override TEXT,
   PRIMARY KEY (agent_name, chat_id)
 );
 `;

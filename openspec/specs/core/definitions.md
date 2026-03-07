@@ -1,6 +1,6 @@
 # Core: Field Definitions & Data Model
 
-This document defines the field mappings between code (TypeScript), SQLite, and stable CLI output keys for core Hi-Boss entities.
+This document defines the field mappings between code (TypeScript), SQLite, and stable CLI output keys for core CLIClaw entities.
 
 For command flags and examples, see `openspec/specs/cli/spec.md` and `openspec/specs/cli/commands.md`.
 
@@ -15,7 +15,7 @@ Cross-cutting naming, boss-marker, and short-id conventions are canonical in `op
 - `agent.relayMode` → SQLite `agents.relay_mode` → `settings.agents[].relay-mode`
 - `chatState.relayOn` → SQLite `chat_state.relay_on` → RPC `chat.relay-toggle`
 - `config.bossTimezone` → SQLite `config.boss_timezone` → setup `boss-timezone` → `boss-timezone:`
-- `config.uiLocale` (legacy optional cache key) → SQLite `config.ui_locale` → env override `HIBOSS_UI_LOCALE`
+- `config.uiLocale` (legacy optional cache key) → SQLite `config.ui_locale` → env override `CLICLAW_UI_LOCALE`
 - `config.userPermissionPolicy` → SQLite `config.user_permission_policy` → `settings.tokens[]`
 - `channelUserAuth.token` → SQLite `channel_user_auth.token` → `/login <token>` session auth
 - `runtime.sessionSummary.recentDays` → SQLite `config.runtime_session_summary_recent_days` → `settings.runtime.session-summary.recent-days`
@@ -235,7 +235,7 @@ Table: `agent_bindings` (see `src/daemon/db/schema.ts`)
 
 ## Reaction
 
-`hiboss reaction set` prints:
+`cliclaw reaction set` prints:
 - `success: true|false`
 
 ---

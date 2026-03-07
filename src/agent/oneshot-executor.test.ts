@@ -16,7 +16,7 @@ test("tryCloneSession does not fall back to agent-wide recent sessions", async (
         },
       } as any,
       router: { routeEnvelope: async () => undefined } as any,
-      hibossDir: "/tmp",
+      cliclawDir: "/tmp",
     },
   );
 

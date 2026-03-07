@@ -2,23 +2,24 @@ import * as os from "os";
 import * as path from "path";
 import type { PermissionPolicy } from "./permissions.js";
 import type { UserPermissionPolicy } from "./user-permissions.js";
+import { PRODUCT_DEFAULT_DB_FILENAME, PRODUCT_DEFAULT_DIRNAME } from "./brand.js";
 
-// ==================== Hi-Boss Paths ====================
+// ==================== CLIClaw Paths ====================
 
-export const DEFAULT_HIBOSS_DIRNAME = "hiboss";
+export const DEFAULT_CLICLAW_DIRNAME = PRODUCT_DEFAULT_DIRNAME;
 export const DEFAULT_DAEMON_DIRNAME = ".daemon";
-export const DEFAULT_DB_FILENAME = "hiboss.db";
+export const DEFAULT_DB_FILENAME = PRODUCT_DEFAULT_DB_FILENAME;
 export const DEFAULT_SOCKET_FILENAME = "daemon.sock";
 export const DEFAULT_PID_FILENAME = "daemon.pid";
 export const DEFAULT_MEDIA_DIRNAME = "media";
 export const DEFAULT_AGENTS_DIRNAME = "agents";
 
-export function getDefaultHiBossDir(): string {
-  return path.join(os.homedir(), DEFAULT_HIBOSS_DIRNAME);
+export function getDefaultCliClawDir(): string {
+  return path.join(os.homedir(), DEFAULT_CLICLAW_DIRNAME);
 }
 
 export function getDefaultMediaDir(): string {
-  return path.join(getDefaultHiBossDir(), DEFAULT_MEDIA_DIRNAME);
+  return path.join(getDefaultCliClawDir(), DEFAULT_MEDIA_DIRNAME);
 }
 
 // ==================== Memory Defaults ====================

@@ -7,7 +7,7 @@ import type {
 } from "../../adapters/types.js";
 import { formatChannelAddress, formatAgentAddress } from "../../adapters/types.js";
 import type { MessageRouter } from "../router/message-router.js";
-import type { HiBossDatabase } from "../db/database.js";
+import type { CliClawDatabase } from "../db/database.js";
 import type { DaemonConfig } from "../daemon.js";
 import type { AgentExecutor } from "../../agent/executor.js";
 import { errorMessage, logEvent } from "../../shared/daemon-log.js";
@@ -44,7 +44,7 @@ export class ChannelBridge {
 
   constructor(
     private router: MessageRouter,
-    private db: HiBossDatabase,
+    private db: CliClawDatabase,
     private config: DaemonConfig,
     private options: ChannelBridgeOptions = {},
   ) {

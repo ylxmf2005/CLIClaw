@@ -38,7 +38,7 @@ export function createAgentDeleteHandler(ctx: DaemonContext): RpcMethodRegistry 
         const bindings = ctx.db.getBindingsByAgentName(agent.name);
 
         await mutateSettingsAndSync({
-          hibossDir: ctx.config.dataDir,
+          cliclawDir: ctx.config.dataDir,
           db: ctx.db,
           mutate: (settings) => {
             settings.agents = settings.agents.filter(

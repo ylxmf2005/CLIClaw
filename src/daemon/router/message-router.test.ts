@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { ChatAdapter, ChannelMessageHandler, MessageContent, SendMessageOptions } from "../../adapters/types.js";
-import type { HiBossDatabase } from "../db/database.js";
+import type { CliClawDatabase } from "../db/database.js";
 import { formatTelegramMessageIdCompact } from "../../shared/telegram-message-id.js";
 import type { Envelope, EnvelopeStatus } from "../../envelope/types.js";
 import { MessageRouter } from "./message-router.js";
@@ -73,7 +73,7 @@ class FakeTelegramAdapter implements ChatAdapter {
 test("channel delivery uses replyToEnvelopeId for same-chat telegram quoting", async () => {
   const db = new FakeDb("telegram", "token-1");
   const adapter = new FakeTelegramAdapter();
-  const router = new MessageRouter(db as unknown as HiBossDatabase);
+  const router = new MessageRouter(db as unknown as CliClawDatabase);
   router.registerAdapter(adapter, "token-1");
 
   const parent = makeEnvelope({
@@ -115,7 +115,7 @@ for (const scenario of [
   test(`channel delivery ignores replyToEnvelopeId for ${scenario.name}`, async () => {
     const db = new FakeDb("telegram", "token-1");
     const adapter = new FakeTelegramAdapter();
-    const router = new MessageRouter(db as unknown as HiBossDatabase);
+    const router = new MessageRouter(db as unknown as CliClawDatabase);
     router.registerAdapter(adapter, "token-1");
 
     const parent = makeEnvelope({

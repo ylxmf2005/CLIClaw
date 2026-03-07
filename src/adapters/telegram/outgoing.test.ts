@@ -6,7 +6,7 @@ import test from "node:test";
 import { sendTelegramMessage } from "./outgoing.js";
 
 function makeTempFile(filename: string): { filePath: string; cleanup: () => void } {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hiboss-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cliclaw-"));
   const filePath = path.join(dir, filename);
   fs.writeFileSync(filePath, "hello", "utf8");
   return {

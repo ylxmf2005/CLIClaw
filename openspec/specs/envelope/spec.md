@@ -1,6 +1,6 @@
 # Envelope: Model, Routing & Scheduling
 
-An **envelope** is Hi-Boss's internal durable message record (SQLite table: `envelopes`).
+An **envelope** is CLIClaw's internal durable message record (SQLite table: `envelopes`).
 
 Every message between:
 - a human (via an adapter like Telegram) and an agent
@@ -25,7 +25,7 @@ Field mappings: `openspec/specs/core/definitions.md` (TypeScript ↔ SQLite ↔ 
 
 Envelopes are created by:
 - Adapters → daemon (e.g., Telegram inbound messages), via `src/daemon/bridges/channel-bridge.ts`
-- Agents → daemon, via `hiboss envelope send` / `envelope.send`
+- Agents → daemon, via `cliclaw envelope send` / `envelope.send`
 
 New envelopes start as `status=pending`.
 
@@ -46,7 +46,7 @@ Permission note:
 - Admin-token `envelope.send` is limited to agent-chat destinations (`agent:<name>:new` or `agent:<name>:<chat-id>`); team/channel destinations are rejected.
 
 Interrupt-now note:
-- `hiboss envelope send --interrupt-now --to agent:<name>:new|<chat-id>` interrupts the target agent's current/queued work with higher queue priority.
+- `cliclaw envelope send --interrupt-now --to agent:<name>:new|<chat-id>` interrupts the target agent's current/queued work with higher queue priority.
 - Existing unread pending envelopes are preserved; no queue-clear is performed.
 - `--interrupt-now` is mutually exclusive with `--deliver-at`.
 
@@ -69,10 +69,10 @@ Envelope origin is tracked in `metadata.origin` for audit/history (`cli | channe
 
 ## Reply / Threading
 
-Hi-Boss uses a single reply/thread mechanism for both channel quoting and agent↔agent context threading.
+CLIClaw uses a single reply/thread mechanism for both channel quoting and agent↔agent context threading.
 
-- `hiboss envelope send --reply-to <envelope-id>` sets `envelope.metadata.replyToEnvelopeId`.
-- `hiboss envelope thread --envelope-id <id>` follows `replyToEnvelopeId` pointers up to the root.
+- `cliclaw envelope send --reply-to <envelope-id>` sets `envelope.metadata.replyToEnvelopeId`.
+- `cliclaw envelope thread --envelope-id <id>` follows `replyToEnvelopeId` pointers up to the root.
 - For channel destinations, adapters may use the referenced envelope's channel message id for platform-native quoting.
 
 Platform message ids (e.g., Telegram `message_id`) are stored in `envelope.metadata.channelMessageId` but are intentionally not shown to agents.
@@ -130,7 +130,7 @@ Key files: `src/shared/time.ts`, `src/daemon/scheduler/envelope-scheduler.ts`, `
 
 ### `deliver-at` Parsing
 
-`hiboss envelope send --deliver-at <time>` accepts:
+`cliclaw envelope send --deliver-at <time>` accepts:
 - Relative: `+2h`, `+30m`, `+1Y2M3D`, `-15m` (units case-sensitive: `Y/M/D/h/m/s`)
 - ISO 8601 with timezone: `2026-01-27T16:30:00+08:00` (or UTC `Z`)
 - ISO-like without timezone (interpreted in boss timezone): `YYYY-MM-DDTHH:MM[:SS]`

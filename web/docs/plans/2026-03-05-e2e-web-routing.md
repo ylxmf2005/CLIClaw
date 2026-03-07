@@ -4,9 +4,9 @@
 
 **Goal:** Verify all web-nextjs-routing features work end-to-end against a live daemon via browser testing.
 
-**Architecture:** Use chrome-devtools MCP to drive a real browser session against the Next.js dev server (localhost:3000) backed by a live daemon (localhost:3889, data dir ~/hiboss-test/). Each task tests one feature area by navigating, interacting, and verifying DOM state via a11y snapshots and screenshots.
+**Architecture:** Use chrome-devtools MCP to drive a real browser session against the Next.js dev server (localhost:3000) backed by a live daemon (localhost:3889, data dir ~/cliclaw-test/). Each task tests one feature area by navigating, interacting, and verifying DOM state via a11y snapshots and screenshots.
 
-**Tech Stack:** Chrome DevTools Protocol (via MCP), Next.js 16 dev server, Hi-Boss daemon HTTP+WS, SQLite test data.
+**Tech Stack:** Chrome DevTools Protocol (via MCP), Next.js 16 dev server, CLIClaw daemon HTTP+WS, SQLite test data.
 
 **Test Environment:**
 - Next.js dev server: `http://localhost:3000`
@@ -86,7 +86,7 @@ Use `mcp__chrome-devtools__click` on the login/submit button, or `mcp__chrome-de
 
 **Step 5: Verify authenticated state**
 
-Use `mcp__chrome-devtools__take_snapshot`. Expected: Left panel is visible with "Hi-Boss" header, "Connected" status, bottom tab bar (Agents, Teams, Chats, Settings), and main content shows empty state ("Select a conversation to begin").
+Use `mcp__chrome-devtools__take_snapshot`. Expected: Left panel is visible with "CLIClaw" header, "Connected" status, bottom tab bar (Agents, Teams, Chats, Settings), and main content shows empty state ("Select a conversation to begin").
 
 **Step 6: Take a screenshot for visual verification**
 
@@ -351,7 +351,7 @@ Use `mcp__chrome-devtools__navigate_page` with url `http://localhost:3000`.
 
 **Step 2: Verify empty state**
 
-Use `mcp__chrome-devtools__take_snapshot`. Expected: main content area shows "Hi-Boss Control" and "Select a conversation to begin". Left panel is visible.
+Use `mcp__chrome-devtools__take_snapshot`. Expected: main content area shows "CLIClaw Control" and "Select a conversation to begin". Left panel is visible.
 
 **Step 3: Take screenshot**
 

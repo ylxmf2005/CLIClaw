@@ -20,8 +20,8 @@ import {
 } from "./agent-options-prompts.js";
 
 export async function runInteractiveSetup(): Promise<void> {
-  console.log("\n🚀 Hi-Boss Setup Wizard\n");
-  console.log("This wizard will help you configure Hi-Boss.\n");
+  console.log("\n🚀 CLIClaw Setup Wizard\n");
+  console.log("This wizard will help you configure CLIClaw.\n");
 
   let setupStatus: Awaited<ReturnType<typeof checkSetupStatus>>;
   try {
@@ -33,15 +33,15 @@ export async function runInteractiveSetup(): Promise<void> {
 
   if (setupStatus.ready && setupStatus.hasSettingsFile) {
     console.log("✅ Setup is already complete!");
-    console.log("\nTo start over: hiboss daemon stop && rm -rf ~/hiboss && hiboss setup\n");
-    console.log("(Advanced: override the Hi-Boss dir with HIBOSS_DIR.)\n");
+    console.log("\nTo start over: cliclaw daemon stop && rm -rf ~/cliclaw && cliclaw setup\n");
+    console.log("(Advanced: override the CLIClaw dir with CLICLAW_DIR.)\n");
     return;
   }
 
   if (!setupStatus.hasSettingsFile && (setupStatus.completed || setupStatus.agents.length > 0)) {
     console.log("⚠️ settings.json is missing; entering recovery setup to regenerate canonical config.\n");
   }
-  const hibossDirForDisplay = (process.env.HIBOSS_DIR ?? "").trim() || "~/hiboss";
+  const cliclawDirForDisplay = (process.env.CLICLAW_DIR ?? "").trim() || "~/cliclaw";
 
   const hasPersistedState =
     setupStatus.hasSettingsFile &&
@@ -51,7 +51,7 @@ export async function runInteractiveSetup(): Promise<void> {
 
   if (hasPersistedState) {
     console.error("\n❌ Interactive setup only supports first-time bootstrap on a clean state.\n");
-    console.error(`Edit ${hibossDirForDisplay}/settings.json directly, then restart the daemon.\n`);
+    console.error(`Edit ${cliclawDirForDisplay}/settings.json directly, then restart the daemon.\n`);
     process.exit(1);
   }
 
@@ -291,7 +291,7 @@ export async function runInteractiveSetup(): Promise<void> {
     console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     console.log("\n⚠️  Save these tokens! They won't be shown again.\n");
     console.log("📱 Telegram bot is configured. Start the daemon with:");
-    console.log("   hiboss daemon start\n");
+    console.log("   cliclaw daemon start\n");
   } catch (err) {
     const error = err as Error;
     console.error(`\n❌ Setup failed: ${error.message}\n`);

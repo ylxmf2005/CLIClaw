@@ -1,6 +1,6 @@
 # Message Rendering
 
-Shared message content rendering for all chat views in the Hi-Boss web frontend.
+Shared message content rendering for all chat views in the CLIClaw web frontend.
 
 ## Shared MessageContent Component
 

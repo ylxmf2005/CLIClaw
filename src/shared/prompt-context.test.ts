@@ -7,7 +7,7 @@ import type { Agent } from "../agent/types.js";
 import { buildSystemPromptContext } from "./prompt-context.js";
 
 test("buildSystemPromptContext includes configured and team workspaces together", () => {
-  const hibossDir = fs.mkdtempSync(path.join(os.tmpdir(), "hiboss-prompt-context-"));
+  const cliclawDir = fs.mkdtempSync(path.join(os.tmpdir(), "cliclaw-prompt-context-"));
   try {
     const agent: Agent = {
       name: "nex",
@@ -34,7 +34,7 @@ test("buildSystemPromptContext includes configured and team workspaces together"
           teamspaceDir: "/workspace/team-beta",
         },
       ],
-      hibossDir,
+      cliclawDir,
     }) as {
       agent: {
         workspace: string;
@@ -74,6 +74,6 @@ test("buildSystemPromptContext includes configured and team workspaces together"
       "/workspace/team-beta",
     ]);
   } finally {
-    fs.rmSync(hibossDir, { recursive: true, force: true });
+    fs.rmSync(cliclawDir, { recursive: true, force: true });
   }
 });

@@ -1,9 +1,20 @@
-export type AgentReasoningEffort = "none" | "low" | "medium" | "high" | "xhigh";
+export type AgentReasoningEffort = "none" | "low" | "medium" | "high" | "xhigh" | "max";
 export type Provider = "claude" | "codex";
-export type ClaudeEffortLevel = "low" | "medium" | "high";
+
+/** Claude effort levels: low | medium | high | max  (max is Opus-only). */
+export type ClaudeEffortLevel = "low" | "medium" | "high" | "max";
+
+/** Codex reasoning effort levels. */
+export type CodexReasoningEffort = "none" | "low" | "medium" | "high" | "xhigh";
+
+/** Valid reasoning effort values per provider. */
+export const REASONING_EFFORTS_BY_PROVIDER: Record<Provider, readonly string[]> = {
+  claude: ["low", "medium", "high", "max"] as const,
+  codex: ["none", "low", "medium", "high", "xhigh"] as const,
+};
 
 function normalizeAgentReasoningEffort(value: string | null | undefined): AgentReasoningEffort | undefined {
-  if (value === "none" || value === "low" || value === "medium" || value === "high" || value === "xhigh") {
+  if (value === "none" || value === "low" || value === "medium" || value === "high" || value === "xhigh" || value === "max") {
     return value;
   }
   return undefined;
@@ -15,15 +26,16 @@ export function mapAgentReasoningEffortToClaudeEffortLevel(
   const effort = normalizeAgentReasoningEffort(value);
   if (!effort) return undefined;
 
-  // Claude effort levels are low|medium|high.
-  // Mapping keeps the nearest semantic level from Hi-Boss's shared enum.
-  if (effort === "none" || effort === "low") return "low";
+  // Claude supports low | medium | high | max.
+  if (effort === "none") return "low";
+  if (effort === "low") return "low";
   if (effort === "medium") return "medium";
-  return "high"; // high or xhigh
+  if (effort === "max") return "max";
+  return "high"; // high or xhigh → high
 }
 
 export function normalizeClaudeEffortLevel(value: string | null | undefined): ClaudeEffortLevel | undefined {
-  if (value === "low" || value === "medium" || value === "high") return value;
+  if (value === "low" || value === "medium" || value === "high" || value === "max") return value;
   return undefined;
 }
 

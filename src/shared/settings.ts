@@ -29,7 +29,7 @@ export const SETTINGS_FILENAME = "settings.json" as const;
 export const SETTINGS_FILE_MODE = 0o600 as const;
 
 export type SettingsProvider = "claude" | "codex";
-export type SettingsReasoningEffort = "none" | "low" | "medium" | "high" | "xhigh";
+export type SettingsReasoningEffort = "none" | "low" | "medium" | "high" | "xhigh" | "max";
 const AGENT_TOKEN_REGEX = /^[0-9a-f]{32}$/;
 const TELEGRAM_COMMAND_REPLY_AUTO_DELETE_SECONDS_RANGE = { min: 0, max: 86_400 } as const;
 const TELEGRAM_INBOUND_INTERRUPT_WINDOW_SECONDS_RANGE = { min: 0, max: 60 } as const;

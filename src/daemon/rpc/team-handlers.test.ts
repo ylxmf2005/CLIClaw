@@ -6,22 +6,22 @@ import test from "node:test";
 
 import type { Agent } from "../../agent/types.js";
 import type { CreateEnvelopeInput, Envelope } from "../../envelope/types.js";
-import { HiBossDatabase } from "../db/database.js";
+import { CliClawDatabase } from "../db/database.js";
 import { RPC_ERRORS } from "../ipc/types.js";
 import { createTeamHandlers } from "./team-handlers.js";
 import type { DaemonContext } from "./context.js";
 import { INTERNAL_VERSION } from "../../shared/version.js";
 
 async function withTempDb(
-  run: (params: { db: HiBossDatabase; dataDir: string }) => Promise<void>,
+  run: (params: { db: CliClawDatabase; dataDir: string }) => Promise<void>,
 ): Promise<void> {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hiboss-team-handlers-test-"));
-  const dbPath = path.join(dir, "hiboss.db");
-  const dataDir = path.join(dir, "hiboss-home");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cliclaw-team-handlers-test-"));
+  const dbPath = path.join(dir, "cliclaw.db");
+  const dataDir = path.join(dir, "cliclaw-home");
   fs.mkdirSync(dataDir, { recursive: true });
-  let db: HiBossDatabase | null = null;
+  let db: CliClawDatabase | null = null;
   try {
-    db = new HiBossDatabase(dbPath);
+    db = new CliClawDatabase(dbPath);
     await run({ db, dataDir });
   } finally {
     db?.close();
@@ -30,7 +30,7 @@ async function withTempDb(
 }
 
 function createContext(params: {
-  db: HiBossDatabase;
+  db: CliClawDatabase;
   dataDir: string;
   reloadedAgentNames: string[];
   principal?: { kind: "admin" } | { kind: "agent"; agentName: string };

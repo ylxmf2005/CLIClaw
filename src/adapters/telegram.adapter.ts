@@ -11,7 +11,7 @@ import type {
   SendMessageOptions,
   TelegramInlineKeyboardButton,
 } from "./types.js";
-import { getHiBossPaths } from "../shared/hiboss-paths.js";
+import { getCliClawPaths } from "../shared/cliclaw-paths.js";
 import { formatTelegramMessageIdCompact, parseTelegramMessageId } from "../shared/telegram-message-id.js";
 import { buildTelegramChannelMessage, type MessageContext } from "./telegram/incoming.js";
 import { sendTelegramMessage } from "./telegram/outgoing.js";
@@ -91,7 +91,7 @@ export class TelegramAdapter implements ChatAdapter {
   constructor(token: string, uiLocale: UiLocale = "en", options: TelegramAdapterOptions = {}) {
     const { apiRoot, agent } = TelegramAdapter.buildTelegramNetworkOptions();
     this.bot = new Telegraf(token, (apiRoot || agent) ? { telegram: { ...(apiRoot ? { apiRoot } : {}), ...(agent ? { agent } : {}) } } : {});
-    this.mediaDir = getHiBossPaths().mediaDir;
+    this.mediaDir = getCliClawPaths().mediaDir;
     this.uiLocale = uiLocale;
     this.getCommandReplyAutoDeleteSeconds = options.getCommandReplyAutoDeleteSeconds
       ?? (() => DEFAULT_TELEGRAM_COMMAND_REPLY_AUTO_DELETE_SECONDS);

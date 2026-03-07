@@ -14,7 +14,7 @@ export function normalizeUiLocale(input?: string | null): UiLocale {
 }
 
 export function resolveUiLocale(configured?: string | null): UiLocale {
-  const env = process.env.HIBOSS_UI_LOCALE;
+  const env = process.env.CLICLAW_UI_LOCALE;
   if (typeof env === "string" && env.trim()) {
     return normalizeUiLocale(env);
   }

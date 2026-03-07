@@ -1,5 +1,5 @@
 {
-  "name": "hiboss",
+  "name": "cliclaw",
   "version": "2026.2.12",
   "type": "module",
   "description": "Local-first daemon + CLI for routing durable envelopes between agents and chat channels (e.g., Telegram).",
@@ -8,7 +8,7 @@
     "node": ">=18"
   },
   "bin": {
-    "hiboss": "dist/bin/hiboss.js"
+    "cliclaw": "dist/bin/cliclaw.js"
   },
   "files": [
     "dist/",
@@ -20,10 +20,10 @@
     "dev": "tsx watch src/daemon-entry.ts",
     "start": "tsx src/daemon-entry.ts",
     "build": "tsc",
-    "postbuild": "chmod +x dist/bin/hiboss.js",
+    "postbuild": "chmod +x dist/bin/cliclaw.js",
     "prepack": "npm run build",
     "typecheck": "tsc --noEmit",
-    "hiboss": "tsx bin/hiboss.ts",
+    "cliclaw": "tsx bin/cliclaw.ts",
     "e2e:console-reply": "bash scripts/e2e-console-reply-agent-browser.sh",
     "e2e:team-chat-reply": "bash scripts/e2e-team-chat-reply-agent-browser.sh",
     "examples:cli": "tsx scripts/gen-cli-examples.ts",

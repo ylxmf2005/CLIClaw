@@ -7,8 +7,8 @@ ADMIN_TOKEN="${ADMIN_TOKEN:-}"
 TEAM_NAME="${TEAM_NAME:-teamchat-e2e}"
 AGENT_NAME="${AGENT_NAME:-nex}"
 SECONDARY_AGENT_NAME="${SECONDARY_AGENT_NAME:-echo-e2e}"
-HIBOSS_DATA_DIR="${HIBOSS_DATA_DIR:-/Users/EthanLee/hiboss-test}"
-SESSION_NAME="${SESSION_NAME:-hiboss-e2e-team-chat-reply}"
+CLICLAW_DATA_DIR="${CLICLAW_DATA_DIR:-/Users/EthanLee/cliclaw-test}"
+SESSION_NAME="${SESSION_NAME:-cliclaw-e2e-team-chat-reply}"
 TIMEOUT_SECONDS="${TIMEOUT_SECONDS:-150}"
 
 if [[ -z "$ADMIN_TOKEN" ]]; then
@@ -84,11 +84,11 @@ curl -fsS -X POST "${API_URL}/api/teams/${TEAM_NAME}/members" \
   -d "{\"agentName\":\"${AGENT_NAME}\"}" >/dev/null 2>/dev/null || true
 
 echo "Ensuring secondary agent '${SECONDARY_AGENT_NAME}' exists..."
-mkdir -p "${HIBOSS_DATA_DIR}/agents/${SECONDARY_AGENT_NAME}/workspace"
+mkdir -p "${CLICLAW_DATA_DIR}/agents/${SECONDARY_AGENT_NAME}/workspace"
 curl -fsS -X POST "${API_URL}/api/agents" \
   -H "Authorization: Bearer ${ADMIN_TOKEN}" \
   -H "Content-Type: application/json" \
-  -d "{\"name\":\"${SECONDARY_AGENT_NAME}\",\"description\":\"Team mention e2e secondary agent\",\"workspace\":\"${HIBOSS_DATA_DIR}/agents/${SECONDARY_AGENT_NAME}/workspace\",\"provider\":\"claude\"}" >/dev/null 2>/dev/null || true
+  -d "{\"name\":\"${SECONDARY_AGENT_NAME}\",\"description\":\"Team mention e2e secondary agent\",\"workspace\":\"${CLICLAW_DATA_DIR}/agents/${SECONDARY_AGENT_NAME}/workspace\",\"provider\":\"claude\"}" >/dev/null 2>/dev/null || true
 
 echo "Ensuring member '${SECONDARY_AGENT_NAME}' is in team '${TEAM_NAME}'..."
 curl -fsS -X POST "${API_URL}/api/teams/${TEAM_NAME}/members" \

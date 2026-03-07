@@ -51,7 +51,7 @@ export function LoginScreen() {
             </svg>
           </div>
           <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">
-            Hi-Boss
+            CLIClaw
           </h1>
           <p className="mt-1.5 text-sm text-muted-foreground">
             Agent Operations Console

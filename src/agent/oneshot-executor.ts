@@ -2,13 +2,13 @@
  * One-shot executor for /clone and /isolated envelope execution.
  *
  * Runs envelopes independently of the main agent session queue:
- * - Full agent identity (HIBOSS_TOKEN, system instructions, Hi-Boss tools)
+ * - Full agent identity (CLICLAW_TOKEN, system instructions, CLIClaw tools)
  * - Does NOT block or pollute the main session
  * - Concurrent execution (configurable max, default 4)
  * - Results routed back to the originating channel
  */
 
-import type { HiBossDatabase } from "../daemon/db/database.js";
+import type { CliClawDatabase } from "../daemon/db/database.js";
 import type { MessageRouter } from "../daemon/router/message-router.js";
 import type { Envelope, OneshotType } from "../envelope/types.js";
 import type { Agent } from "./types.js";
@@ -24,7 +24,7 @@ import {
   DEFAULT_ONESHOT_MAX_CONCURRENT,
 } from "../shared/defaults.js";
 import { errorMessage, logEvent } from "../shared/daemon-log.js";
-import { getHiBossDir } from "./home-setup.js";
+import { getCliClawDir } from "./home-setup.js";
 import { buildAgentTeamPromptContext, resolveAgentWorkspace } from "../team/runtime.js";
 
 interface OneShotJob {
@@ -40,9 +40,9 @@ export class OneShotExecutor {
 
   constructor(
     private readonly deps: {
-      db: HiBossDatabase;
+      db: CliClawDatabase;
       router: MessageRouter;
-      hibossDir: string;
+      cliclawDir: string;
       onEnvelopeDone?: (envelope: Envelope) => void;
     },
     options: { maxConcurrent?: number } = {},
@@ -159,7 +159,7 @@ export class OneShotExecutor {
       let executionSessionId: string | undefined = session.sessionId;
       try {
         const turn = await executeCliTurn(session, turnInput, {
-          hibossDir: this.deps.hibossDir,
+          cliclawDir: this.deps.cliclawDir,
           agentName: agent.name,
         });
 
@@ -301,7 +301,7 @@ export class OneShotExecutor {
     const provider = agent.provider ?? DEFAULT_AGENT_PROVIDER;
     const workspace = resolveAgentWorkspace({
       db: this.deps.db,
-      hibossDir: this.deps.hibossDir,
+      cliclawDir: this.deps.cliclawDir,
       agent,
     });
 
@@ -309,7 +309,7 @@ export class OneShotExecutor {
     const boss = getBossInfo(this.deps.db, bindings);
     const teams = buildAgentTeamPromptContext({
       db: this.deps.db,
-      hibossDir: this.deps.hibossDir,
+      cliclawDir: this.deps.cliclawDir,
       agent,
     });
     const instructions = generateSystemInstructions({
@@ -318,7 +318,7 @@ export class OneShotExecutor {
       bindings,
       workspaceDir: workspace,
       bossTimezone: this.deps.db.getBossTimezone(),
-      hibossDir: this.deps.hibossDir,
+      cliclawDir: this.deps.cliclawDir,
       boss,
       teams,
       sessionSummaryConfig: this.deps.db.getRuntimeSessionSummaryConfig(),
@@ -338,9 +338,9 @@ export class OneShotExecutor {
 }
 
 export function createOneShotExecutor(params: {
-  db: HiBossDatabase;
+  db: CliClawDatabase;
   router: MessageRouter;
-  hibossDir?: string;
+  cliclawDir?: string;
   maxConcurrent?: number;
   onEnvelopeDone?: (envelope: Envelope) => void;
 }): OneShotExecutor {
@@ -348,7 +348,7 @@ export function createOneShotExecutor(params: {
     {
       db: params.db,
       router: params.router,
-      hibossDir: params.hibossDir ?? getHiBossDir(),
+      cliclawDir: params.cliclawDir ?? getCliClawDir(),
       onEnvelopeDone: params.onEnvelopeDone,
     },
     { maxConcurrent: params.maxConcurrent },

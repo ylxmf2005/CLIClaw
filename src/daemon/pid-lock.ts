@@ -10,7 +10,7 @@ import * as net from "net";
 import * as path from "path";
 import * as lockfile from "proper-lockfile";
 import type { DaemonConfig } from "./daemon.js";
-import { getHiBossPaths } from "../shared/hiboss-paths.js";
+import { getCliClawPaths } from "../shared/cliclaw-paths.js";
 
 /**
  * PID lock manager using flock-based locking.
@@ -114,7 +114,7 @@ export class PidLock {
  * Check if daemon is running (socket-first, PID fallback).
  */
 export async function isDaemonRunning(
-  config: Pick<DaemonConfig, "daemonDir"> = { daemonDir: getHiBossPaths().daemonDir }
+  config: Pick<DaemonConfig, "daemonDir"> = { daemonDir: getCliClawPaths().daemonDir }
 ): Promise<boolean> {
   const pidPath = path.join(config.daemonDir, "daemon.pid");
   const socketPath = path.join(config.daemonDir, "daemon.sock");

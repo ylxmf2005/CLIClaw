@@ -1,5 +1,5 @@
 import type { Agent } from "../agent/types.js";
-import type { HiBossDatabase } from "../daemon/db/database.js";
+import type { CliClawDatabase } from "../daemon/db/database.js";
 import { getDefaultRuntimeWorkspace } from "../shared/defaults.js";
 import { ensureTeamspaceDir, getTeamspaceDir } from "./teamspace.js";
 
@@ -10,19 +10,19 @@ export interface TeamPromptContext {
 }
 
 function resolveTeamspaceDir(params: {
-  hibossDir: string;
+  cliclawDir: string;
   teamName: string;
 }): string {
   const ensured = ensureTeamspaceDir({
-    hibossDir: params.hibossDir,
+    cliclawDir: params.cliclawDir,
     teamName: params.teamName,
   });
-  return ensured.ok ? ensured.dir : getTeamspaceDir(params.teamName, params.hibossDir);
+  return ensured.ok ? ensured.dir : getTeamspaceDir(params.teamName, params.cliclawDir);
 }
 
 export function resolveAgentWorkspace(params: {
-  db: HiBossDatabase;
-  hibossDir: string;
+  db: CliClawDatabase;
+  cliclawDir: string;
   agent: Agent;
 }): string {
   const teams = params.db.listTeamsByAgentName(params.agent.name, { activeOnly: true });
@@ -31,14 +31,14 @@ export function resolveAgentWorkspace(params: {
     return params.agent.workspace ?? getDefaultRuntimeWorkspace();
   }
   return resolveTeamspaceDir({
-    hibossDir: params.hibossDir,
+    cliclawDir: params.cliclawDir,
     teamName: primary.name,
   });
 }
 
 export function buildAgentTeamPromptContext(params: {
-  db: HiBossDatabase;
-  hibossDir: string;
+  db: CliClawDatabase;
+  cliclawDir: string;
   agent: Agent;
 }): TeamPromptContext[] {
   const teams = params.db.listTeamsByAgentName(params.agent.name, { activeOnly: true });
@@ -46,7 +46,7 @@ export function buildAgentTeamPromptContext(params: {
     name: team.name,
     members: params.db.listTeamMemberAgentNames(team.name),
     teamspaceDir: resolveTeamspaceDir({
-      hibossDir: params.hibossDir,
+      cliclawDir: params.cliclawDir,
       teamName: team.name,
     }),
   }));

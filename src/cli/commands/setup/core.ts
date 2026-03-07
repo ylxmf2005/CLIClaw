@@ -3,7 +3,7 @@ import * as path from "node:path";
 
 import { IpcClient } from "../../ipc-client.js";
 import { getSocketPath, getDefaultConfig, isDaemonRunning } from "../../../daemon/daemon.js";
-import { HiBossDatabase } from "../../../daemon/db/database.js";
+import { CliClawDatabase } from "../../../daemon/db/database.js";
 import { setupAgentHome } from "../../../agent/home-setup.js";
 import type { SetupCheckResult } from "../../../daemon/ipc/types.js";
 import type { SetupConfig } from "./types.js";
@@ -41,7 +41,7 @@ export interface SetupStatus {
   userInfo: SetupUserInfoStatus;
 }
 
-function buildUserInfoStatus(db: HiBossDatabase): SetupUserInfoStatus {
+function buildUserInfoStatus(db: CliClawDatabase): SetupUserInfoStatus {
   const bossName = (db.getBossName() ?? "").trim();
   const bossTimezone = (db.getConfig("boss_timezone") ?? "").trim();
   const hasAdminToken = (() => {
@@ -83,7 +83,7 @@ function buildEmptySetupStatus(): SetupStatus {
   };
 }
 
-function buildSetupStatusFromDb(db: HiBossDatabase): SetupStatus {
+function buildSetupStatusFromDb(db: CliClawDatabase): SetupStatus {
   const daemonConfig = getDefaultConfig();
   const hasSettingsFile = fs.existsSync(getSettingsPath(daemonConfig.dataDir));
   const completed = db.isSetupComplete();
@@ -142,12 +142,12 @@ export async function checkSetupStatus(): Promise<SetupStatus> {
       return buildEmptySetupStatus();
     }
 
-    const dbPath = path.join(daemonConfig.daemonDir, "hiboss.db");
+    const dbPath = path.join(daemonConfig.daemonDir, "cliclaw.db");
     if (!fs.existsSync(dbPath)) {
       return buildEmptySetupStatus();
     }
 
-    const db = new HiBossDatabase(dbPath);
+    const db = new CliClawDatabase(dbPath);
     try {
       return buildSetupStatusFromDb(db);
     } finally {
@@ -165,7 +165,7 @@ export async function executeSetup(config: SetupConfig): Promise<{
   userTokens: Array<{ principal: string; token: string }>;
 }> {
   if (await isDaemonRunning()) {
-    throw new Error("Daemon is running. Stop it first: hiboss daemon stop --token <admin-token>");
+    throw new Error("Daemon is running. Stop it first: cliclaw daemon stop --token <admin-token>");
   }
   return executeSetupDirect(config);
 }
@@ -179,8 +179,8 @@ async function executeSetupDirect(config: SetupConfig): Promise<{
   fs.mkdirSync(daemonConfig.dataDir, { recursive: true });
   fs.mkdirSync(daemonConfig.daemonDir, { recursive: true });
 
-  const dbPath = path.join(daemonConfig.daemonDir, "hiboss.db");
-  const db = new HiBossDatabase(dbPath);
+  const dbPath = path.join(daemonConfig.daemonDir, "cliclaw.db");
+  const db = new CliClawDatabase(dbPath);
   try {
     if (db.isSetupComplete()) {
       const settingsPath = getSettingsPath(daemonConfig.dataDir);

@@ -2,7 +2,7 @@
  * Daemon HTTP server.
  *
  * Node native `http` module server with:
- * - Configurable port (env HIBOSS_HTTP_PORT, default 3889)
+ * - Configurable port (env CLICLAW_HTTP_PORT, default 3889)
  * - CORS support for local dev
  * - JSON body parsing
  * - Bearer token auth extraction
@@ -108,7 +108,7 @@ export function stopHttpServer(server: http.Server): Promise<void> {
 }
 
 function getPort(): number {
-  const envPort = process.env.HIBOSS_HTTP_PORT;
+  const envPort = process.env.CLICLAW_HTTP_PORT;
   if (envPort) {
     const parsed = parseInt(envPort, 10);
     if (Number.isFinite(parsed) && parsed > 0) return parsed;

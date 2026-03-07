@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "path";
 import { getDefaultConfig } from "../daemon/daemon.js";
-import { HiBossDatabase } from "../daemon/db/database.js";
+import { CliClawDatabase } from "../daemon/db/database.js";
 import type { PermissionLevel } from "../shared/permissions.js";
 import {
   DEFAULT_PERMISSION_POLICY,
@@ -59,13 +59,13 @@ export function authorizeCliOperation(operation: string, token: string): Princip
     return authorizeFromSettings(operation, token);
   }
 
-  const dbPath = path.join(config.daemonDir, "hiboss.db");
-  const db = new HiBossDatabase(dbPath);
+  const dbPath = path.join(config.daemonDir, "cliclaw.db");
+  const db = new CliClawDatabase(dbPath);
 
   try {
     if (!db.isSetupComplete()) {
       throw new Error(
-        "Setup not complete. Run `hiboss setup` and ensure ~/hiboss/settings.json is valid."
+        "Setup not complete. Run `cliclaw setup` and ensure ~/cliclaw/settings.json is valid."
       );
     }
 

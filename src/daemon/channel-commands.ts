@@ -7,7 +7,7 @@ import { logEvent, errorMessage } from "../shared/daemon-log.js";
 import { formatShortId } from "../shared/id-format.js";
 import { resolveUiLocale } from "../shared/ui-locale.js";
 import { getUiText } from "../shared/ui-text.js";
-import type { HiBossDatabase } from "./db/database.js";
+import type { CliClawDatabase } from "./db/database.js";
 import type { MessageRouter } from "./router/message-router.js";
 import { handleProviderSwitchCommand } from "./channel-provider-command.js";
 import { buildAgentStatusText } from "./channel-status-command.js";
@@ -16,10 +16,10 @@ import { handleTraceCommand } from "./channel-trace-command.js";
 type EnrichedChannelCommand = ChannelCommand & { agentName?: string };
 
 export function createChannelCommandHandler(params: {
-  db: HiBossDatabase;
+  db: CliClawDatabase;
   executor: AgentExecutor;
   router: MessageRouter;
-  hibossDir?: string;
+  cliclawDir?: string;
 }): ChannelCommandHandler {
   return (command): ChannelCommandResponse | void | Promise<ChannelCommandResponse | void> => {
     const ui = getUiText(resolveUiLocale(params.db.getConfig("ui_locale")));
@@ -59,7 +59,7 @@ export function createChannelCommandHandler(params: {
     if (c.command === "trace" && typeof c.agentName === "string" && c.agentName) {
       return handleTraceCommand({
         db: params.db,
-        hibossDir: params.hibossDir,
+        cliclawDir: params.cliclawDir,
         agentName: c.agentName,
         args: c.args,
         ui,
@@ -70,7 +70,7 @@ export function createChannelCommandHandler(params: {
       return handleProviderSwitchCommand({
         db: params.db,
         executor: params.executor,
-        hibossDir: params.hibossDir,
+        cliclawDir: params.cliclawDir,
         agentName: c.agentName,
         adapterType: c.adapterType,
         args: c.args,
@@ -116,7 +116,7 @@ export function createChannelCommandHandler(params: {
 }
 
 async function handleOneshotCommand(
-  params: { db: HiBossDatabase; router: MessageRouter },
+  params: { db: CliClawDatabase; router: MessageRouter },
   command: EnrichedChannelCommand,
   mode: OneshotType,
 ): Promise<ChannelCommandResponse | void> {

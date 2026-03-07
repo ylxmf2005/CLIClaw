@@ -122,14 +122,14 @@ test("parseSettingsJson accepts pm2 runtime deployment config", () => {
         },
         deployment: {
           mode: "pm2",
-          "output-dir": "/hiboss/services/hiboss-daemon",
+          "output-dir": "/cliclaw/services/cliclaw-daemon",
         },
       },
     })
   );
 
   assert.equal(settings.runtime?.deployment?.mode, "pm2");
-  assert.equal(settings.runtime?.deployment?.outputDir, "/hiboss/services/hiboss-daemon");
+  assert.equal(settings.runtime?.deployment?.outputDir, "/cliclaw/services/cliclaw-daemon");
 });
 
 test("parseSettingsJson accepts runtime session summary config", () => {
@@ -228,7 +228,7 @@ test("parseSettingsJson rejects runtime deployment with unsupported mode", () =>
           runtime: {
             deployment: {
               mode: "k8s",
-              "output-dir": "/hiboss/services/hiboss-daemon",
+              "output-dir": "/cliclaw/services/cliclaw-daemon",
             },
           },
         })
@@ -245,7 +245,7 @@ test("parseSettingsJson rejects runtime deployment with relative output-dir", ()
           runtime: {
             deployment: {
               mode: "pm2",
-              "output-dir": "services/hiboss-daemon",
+              "output-dir": "services/cliclaw-daemon",
             },
           },
         })

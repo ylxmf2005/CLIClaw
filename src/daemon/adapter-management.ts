@@ -5,7 +5,7 @@
  * Handles loading bindings, creating adapters, and removing them.
  */
 
-import type { HiBossDatabase } from "./db/database.js";
+import type { CliClawDatabase } from "./db/database.js";
 import type { ChatAdapter } from "../adapters/types.js";
 import type { ChannelBridge } from "./bridges/channel-bridge.js";
 import { TelegramAdapter } from "../adapters/telegram.adapter.js";
@@ -13,7 +13,7 @@ import { resolveUiLocale } from "../shared/ui-locale.js";
 import { logEvent } from "../shared/daemon-log.js";
 
 export interface AdapterManagerDeps {
-  db: HiBossDatabase;
+  db: CliClawDatabase;
   adapters: Map<string, ChatAdapter>;
   bridge: ChannelBridge;
   running: boolean;

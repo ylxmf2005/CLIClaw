@@ -1,14 +1,14 @@
 # CLI: Command Reference
 
-Detailed flags and output for each `hiboss` command.
+Detailed flags and output for each `cliclaw` command.
 
 ---
 
 ## Setup
 
-### `hiboss setup`
+### `cliclaw setup`
 
-Interactive bootstrap wizard. Writes `{{HIBOSS_DIR}}/settings.json` (`version: "v0.0.0"`).
+Interactive bootstrap wizard. Writes `{{CLICLAW_DIR}}/settings.json` (`version: "v0.0.0"`).
 
 Behavior:
 - If already healthy, prints "Setup is already complete" and exits.
@@ -25,7 +25,7 @@ Interactive defaults: `boss-name` (OS username), `boss-timezone` (host IANA), `p
 
 ## Daemon
 
-### `hiboss daemon start`
+### `cliclaw daemon start`
 
 Startup mode: if `runtime.deployment.mode: "pm2"`, delegates to managed runtime. Otherwise starts local daemon process.
 
@@ -37,11 +37,11 @@ Log rotation: existing non-empty `daemon.log` moved to `log_history/` with times
 
 Startup failure output: `error:` + `log-file:` keys.
 
-### `hiboss daemon stop`
+### `cliclaw daemon stop`
 
 Delegates to runtime manager if configured, otherwise SIGTERM + SIGKILL fallback.
 
-### `hiboss daemon status`
+### `cliclaw daemon status`
 
 Output (direct mode): `running:`, `start-time:`, `adapters:`, `data-dir:`
 
@@ -49,7 +49,7 @@ Output (direct mode): `running:`, `start-time:`, `adapters:`, `data-dir:`
 
 ## Agents
 
-### `hiboss agent register`
+### `cliclaw agent register`
 
 Flags: `--name` (required), `--provider <claude|codex>` (required), `--description`, `--workspace`, `--model`, `--reasoning-effort`, `--permission-level`, `--metadata-json`/`--metadata-file`, `--bind-adapter-type` + `--bind-adapter-token`, `--session-daily-reset-at`, `--session-idle-timeout`, `--session-max-context-length`, `--dry-run`
 
@@ -57,7 +57,7 @@ Defaults: `model` = provider default, `reasoning-effort` = provider default, `pe
 
 Output: `name:`, `description:`, `workspace:` (`(none)`), `token:` (once), `dry-run: true` (when set)
 
-### `hiboss agent set`
+### `cliclaw agent set`
 
 Flags: `--name` (required), `--description`, `--workspace`, `--provider`, `--model`, `--reasoning-effort`, `--permission-level`, `--session-*`, `--clear-session-policy`, `--metadata-*`, `--clear-metadata`, `--bind-adapter-*`, `--unbind-adapter-type`
 
@@ -67,23 +67,23 @@ Notes:
 
 Output: `success:`, `agent-name:`, `description:`, `workspace:`, `provider:`, `model:`, `reasoning-effort:`, `permission-level:`, `bindings:`, `session-*:` (optional)
 
-### `hiboss agent delete`
+### `cliclaw agent delete`
 
 Removes agent, bindings, cron schedules, home directory. Does not delete historical envelopes/runs.
 
 Output: `success:`, `agent-name:`
 
-### `hiboss agent list`
+### `cliclaw agent list`
 
 Output (per agent): `name:`, `workspace:` (optional), `created-at:`. Empty: `no-agents: true`
 
-### `hiboss agent status`
+### `cliclaw agent status`
 
 Flags: `--name` (required). Agent tokens: self only.
 
 Output: `name:`, `workspace:` (effective runtime), `provider:`, `model:`, `reasoning-effort:`, `permission-level:`, `bindings:`, `session-*:`, `agent-state:` (`running|idle`), `agent-health:` (`ok|error|unknown`), `pending-count:`, `current-run-*:` (optional), `last-run-*:` (optional)
 
-### `hiboss agent abort`
+### `cliclaw agent abort`
 
 Cancels current run + clears due pending non-cron inbox.
 
@@ -93,7 +93,7 @@ Output: `success:`, `agent-name:`, `cancelled-run:`, `cleared-pending-count:`
 
 ## Envelopes
 
-### `hiboss envelope send`
+### `cliclaw envelope send`
 
 Flags: `--to` (required), `--text`/`--text -`/`--text-file`, `--attachment` (repeatable), `--reply-to`, `--interrupt-now`, `--parse-mode`, `--deliver-at`
 
@@ -105,7 +105,7 @@ Notes:
 
 Output: `id:` (short id). Team broadcast: multiple `id:` lines. With `--interrupt-now`: adds `interrupt-now:`, `interrupted-work:`, `priority-applied:`.
 
-### `hiboss envelope list`
+### `cliclaw envelope list`
 
 Flags: `--to`/`--from` (exactly one), `--status` (required), `--created-after`, `--created-before`, `-n/--limit` (default 10, max 50)
 
@@ -115,7 +115,7 @@ Notes:
 
 Empty: `no-envelopes: true`
 
-### `hiboss envelope thread`
+### `cliclaw envelope thread`
 
 Flags: `--envelope-id` (required)
 
@@ -125,7 +125,7 @@ Output: `thread-max-depth: 20`, `thread-total-count:`, `thread-returned-count:`,
 
 ## Cron
 
-### `hiboss cron create`
+### `cliclaw cron create`
 
 Flags: `--cron` (required), `--to` (required), `--timezone`, `--text`/`--text-file`, `--attachment`, `--parse-mode`, `--execution-mode` (`isolated|clone|inline`), `--isolated`/`--clone`/`--inline` (shorthands)
 
@@ -134,16 +134,18 @@ Notes:
 - `--to team:*` and `--to agent:<name>:new|<chat-id>` are rejected for cron schedules.
 - `--parse-mode` is valid only for channel destinations.
 - Only one of `--execution-mode`, `--isolated`, `--clone`, `--inline` should be set; default is `isolated`.
+- For `--execution-mode isolated|clone` + `--to agent:<name>`, the destination agent executes in one-shot mode.
+- For `--execution-mode isolated|clone` + `--to channel:*`, the owner agent executes in one-shot mode and the result is delivered to the channel.
 
 Output: `cron-id:` (short id)
 
-### `hiboss cron explain`
+### `cliclaw cron explain`
 
 Flags: `--cron` (required), `--timezone`, `--count` (default 5, max 20)
 
 Output: `cron:`, `timezone:`, `count:`, `evaluated-at:`, `next-run-1:` ... `next-run-N:`
 
-### `hiboss cron list`
+### `cliclaw cron list`
 
 Output (per schedule): canonical cron output keys (see `openspec/specs/core/definitions.md`). Empty: `no-crons: true`
 
@@ -151,7 +153,7 @@ Notes:
 - Agent token: lists schedules owned by that agent.
 - Admin token: lists all schedules.
 
-### `hiboss cron enable/disable/delete`
+### `cliclaw cron enable/disable/delete`
 
 Flags: `--id` (required). Output: `success:`, `cron-id:`. Ambiguous prefix: error with candidates.
 
@@ -159,7 +161,7 @@ Flags: `--id` (required). Output: `success:`, `cron-id:`. Ambiguous prefix: erro
 
 ## Reactions
 
-### `hiboss reaction set`
+### `cliclaw reaction set`
 
 Flags: `--envelope-id` (required), `--emoji` (required)
 
@@ -169,31 +171,31 @@ Output: `success: true|false`
 
 ## Teams
 
-### `hiboss team register`
+### `cliclaw team register`
 
 Flags: `--name` (required), `--description`
 
 Output: `success:`, `team-name:`, `team-status:`, `team-kind:`, `description:`, `created-at:`, `members:`
 
-### `hiboss team set`
+### `cliclaw team set`
 
 Flags: `--name`, `--description`, `--clear-description`, `--status <active|archived>`
 
 Output: same shape as register
 
-### `hiboss team add-member` / `remove-member`
+### `cliclaw team add-member` / `remove-member`
 
 Flags: `--name`, `--agent`. Output: `success:`, `team-name:`, `agent-name:`
 
-### `hiboss team status`
+### `cliclaw team status`
 
 Output: `team-name:`, `team-status:`, `team-kind:`, `description:`, `created-at:`, `members:`
 
-### `hiboss team list-members`
+### `cliclaw team list-members`
 
 Output: `team-name:`, `member-count:`, per-member: `agent-name:`, `source:`, `joined-at:`. Empty: `no-members: true`
 
-### `hiboss team send`
+### `cliclaw team send`
 
 Flags: `--name`, `--text`/`--text-file`, `--attachment`, `--deliver-at`, `--interrupt-now`, `--reply-to`
 
@@ -202,10 +204,10 @@ Output: `team-name:`, `requested-count:`, `sent-count:`, `failed-count:`, per-re
 Exit behavior:
 - Exits non-zero when `failed-count > 0` (partial delivery still prints per-recipient results).
 
-### `hiboss team list`
+### `cliclaw team list`
 
 Flags: `--status` (optional filter). Empty: `no-teams: true`. Blocks: `team-name:`, `team-status:`, `team-kind:`, `description:`, `created-at:`, `members:`
 
-### `hiboss team delete`
+### `cliclaw team delete`
 
 Output: `success:`, `team-name:`

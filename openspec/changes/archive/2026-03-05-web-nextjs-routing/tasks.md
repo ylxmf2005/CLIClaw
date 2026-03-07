@@ -27,7 +27,7 @@
 
 ## 4. Left Panel Adaptation (Live Data)
 
-- [x] 4.1 Build live `LeftPanel` following enhanced demo's visual structure: header (Hi-Boss + connection status), tab content areas, bottom tab bar. Uses `useAppState()` for data, `useRouter()` for navigation, `useRouteSelection()` for active item highlighting.
+- [x] 4.1 Build live `LeftPanel` following enhanced demo's visual structure: header (CLIClaw + connection status), tab content areas, bottom tab bar. Uses `useAppState()` for data, `useRouter()` for navigation, `useRouteSelection()` for active item highlighting.
 - [x] 4.2 Chat list (Chats tab): sorted conversation + team entries via `ChatListItem`. Click → `router.push()`. Highlight based on route params.
 - [x] 4.3 Agent list (Agents tab): agents with expandable conversation sub-lists, status indicators, log line preview. "+" button triggers AgentCreateModal. "New chat" per agent.
 - [x] 4.4 Team list (Teams tab): team entries with member count. "+" button triggers team create.

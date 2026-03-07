@@ -396,7 +396,7 @@ export function createAgentSetHandler(ctx: DaemonContext): RpcMethodRegistry {
 
       try {
         await mutateSettingsAndSync({
-          hibossDir: ctx.config.dataDir,
+          cliclawDir: ctx.config.dataDir,
           db: ctx.db,
           mutate: (settings) => {
             const target = settings.agents.find((item) => item.name.toLowerCase() === agentName.toLowerCase());

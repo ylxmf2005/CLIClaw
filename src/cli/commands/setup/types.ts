@@ -1,7 +1,7 @@
 import type { KnownAdapterType } from "../../../shared/adapter-types.js";
 
 export type SetupProvider = "claude" | "codex";
-export type SetupReasoningEffort = "none" | "low" | "medium" | "high" | "xhigh";
+export type SetupReasoningEffort = "none" | "low" | "medium" | "high" | "xhigh" | "max";
 export type SetupPermissionLevel = "restricted" | "standard" | "privileged" | "admin";
 
 export interface SetupSessionPolicy {

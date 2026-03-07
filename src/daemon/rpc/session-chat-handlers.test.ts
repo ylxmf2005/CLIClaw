@@ -4,14 +4,14 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { HiBossDatabase } from "../db/database.js";
+import { CliClawDatabase } from "../db/database.js";
 
-function withTempDb(run: (db: HiBossDatabase) => void): void {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hiboss-session-chat-test-"));
-  const dbPath = path.join(dir, "hiboss.db");
-  let db: HiBossDatabase | null = null;
+function withTempDb(run: (db: CliClawDatabase) => void): void {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cliclaw-session-chat-test-"));
+  const dbPath = path.join(dir, "cliclaw.db");
+  let db: CliClawDatabase | null = null;
   try {
-    db = new HiBossDatabase(dbPath);
+    db = new CliClawDatabase(dbPath);
     run(db);
   } finally {
     db?.close();
@@ -112,6 +112,55 @@ test("setChatRelayState upserts on conflict", () => {
     db.setChatRelayState("nex", "chat-1", true);
     db.setChatRelayState("nex", "chat-1", false);
     assert.equal(db.getChatRelayState("nex", "chat-1"), false);
+  });
+});
+
+test("getChatModelSettings returns empty settings for unknown chat", () => {
+  withTempDb((db) => {
+    const settings = db.getChatModelSettings("nex", "chat-1");
+    assert.deepEqual(settings, {});
+  });
+});
+
+test("setChatModelSettings persists model and reasoning overrides", () => {
+  withTempDb((db) => {
+    db.setChatModelSettings("nex", "chat-1", {
+      modelOverride: "gpt-5.3-codex",
+      reasoningEffortOverride: "high",
+    });
+    const settings = db.getChatModelSettings("nex", "chat-1");
+    assert.equal(settings.modelOverride, "gpt-5.3-codex");
+    assert.equal(settings.reasoningEffortOverride, "high");
+  });
+});
+
+test("setChatModelSettings can clear overrides back to defaults", () => {
+  withTempDb((db) => {
+    db.setChatModelSettings("nex", "chat-1", {
+      modelOverride: "gpt-5.3-codex",
+      reasoningEffortOverride: "high",
+    });
+    db.setChatModelSettings("nex", "chat-1", {
+      modelOverride: null,
+      reasoningEffortOverride: null,
+    });
+
+    const settings = db.getChatModelSettings("nex", "chat-1");
+    assert.deepEqual(settings, {});
+  });
+});
+
+test("setChatRelayState keeps chat model overrides unchanged", () => {
+  withTempDb((db) => {
+    db.setChatModelSettings("nex", "chat-1", {
+      modelOverride: "gpt-5.3-codex",
+      reasoningEffortOverride: "high",
+    });
+    db.setChatRelayState("nex", "chat-1", true);
+
+    const settings = db.getChatModelSettings("nex", "chat-1");
+    assert.equal(settings.modelOverride, "gpt-5.3-codex");
+    assert.equal(settings.reasoningEffortOverride, "high");
   });
 });
 

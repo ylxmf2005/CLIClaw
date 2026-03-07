@@ -5,14 +5,14 @@ import path from "node:path";
 import test from "node:test";
 
 import { AgentExecutor } from "./executor.js";
-import { HiBossDatabase } from "../daemon/db/database.js";
+import { CliClawDatabase } from "../daemon/db/database.js";
 
-function withTempDb(run: (db: HiBossDatabase) => void): void {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hiboss-executor-scope-test-"));
-  const dbPath = path.join(dir, "hiboss.db");
-  let db: HiBossDatabase | null = null;
+function withTempDb(run: (db: CliClawDatabase) => void): void {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cliclaw-executor-scope-test-"));
+  const dbPath = path.join(dir, "cliclaw.db");
+  let db: CliClawDatabase | null = null;
   try {
-    db = new HiBossDatabase(dbPath);
+    db = new CliClawDatabase(dbPath);
     run(db);
   } finally {
     db?.close();

@@ -1,11 +1,11 @@
 import type {
   EnvelopeCreatedEvent,
   EnvelopeStatusChangedEvent,
-  HiBossDatabase,
+  CliClawDatabase,
 } from "../db/database.js";
 import type { ConversationHistory } from "./conversation-history.js";
 
-export function bindHistoryHooks(db: HiBossDatabase, history: ConversationHistory): void {
+export function bindHistoryHooks(db: CliClawDatabase, history: ConversationHistory): void {
   db.setEnvelopeLifecycleHooks({
     onEnvelopeCreated: (event: EnvelopeCreatedEvent) => {
       history.appendEnvelopeCreated({

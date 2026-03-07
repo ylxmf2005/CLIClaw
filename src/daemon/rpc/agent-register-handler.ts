@@ -196,7 +196,7 @@ export function createAgentRegisterHandler(ctx: DaemonContext): RpcMethodHandler
       const generatedToken = generateToken();
       try {
         await mutateSettingsAndSync({
-          hibossDir: ctx.config.dataDir,
+          cliclawDir: ctx.config.dataDir,
           db: ctx.db,
           mutate: (settings) => {
             const exists = settings.agents.some((agent) => agent.name.toLowerCase() === p.name.trim().toLowerCase());

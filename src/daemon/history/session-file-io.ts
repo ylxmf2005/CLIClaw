@@ -154,15 +154,26 @@ export function listSessionFiles(dateDirPath: string): string[] {
 
 // ── Journal (append-only) ──
 
+const CURRENT_SESSION_JOURNAL_SUFFIX = ".events.jsonl";
+const LEGACY_SESSION_JOURNAL_SUFFIX = ".events.ndjson";
+
+function getSessionJournalBase(filePath: string): string {
+  return filePath.endsWith(".json")
+    ? filePath.slice(0, -5)
+    : filePath;
+}
+
 /**
  * Per-session append-only journal path.
  * Example:
- *   <session>.json -> <session>.events.ndjson
+ *   <session>.json -> <session>.events.jsonl
  */
 export function getSessionJournalPath(filePath: string): string {
-  return filePath.endsWith(".json")
-    ? `${filePath.slice(0, -5)}.events.ndjson`
-    : `${filePath}.events.ndjson`;
+  return `${getSessionJournalBase(filePath)}${CURRENT_SESSION_JOURNAL_SUFFIX}`;
+}
+
+function getLegacySessionJournalPath(filePath: string): string {
+  return `${getSessionJournalBase(filePath)}${LEGACY_SESSION_JOURNAL_SUFFIX}`;
 }
 
 /**
@@ -175,57 +186,171 @@ export function appendSessionJournalEvent(filePath: string, entry: SessionHistor
   fs.appendFileSync(journalPath, `${JSON.stringify(entry)}\n`, "utf8");
 }
 
+function readSessionJournalEventsFromPath(journalPath: string): SessionHistoryEvent[] {
+  if (!fs.existsSync(journalPath)) return [];
+  const stat = fs.statSync(journalPath);
+  if (!stat.isFile()) return [];
+
+  const raw = fs.readFileSync(journalPath, "utf8");
+  if (!raw.trim()) return [];
+
+  const events: SessionHistoryEvent[] = [];
+  const lines = raw.split(/\r?\n/);
+  for (let idx = 0; idx < lines.length; idx += 1) {
+    const line = lines[idx]?.trim();
+    if (!line) continue;
+    try {
+      events.push(JSON.parse(line) as SessionHistoryEvent);
+    } catch (err) {
+      logEvent("warn", "session-journal-line-parse-failed", {
+        path: journalPath,
+        "line-number": idx + 1,
+        error: errorMessage(err),
+      });
+    }
+  }
+  return events;
+}
+
 /**
  * Read and parse all events from a per-session journal.
  * Corrupt lines are skipped with a warning.
  */
 export function readSessionJournalEvents(filePath: string): SessionHistoryEvent[] {
-  const journalPath = getSessionJournalPath(filePath);
   try {
-    if (!fs.existsSync(journalPath)) return [];
-    const stat = fs.statSync(journalPath);
-    if (!stat.isFile()) return [];
-
-    const raw = fs.readFileSync(journalPath, "utf8");
-    if (!raw.trim()) return [];
-
-    const events: SessionHistoryEvent[] = [];
-    const lines = raw.split(/\r?\n/);
-    for (let idx = 0; idx < lines.length; idx += 1) {
-      const line = lines[idx]?.trim();
-      if (!line) continue;
-      try {
-        events.push(JSON.parse(line) as SessionHistoryEvent);
-      } catch (err) {
-        logEvent("warn", "session-journal-line-parse-failed", {
-          path: journalPath,
-          "line-number": idx + 1,
-          error: errorMessage(err),
-        });
-      }
-    }
-    return events;
+    const journalPath = getSessionJournalPath(filePath);
+    return readSessionJournalEventsFromPath(journalPath);
   } catch (err) {
     logEvent("warn", "session-journal-read-failed", {
-      path: journalPath,
+      path: getSessionJournalPath(filePath),
       error: errorMessage(err),
     });
     return [];
   }
 }
 
-/**
- * Remove the per-session journal after compaction.
- */
-export function clearSessionJournal(filePath: string): void {
-  const journalPath = getSessionJournalPath(filePath);
-  try {
-    if (!fs.existsSync(journalPath)) return;
-    fs.unlinkSync(journalPath);
-  } catch (err) {
-    logEvent("warn", "session-journal-clear-failed", {
-      path: journalPath,
-      error: errorMessage(err),
-    });
+function readSessionJournalRawLines(journalPath: string): string[] {
+  if (!fs.existsSync(journalPath)) return [];
+  const stat = fs.statSync(journalPath);
+  if (!stat.isFile()) return [];
+  const raw = fs.readFileSync(journalPath, "utf8");
+  if (!raw.trim()) return [];
+  return raw
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+}
+
+function writeSessionJournalRawLines(journalPath: string, lines: string[]): void {
+  const dir = path.dirname(journalPath);
+  fs.mkdirSync(dir, { recursive: true });
+  const body = lines.length > 0 ? `${lines.join("\n")}\n` : "";
+  const tmpPath = `${journalPath}.tmp`;
+  fs.writeFileSync(tmpPath, body, "utf8");
+  fs.renameSync(tmpPath, journalPath);
+}
+
+function migrateLegacySessionJournalFile(legacyPath: string): "renamed" | "merged" {
+  const currentPath = legacyPath.endsWith(LEGACY_SESSION_JOURNAL_SUFFIX)
+    ? `${legacyPath.slice(0, -LEGACY_SESSION_JOURNAL_SUFFIX.length)}${CURRENT_SESSION_JOURNAL_SUFFIX}`
+    : legacyPath;
+
+  if (!fs.existsSync(currentPath)) {
+    fs.renameSync(legacyPath, currentPath);
+    return "renamed";
   }
+
+  const mergedLines: string[] = [];
+  const seen = new Set<string>();
+  for (const line of [
+    ...readSessionJournalRawLines(legacyPath),
+    ...readSessionJournalRawLines(currentPath),
+  ]) {
+    if (seen.has(line)) continue;
+    seen.add(line);
+    mergedLines.push(line);
+  }
+
+  writeSessionJournalRawLines(currentPath, mergedLines);
+  fs.unlinkSync(legacyPath);
+  return "merged";
+}
+
+export function migrateLegacySessionJournalsInAgentsDir(agentsDir: string): {
+  renamedCount: number;
+  mergedCount: number;
+  failedCount: number;
+} {
+  const result = {
+    renamedCount: 0,
+    mergedCount: 0,
+    failedCount: 0,
+  };
+
+  if (!fs.existsSync(agentsDir)) {
+    return result;
+  }
+
+  const collectLegacyFiles = (historyDir: string, out: string[]): void => {
+    const stack: string[] = [historyDir];
+    while (stack.length > 0) {
+      const dirPath = stack.pop()!;
+      let entries: fs.Dirent[];
+      try {
+        entries = fs.readdirSync(dirPath, { withFileTypes: true });
+      } catch {
+        continue;
+      }
+
+      for (const entry of entries) {
+        const fullPath = path.join(dirPath, entry.name);
+        if (entry.isDirectory()) {
+          stack.push(fullPath);
+          continue;
+        }
+        if (entry.isFile() && entry.name.endsWith(LEGACY_SESSION_JOURNAL_SUFFIX)) {
+          out.push(fullPath);
+        }
+      }
+    }
+  };
+
+  let agentEntries: fs.Dirent[];
+  try {
+    agentEntries = fs.readdirSync(agentsDir, { withFileTypes: true });
+  } catch {
+    return result;
+  }
+
+  const legacyPaths: string[] = [];
+  for (const agentEntry of agentEntries) {
+    if (!agentEntry.isDirectory()) continue;
+    const historyDir = path.join(
+      agentsDir,
+      agentEntry.name,
+      "internal_space",
+      "history",
+    );
+    if (!fs.existsSync(historyDir)) continue;
+    collectLegacyFiles(historyDir, legacyPaths);
+  }
+
+  for (const legacyPath of legacyPaths) {
+    try {
+      const migrated = migrateLegacySessionJournalFile(legacyPath);
+      if (migrated === "renamed") {
+        result.renamedCount += 1;
+      } else {
+        result.mergedCount += 1;
+      }
+    } catch (err) {
+      result.failedCount += 1;
+      logEvent("warn", "session-journal-legacy-migration-failed", {
+        path: legacyPath,
+        error: errorMessage(err),
+      });
+    }
+  }
+
+  return result;
 }

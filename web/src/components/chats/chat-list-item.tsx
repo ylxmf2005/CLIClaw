@@ -1,6 +1,6 @@
 "use client";
 
-import { cn, formatTime } from "@/lib/utils";
+import { cn, formatTime, formatChatLabel } from "@/lib/utils";
 import { Avatar } from "@/components/shared/avatar";
 import type { AgentState } from "@/components/shared/status-indicator";
 import { Pin, Trash2, PinOff } from "lucide-react";
@@ -125,19 +125,14 @@ export function ChatListItem({
                 </span>
               )}
             </span>
-            <div className="flex items-center gap-1.5 shrink-0">
-              {messageCount != null && messageCount > 0 && (
-                <span className="text-[9px] text-muted-foreground/50">{messageCount}</span>
-              )}
-              {lastMessageAt && (
-                <span className={cn(
-                  "text-[10px]",
-                  isUnread && !isSelected ? "text-cyan-glow font-medium" : "text-muted-foreground/70"
-                )}>
-                  {formatTime(lastMessageAt)}
-                </span>
-              )}
-            </div>
+            {lastMessageAt && (
+              <span className={cn(
+                "shrink-0 text-[10px]",
+                isUnread && !isSelected ? "text-cyan-glow font-medium" : "text-muted-foreground/50"
+              )}>
+                {formatTime(lastMessageAt)}
+              </span>
+            )}
           </div>
           <div className="flex items-center justify-between">
             <p className={cn(

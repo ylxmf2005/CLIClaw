@@ -1,6 +1,6 @@
 # Provider CLI Manual Experiments
 
-This document records dated, manual experiments and CLI gotchas for provider CLIs used by Hi-Boss.
+This document records dated, manual experiments and CLI gotchas for provider CLIs used by CLIClaw.
 
 Canonical behavior spec:
 - `docs/spec/provider-clis.md`

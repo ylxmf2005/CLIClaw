@@ -11,27 +11,27 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { assertValidAgentName } from "../shared/validation.js";
-import { getHiBossRootDir } from "../shared/hiboss-paths.js";
+import { getCliClawRootDir } from "../shared/cliclaw-paths.js";
 import { ensureAgentInternalSpaceLayout } from "../shared/internal-space.js";
 
 /**
- * Get the default hi-boss directory path.
+ * Get the default cliclaw directory path.
  */
-export function getHiBossDir(): string {
-  return getHiBossRootDir();
+export function getCliClawDir(): string {
+  return getCliClawRootDir();
 }
 
 /**
  * Get the agent's directory path.
  */
-export function getAgentDir(agentName: string, hibossDir?: string): string {
+export function getAgentDir(agentName: string, cliclawDir?: string): string {
   assertValidAgentName(agentName);
-  const baseDir = hibossDir ?? getHiBossDir();
+  const baseDir = cliclawDir ?? getCliClawDir();
   return path.join(baseDir, "agents", agentName);
 }
 
-export function getAgentInternalSpaceDir(agentName: string, hibossDir?: string): string {
-  return path.join(getAgentDir(agentName, hibossDir), "internal_space");
+export function getAgentInternalSpaceDir(agentName: string, cliclawDir?: string): string {
+  return path.join(getAgentDir(agentName, cliclawDir), "internal_space");
 }
 
 function getSharedCodexHomeDir(): string {
@@ -103,20 +103,20 @@ function ensureSharedCodexConfigDefaults(): void {
  * No per-agent provider home directories are created.
  *
  * @param agentName - The agent's name
- * @param hibossDir - Optional custom hiboss directory (defaults to ~/hiboss; override via HIBOSS_DIR)
+ * @param cliclawDir - Optional custom cliclaw directory (defaults to ~/cliclaw; override via CLICLAW_DIR)
  */
 export async function setupAgentHome(
   agentName: string,
-  hibossDir?: string,
+  cliclawDir?: string,
 ): Promise<void> {
-  const baseDir = hibossDir ?? getHiBossDir();
-  const agentDir = getAgentDir(agentName, hibossDir);
+  const baseDir = cliclawDir ?? getCliClawDir();
+  const agentDir = getAgentDir(agentName, cliclawDir);
 
   // Create agent directory
   fs.mkdirSync(agentDir, { recursive: true });
 
   // Ensure agent internal space exists (best-effort).
-  const ensuredSpace = ensureAgentInternalSpaceLayout({ hibossDir: baseDir, agentName });
+  const ensuredSpace = ensureAgentInternalSpaceLayout({ cliclawDir: baseDir, agentName });
   if (!ensuredSpace.ok) {
     throw new Error(`Failed to initialize agent internal space: ${ensuredSpace.error}`);
   }
@@ -127,16 +127,16 @@ export async function setupAgentHome(
 /**
  * Check if an agent's home directories exist.
  */
-export function agentHomeExists(agentName: string, hibossDir?: string): boolean {
-  const agentDir = getAgentDir(agentName, hibossDir);
+export function agentHomeExists(agentName: string, cliclawDir?: string): boolean {
+  const agentDir = getAgentDir(agentName, cliclawDir);
   return fs.existsSync(agentDir);
 }
 
 /**
  * Remove an agent's home directories.
  */
-export function removeAgentHome(agentName: string, hibossDir?: string): void {
-  const agentDir = getAgentDir(agentName, hibossDir);
+export function removeAgentHome(agentName: string, cliclawDir?: string): void {
+  const agentDir = getAgentDir(agentName, cliclawDir);
   if (fs.existsSync(agentDir)) {
     fs.rmSync(agentDir, { recursive: true, force: true });
   }

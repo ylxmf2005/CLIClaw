@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useCallback, useState } from "react";
+import { useEffect, useCallback, useRef, useState } from "react";
 import { useAppState } from "@/providers/app-state-provider";
 import { useToast } from "@/providers/toast-provider";
 import { MessageList } from "./message-list";
@@ -20,8 +20,10 @@ import {
   uploadFile,
   listEnvelopes,
   toggleRelay,
+  getChatSettings,
+  updateChatSettings,
 } from "@/lib/api";
-import type { Envelope } from "@/lib/types";
+import type { Envelope, ReasoningEffort } from "@/lib/types";
 import type { AttachmentFile } from "./attachment-bar";
 
 export function ChatView() {
@@ -32,6 +34,9 @@ export function ChatView() {
   const [replyTo, setReplyTo] = useState<Envelope | null>(null);
   const [pendingEnvelopes, setPendingEnvelopes] = useState<Envelope[]>([]);
   const [detailSheetOpen, setDetailSheetOpen] = useState(false);
+  const [chatModelOverride, setChatModelOverride] = useState<string | null>(null);
+  const [chatReasoningOverride, setChatReasoningOverride] = useState<ReasoningEffort | null>(null);
+  const pendingChatSettingsSaveRef = useRef<Promise<void> | null>(null);
 
   // Load envelopes for selected chat
   useEffect(() => {
@@ -67,6 +72,65 @@ export function ChatView() {
     setInterruptMode(false);
   }, [selection?.agentName, selection?.chatId]);
 
+  useEffect(() => {
+    if (!selection) {
+      setChatModelOverride(null);
+      setChatReasoningOverride(null);
+      pendingChatSettingsSaveRef.current = null;
+      return;
+    }
+
+    let cancelled = false;
+    setChatModelOverride(null);
+    setChatReasoningOverride(null);
+    pendingChatSettingsSaveRef.current = null;
+
+    getChatSettings(selection.agentName, selection.chatId)
+      .then((result) => {
+        if (cancelled) return;
+        setChatModelOverride(result.modelOverride ?? null);
+        setChatReasoningOverride(result.reasoningEffortOverride ?? null);
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selection?.agentName, selection?.chatId]);
+
+  const persistChatSettings = useCallback(
+    (nextModelOverride: string | null, nextReasoningOverride: ReasoningEffort | null) => {
+      if (!selection) return;
+
+      setChatModelOverride(nextModelOverride);
+      setChatReasoningOverride(nextReasoningOverride);
+
+      const request = updateChatSettings(selection.agentName, selection.chatId, {
+        modelOverride: nextModelOverride,
+        reasoningEffortOverride: nextReasoningOverride,
+      })
+        .then((result) => {
+          setChatModelOverride(result.modelOverride ?? null);
+          setChatReasoningOverride(result.reasoningEffortOverride ?? null);
+        })
+        .catch((err) => {
+          toast({
+            title: "Chat settings update failed",
+            description: err instanceof Error ? err.message : "Could not update chat model settings",
+            variant: "error",
+          });
+        })
+        .finally(() => {
+          if (pendingChatSettingsSaveRef.current === request) {
+            pendingChatSettingsSaveRef.current = null;
+          }
+        });
+
+      pendingChatSettingsSaveRef.current = request;
+    },
+    [selection, toast]
+  );
+
   const handleSend = useCallback(
     async (text: string, attachments?: AttachmentFile[]) => {
       if (!selection || !text.trim()) return;
@@ -74,6 +138,11 @@ export function ChatView() {
       const address = `agent:${selection.agentName}:${selection.chatId}`;
 
       try {
+        const pendingSettingsSave = pendingChatSettingsSaveRef.current;
+        if (pendingSettingsSave) {
+          await pendingSettingsSave.catch(() => undefined);
+        }
+
         // Upload attachments first if any
         let uploadedAttachments: { source: string; filename: string }[] | undefined;
         if (attachments && attachments.length > 0) {
@@ -112,6 +181,11 @@ export function ChatView() {
       if (!selection || !text.trim()) return;
       const address = `agent:${selection.agentName}:${selection.chatId}`;
       try {
+        const pendingSettingsSave = pendingChatSettingsSaveRef.current;
+        if (pendingSettingsSave) {
+          await pendingSettingsSave.catch(() => undefined);
+        }
+
         await sendEnvelope({
           to: address,
           text,
@@ -197,7 +271,7 @@ export function ChatView() {
     return (
       <EmptyState
         icon={Terminal}
-        title="Hi-Boss Control"
+        title="CLIClaw Control"
         description="Select an agent to start a conversation"
       />
     );
@@ -302,6 +376,21 @@ export function ChatView() {
         draft={state.drafts[envelopeKey]}
         onDraftChange={(text) =>
           dispatch({ type: "SET_DRAFT", key: envelopeKey, text })
+        }
+        chatModelOverrides={
+          agent
+            ? {
+                provider: agent.provider,
+                agentDefaultModel: agent.model,
+                agentDefaultReasoningEffort: agent.reasoningEffort,
+                modelOverride: chatModelOverride,
+                reasoningEffortOverride: chatReasoningOverride,
+                onModelOverrideChange: (modelOverride) =>
+                  persistChatSettings(modelOverride, chatReasoningOverride),
+                onReasoningEffortOverrideChange: (reasoningEffortOverride) =>
+                  persistChatSettings(chatModelOverride, reasoningEffortOverride),
+              }
+            : undefined
         }
       />
     </div>

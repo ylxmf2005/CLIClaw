@@ -18,7 +18,7 @@ interface ThemeContextValue {
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
-const STORAGE_KEY = "hiboss-theme";
+const STORAGE_KEY = "cliclaw-theme";
 
 function getInitialTheme(): Theme {
   if (typeof window === "undefined") return "dark";

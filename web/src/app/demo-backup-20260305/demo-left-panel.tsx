@@ -33,7 +33,7 @@ export function DemoLeftPanel() {
           </svg>
         </div>
         <div className="flex-1">
-          <h1 className="text-sm font-bold tracking-tight text-foreground">Hi-Boss</h1>
+          <h1 className="text-sm font-bold tracking-tight text-foreground">CLIClaw</h1>
           <div className="flex items-center gap-1.5">
             <span className="h-2 w-2 rounded-full bg-emerald-signal pulse-emerald" />
             <span className="text-[10px] text-muted-foreground">Connected (demo)</span>

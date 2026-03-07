@@ -1,4 +1,4 @@
-import type { HiBossDatabase } from "../db/database.js";
+import type { CliClawDatabase } from "../db/database.js";
 import type { Envelope, CreateEnvelopeInput } from "../../envelope/types.js";
 import { getEnvelopeSourceFromCreateInput } from "../../envelope/source.js";
 import { parseAddress } from "../../adapters/types.js";
@@ -26,7 +26,7 @@ export class MessageRouter {
   private onEnvelopeCreated?: EnvelopeHandler;
   private onEnvelopeDone?: EnvelopeHandler;
 
-  constructor(private db: HiBossDatabase, options: MessageRouterOptions = {}) {
+  constructor(private db: CliClawDatabase, options: MessageRouterOptions = {}) {
     this.onEnvelopeCreated = options.onEnvelopeCreated;
     this.onEnvelopeDone = options.onEnvelopeDone;
   }

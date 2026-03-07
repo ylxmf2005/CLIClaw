@@ -1,5 +1,5 @@
 /**
- * JSON-RPC 2.0 types for Hi-Boss IPC.
+ * JSON-RPC 2.0 types for CLIClaw IPC.
  */
 
 import type { Envelope } from "../../envelope/types.js";
@@ -138,7 +138,7 @@ export interface AgentRegisterParams {
   workspace?: string;
   provider: "claude" | "codex";
   model?: string;
-  reasoningEffort?: "none" | "low" | "medium" | "high" | "xhigh" | null;
+  reasoningEffort?: "none" | "low" | "medium" | "high" | "xhigh" | "max" | null;
   permissionLevel?: "restricted" | "standard" | "privileged" | "admin";
   metadata?: Record<string, unknown>;
   sessionDailyResetAt?: string;
@@ -221,7 +221,7 @@ export interface AgentStatusResult {
     workspace?: string;
     provider?: "claude" | "codex";
     model?: string;
-    reasoningEffort?: "none" | "low" | "medium" | "high" | "xhigh";
+    reasoningEffort?: "none" | "low" | "medium" | "high" | "xhigh" | "max";
     permissionLevel?: "restricted" | "standard" | "privileged" | "admin";
     sessionPolicy?: {
       dailyResetAt?: string;
@@ -271,7 +271,7 @@ export interface AgentSetParams {
   workspace?: string | null;
   provider?: "claude" | "codex" | null;
   model?: string | null;
-  reasoningEffort?: "none" | "low" | "medium" | "high" | "xhigh" | null;
+  reasoningEffort?: "none" | "low" | "medium" | "high" | "xhigh" | "max" | null;
   permissionLevel?: "restricted" | "standard" | "privileged" | "admin";
   sessionPolicy?: {
     dailyResetAt?: string;
@@ -293,7 +293,7 @@ export interface AgentSetResult {
     workspace?: string;
     provider: "claude" | "codex";
     model?: string;
-    reasoningEffort?: "none" | "low" | "medium" | "high" | "xhigh";
+    reasoningEffort?: "none" | "low" | "medium" | "high" | "xhigh" | "max";
     permissionLevel: "restricted" | "standard" | "privileged" | "admin";
     sessionPolicy?: unknown;
     metadata?: unknown;

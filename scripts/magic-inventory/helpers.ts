@@ -148,7 +148,7 @@ function resolveConstString(
 type PathEval = {
   text: string;
   usedDefaultDataDir: boolean;
-  usedDefaultHiBossDir: boolean;
+  usedDefaultCliClawDir: boolean;
 };
 
 function joinPosix(parts: string[]): string {
@@ -169,20 +169,20 @@ function evaluatePathExpression(
   const unwrapped = unwrapExpression(expr);
 
   if (ts.isStringLiteralLike(unwrapped))
-    return { text: unwrapped.text, usedDefaultDataDir: false, usedDefaultHiBossDir: false };
+    return { text: unwrapped.text, usedDefaultDataDir: false, usedDefaultCliClawDir: false };
 
   if (ts.isIdentifier(unwrapped)) {
     if (unwrapped.text === "__dirname")
-      return { text: "<module-dir>", usedDefaultDataDir: false, usedDefaultHiBossDir: false };
+      return { text: "<module-dir>", usedDefaultDataDir: false, usedDefaultCliClawDir: false };
     if (unwrapped.text === "__filename")
-      return { text: "<module-file>", usedDefaultDataDir: false, usedDefaultHiBossDir: false };
+      return { text: "<module-file>", usedDefaultDataDir: false, usedDefaultCliClawDir: false };
 
     const symbolAtLoc = checker.getSymbolAtLocation(unwrapped);
     if (!symbolAtLoc)
-      return { text: makePlaceholder(unwrapped.text), usedDefaultDataDir: false, usedDefaultHiBossDir: false };
+      return { text: makePlaceholder(unwrapped.text), usedDefaultDataDir: false, usedDefaultCliClawDir: false };
     const symbol = resolveAliasedSymbol(checker, symbolAtLoc);
     if (seen.has(symbol))
-      return { text: makePlaceholder(unwrapped.text), usedDefaultDataDir: false, usedDefaultHiBossDir: false };
+      return { text: makePlaceholder(unwrapped.text), usedDefaultDataDir: false, usedDefaultCliClawDir: false };
     seen.add(symbol);
 
     for (const decl of symbol.declarations ?? []) {
@@ -192,18 +192,18 @@ function evaluatePathExpression(
       }
     }
 
-    return { text: makePlaceholder(unwrapped.text), usedDefaultDataDir: false, usedDefaultHiBossDir: false };
+    return { text: makePlaceholder(unwrapped.text), usedDefaultDataDir: false, usedDefaultCliClawDir: false };
   }
 
   if (ts.isPropertyAccessExpression(unwrapped)) {
     if (unwrapped.name.text === "dataDir") {
-      return { text: "~/hiboss", usedDefaultDataDir: true, usedDefaultHiBossDir: false };
+      return { text: "~/cliclaw", usedDefaultDataDir: true, usedDefaultCliClawDir: false };
     }
     if (unwrapped.name.text === "daemonDir") {
-      return { text: "~/hiboss/.daemon", usedDefaultDataDir: true, usedDefaultHiBossDir: false };
+      return { text: "~/cliclaw/.daemon", usedDefaultDataDir: true, usedDefaultCliClawDir: false };
     }
     const raw = unwrapped.getText(sourceFile);
-    return { text: makePlaceholder(raw), usedDefaultDataDir: false, usedDefaultHiBossDir: false };
+    return { text: makePlaceholder(raw), usedDefaultDataDir: false, usedDefaultCliClawDir: false };
   }
 
   if (ts.isBinaryExpression(unwrapped) && unwrapped.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken) {
@@ -220,33 +220,33 @@ function evaluatePathExpression(
       const method = callee.name.text;
 
       if (ts.isIdentifier(receiver) && receiver.text === "os" && method === "homedir") {
-        return { text: "~", usedDefaultDataDir: false, usedDefaultHiBossDir: false };
+        return { text: "~", usedDefaultDataDir: false, usedDefaultCliClawDir: false };
       }
 
       if (ts.isIdentifier(receiver) && receiver.text === "path" && (method === "join" || method === "resolve")) {
         const parts: string[] = [];
         let usedDefaultDataDir = false;
-        let usedDefaultHiBossDir = false;
+        let usedDefaultCliClawDir = false;
         for (const arg of unwrapped.arguments) {
           const evaluated = evaluatePathExpression(checker, arg, sourceFile, depth + 1, seen);
           if (!evaluated) return null;
           if (evaluated.usedDefaultDataDir) usedDefaultDataDir = true;
-          if (evaluated.usedDefaultHiBossDir) usedDefaultHiBossDir = true;
+          if (evaluated.usedDefaultCliClawDir) usedDefaultCliClawDir = true;
           parts.push(evaluated.text);
         }
         const merged = joinPosix(parts);
         const text = merged.startsWith("~/") ? merged : merged.replace(/^~\/\//, "~/");
-        return { text, usedDefaultDataDir, usedDefaultHiBossDir };
+        return { text, usedDefaultDataDir, usedDefaultCliClawDir };
       }
     }
 
     if (ts.isIdentifier(callee)) {
       const fn = callee.text;
-      if (fn === "getHiBossDir") {
-        return { text: "~/hiboss", usedDefaultDataDir: false, usedDefaultHiBossDir: true };
+      if (fn === "getCliClawDir") {
+        return { text: "~/cliclaw", usedDefaultDataDir: false, usedDefaultCliClawDir: true };
       }
       if (fn === "getSocketPath") {
-        return { text: "~/hiboss/.daemon/daemon.sock", usedDefaultDataDir: true, usedDefaultHiBossDir: false };
+        return { text: "~/cliclaw/.daemon/daemon.sock", usedDefaultDataDir: true, usedDefaultCliClawDir: false };
       }
       if (fn === "getAgentDir") {
         const agentNameExpr = unwrapped.arguments[0];
@@ -254,13 +254,13 @@ function evaluatePathExpression(
           ? evaluatePathExpression(checker, agentNameExpr, sourceFile, depth + 1, seen)?.text ?? "<agent-name>"
           : "<agent-name>";
         return {
-          text: joinPosix(["~/hiboss", "agents", agentName]),
+          text: joinPosix(["~/cliclaw", "agents", agentName]),
           usedDefaultDataDir: false,
-          usedDefaultHiBossDir: true,
+          usedDefaultCliClawDir: true,
         };
       }
       if (fn === "findUp") {
-        return { text: "<repo-root>", usedDefaultDataDir: false, usedDefaultHiBossDir: false };
+        return { text: "<repo-root>", usedDefaultDataDir: false, usedDefaultCliClawDir: false };
       }
     }
 
@@ -269,11 +269,11 @@ function evaluatePathExpression(
       : ts.isPropertyAccessExpression(callee)
         ? callee.name.text
         : "call";
-    return { text: makePlaceholder(calleeText), usedDefaultDataDir: false, usedDefaultHiBossDir: false };
+    return { text: makePlaceholder(calleeText), usedDefaultDataDir: false, usedDefaultCliClawDir: false };
   }
 
   if (ts.isTemplateExpression(unwrapped)) {
-    return { text: makePlaceholder("template"), usedDefaultDataDir: false, usedDefaultHiBossDir: false };
+    return { text: makePlaceholder("template"), usedDefaultDataDir: false, usedDefaultCliClawDir: false };
   }
 
   return null;
@@ -281,7 +281,7 @@ function evaluatePathExpression(
 
 function isInterestingRuntimePath(p: string): boolean {
   const lower = p.toLowerCase();
-  if (p.startsWith("~/hiboss")) return true;
+  if (p.startsWith("~/cliclaw")) return true;
   if (p.startsWith("~/.codex")) return true;
   if (p.startsWith("~/.claude")) return true;
   if (lower.includes("log_history") || lower.endsWith("/log_history")) return true;
@@ -302,16 +302,16 @@ function isInterestingRuntimePath(p: string): boolean {
 }
 
 function describeEnvVar(name: string): string {
-  if (name === "HIBOSS_TOKEN") return "agent token (auth; CLI default)";
+  if (name === "CLICLAW_TOKEN") return "agent token (auth; CLI default)";
   return "environment variable";
 }
 
 function describePath(p: string, usedDefaultDataDir: boolean): string {
-  const dataDirNote = usedDefaultDataDir ? " (under dataDir; default `~/hiboss`)" : "";
-  if (p === "~/hiboss") return "Hi-Boss state directory (default)";
-  if (p.startsWith("~/hiboss/")) {
+  const dataDirNote = usedDefaultDataDir ? " (under dataDir; default `~/cliclaw`)" : "";
+  if (p === "~/cliclaw") return "CLIClaw state directory (default)";
+  if (p.startsWith("~/cliclaw/")) {
     if (p.endsWith("/.daemon")) return `daemon internal directory${dataDirNote}`;
-    if (p.endsWith("/.daemon/hiboss.db")) return `SQLite database file${dataDirNote}`;
+    if (p.endsWith("/.daemon/cliclaw.db")) return `SQLite database file${dataDirNote}`;
     if (p.endsWith("/.daemon/daemon.sock")) return `IPC socket file${dataDirNote}`;
     if (p.endsWith("/.daemon/daemon.pid")) return `daemon PID file${dataDirNote}`;
     if (p.endsWith("/.daemon/daemon.log")) return `daemon log file${dataDirNote}`;

@@ -3,7 +3,7 @@ import { formatShortId } from "../shared/id-format.js";
 import { formatUnixMsAsTimeZoneOffset } from "../shared/time.js";
 import { readAgentRunTrace } from "../shared/agent-run-trace.js";
 import type { getUiText } from "../shared/ui-text.js";
-import type { HiBossDatabase } from "./db/database.js";
+import type { CliClawDatabase } from "./db/database.js";
 
 function clipText(raw: string, max = 320): string {
   if (raw.length <= max) return raw;
@@ -11,8 +11,8 @@ function clipText(raw: string, max = 320): string {
 }
 
 export function handleTraceCommand(params: {
-  db: HiBossDatabase;
-  hibossDir?: string;
+  db: CliClawDatabase;
+  cliclawDir?: string;
   agentName: string;
   args?: string;
   ui: ReturnType<typeof getUiText>;
@@ -34,7 +34,7 @@ export function handleTraceCommand(params: {
   }
 
   if (running) {
-    if (!params.hibossDir) {
+    if (!params.cliclawDir) {
       return {
         text: [
           "trace: pending",
@@ -45,7 +45,7 @@ export function handleTraceCommand(params: {
       };
     }
 
-    const liveTrace = readAgentRunTrace(params.hibossDir, run.id);
+    const liveTrace = readAgentRunTrace(params.cliclawDir, run.id);
     if (!liveTrace || liveTrace.entries.length === 0) {
       return {
         text: [
@@ -85,18 +85,18 @@ export function handleTraceCommand(params: {
     return { text: lines.join("\n") };
   }
 
-  if (!params.hibossDir) {
+  if (!params.cliclawDir) {
     return {
       text: [
         "trace: unavailable",
         `agent-name: ${params.agentName}`,
         `run-id: ${formatShortId(run.id)}`,
-        "reason: missing-hiboss-dir",
+        "reason: missing-cliclaw-dir",
       ].join("\n"),
     };
   }
 
-  const trace = readAgentRunTrace(params.hibossDir, run.id);
+  const trace = readAgentRunTrace(params.cliclawDir, run.id);
   if (!trace) {
     return {
       text: [

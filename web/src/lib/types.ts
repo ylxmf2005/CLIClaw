@@ -1,7 +1,7 @@
-// Hi-Boss frontend types — mirrors daemon types from src/daemon/ipc/types.ts
+// CLIClaw frontend types — mirrors daemon types from src/daemon/ipc/types.ts
 
 export type Provider = "claude" | "codex";
-export type ReasoningEffort = "none" | "low" | "medium" | "high" | "xhigh";
+export type ReasoningEffort = "none" | "low" | "medium" | "high" | "xhigh" | "max";
 export type PermissionLevel = "restricted" | "standard" | "privileged" | "admin";
 export type EnvelopeStatus = "pending" | "done" | "queued" | "failed" | "expired";
 export type AgentRunStatus = "running" | "completed" | "failed" | "cancelled";
@@ -207,6 +207,13 @@ export interface SessionBinding {
   adapterType: string;
   chatId: string;
   createdAt: number;
+}
+
+export interface ChatSettings {
+  agentName: string;
+  chatId: string;
+  modelOverride?: string;
+  reasoningEffortOverride?: ReasoningEffort;
 }
 
 export interface TeamSelection {

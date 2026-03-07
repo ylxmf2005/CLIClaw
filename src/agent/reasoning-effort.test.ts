@@ -12,14 +12,16 @@ test("mapAgentReasoningEffortToClaudeEffortLevel maps shared enum to Claude leve
   assert.equal(mapAgentReasoningEffortToClaudeEffortLevel("medium"), "medium");
   assert.equal(mapAgentReasoningEffortToClaudeEffortLevel("high"), "high");
   assert.equal(mapAgentReasoningEffortToClaudeEffortLevel("xhigh"), "high");
+  assert.equal(mapAgentReasoningEffortToClaudeEffortLevel("max"), "max");
   assert.equal(mapAgentReasoningEffortToClaudeEffortLevel("default"), undefined);
   assert.equal(mapAgentReasoningEffortToClaudeEffortLevel(undefined), undefined);
 });
 
-test("normalizeClaudeEffortLevel validates low|medium|high", () => {
+test("normalizeClaudeEffortLevel validates low|medium|high|max", () => {
   assert.equal(normalizeClaudeEffortLevel("low"), "low");
   assert.equal(normalizeClaudeEffortLevel("medium"), "medium");
   assert.equal(normalizeClaudeEffortLevel("high"), "high");
+  assert.equal(normalizeClaudeEffortLevel("max"), "max");
   assert.equal(normalizeClaudeEffortLevel("xhigh"), undefined);
   assert.equal(normalizeClaudeEffortLevel("none"), undefined);
 });

@@ -64,7 +64,7 @@ function makeMockEnvelopes(): Envelope[] {
         platform: "telegram",
         channelMessageId: "2147483647",
         channelUser: { id: "u-1", username: "alice", displayName: "Alice" },
-        chat: { id: "123", name: "hiboss-test" },
+        chat: { id: "123", name: "cliclaw-test" },
       },
     },
     {
@@ -96,8 +96,8 @@ function replaceFencedCodeBlocks(text: string): string {
 }
 
 function validateSystemPrompt(): void {
-  const hibossDir = mkTmpDir("hiboss-state-");
-  const workspaceDir = mkTmpDir("hiboss-workspace-");
+  const cliclawDir = mkTmpDir("cliclaw-state-");
+  const workspaceDir = mkTmpDir("cliclaw-workspace-");
 
   const agent = makeMockAgent(workspaceDir);
 
@@ -105,9 +105,9 @@ function validateSystemPrompt(): void {
     agent,
     agentToken: agent.token,
     bindings: makeMockBindings(),
-    hibossDir,
+    cliclawDir,
   });
-  (ctx.hiboss as Record<string, unknown>).additionalContext = "Extra line.";
+  (ctx.cliclaw as Record<string, unknown>).additionalContext = "Extra line.";
 
   const renderWithMemorySnapshot = (note: string): string => {
     (ctx.internalSpace as Record<string, unknown>).note = note;
@@ -122,7 +122,7 @@ function validateSystemPrompt(): void {
 
   for (const out of outputs) {
     assert.ok(out.includes("You are nex."), "system prompt should include a minimal identity line");
-    assert.ok(out.includes("## Hi-Boss System"), "system prompt should include hiboss intro section");
+    assert.ok(out.includes("## CLIClaw System"), "system prompt should include cliclaw intro section");
     assert.ok(out.includes("## Quick Start"), "system prompt should include quick start section");
     assert.ok(out.includes("## Tools"), "system prompt should include tools section");
     assert.ok(out.includes("## Memory"), "system prompt should include memory section");
@@ -170,7 +170,7 @@ function validateTurnPrompt(): void {
     const out = renderPrompt({ surface: "turn", template: "turn/turn.md", context: ctx }).trimEnd();
     assert.ok(!out.includes("### Envelope "), "turn prompt should not include envelope headers");
     assert.ok(out.includes("sender:"), "turn prompt should include sender for channel messages");
-    assert.ok(out.includes("in group \"hiboss-test\""), "turn prompt should show group name in sender line");
+    assert.ok(out.includes("in group \"cliclaw-test\""), "turn prompt should show group name in sender line");
     assert.ok(out.includes("Alice (@alice)"), "turn prompt should show author for group messages");
     assert.ok(out.includes("envelope-id: env1"), "turn prompt should include envelope-id");
     assert.ok(out.includes("deliver-at:"), "turn prompt should include deliver-at when present");
@@ -190,7 +190,7 @@ function validateTurnPrompt(): void {
         platform: "telegram",
         channelMessageId: "2147483647",
         channelUser: { id: "u-1", username: "alice", displayName: "Alice" },
-        chat: { id: "123", name: "hiboss-test" },
+        chat: { id: "123", name: "cliclaw-test" },
       },
     };
     const group2: Envelope = {
@@ -205,7 +205,7 @@ function validateTurnPrompt(): void {
         platform: "telegram",
         channelMessageId: "2147483646",
         channelUser: { id: "u-2", username: "kky1024", displayName: "Kevin" },
-        chat: { id: "123", name: "hiboss-test" },
+        chat: { id: "123", name: "cliclaw-test" },
       },
     };
     const agentEnvelope: Envelope = {
@@ -228,7 +228,7 @@ function validateTurnPrompt(): void {
 
     const groupFromMatches = out.match(/from: channel:telegram:123/g) ?? [];
     assert.equal(groupFromMatches.length, 2, "group messages should print from per envelope");
-    const senderMatches = out.match(/sender: .* in group \"hiboss-test\"/g) ?? [];
+    const senderMatches = out.match(/sender: .* in group \"cliclaw-test\"/g) ?? [];
     assert.equal(senderMatches.length, 2, "group messages should print sender per envelope");
     assert.ok(out.includes("Alice (@alice)"), "group messages should include first author");
     assert.ok(out.includes("Kevin (@kky1024) [boss]"), "group messages should include boss marker");
@@ -249,7 +249,7 @@ function validateCliEnvelopePrompt(): void {
       platform: "telegram",
       channelMessageId: "m-1",
       channelUser: { id: "u-1", username: "alice", displayName: "Alice" },
-      chat: { id: "123", name: "hiboss-test" },
+      chat: { id: "123", name: "cliclaw-test" },
     },
   };
 

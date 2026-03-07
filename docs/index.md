@@ -1,6 +1,6 @@
-# Hi-Boss Docs
+# CLIClaw Docs
 
-Hi-Boss documentation is specification-first:
+CLIClaw documentation is specification-first:
 
 - **Specifications** (`docs/spec/`) — goals, architecture, and canonical behavior. Implementations should align with these docs.
 

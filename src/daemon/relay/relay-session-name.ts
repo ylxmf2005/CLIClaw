@@ -5,7 +5,7 @@
  * PTY streams by `{ agentName, chatId }`.
  */
 
-const RELAY_NAME_PREFIX = "hiboss";
+const RELAY_NAME_PREFIX = "cliclaw";
 const CHAT_DELIMITER = "__chat__";
 
 export function buildRelaySessionName(agentName: string, chatId: string): string {

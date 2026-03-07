@@ -11,7 +11,7 @@ import { getSessionJournalPath, readSessionFile, readSessionJournalEvents } from
 import { getSessionMarkdownPath, readSessionMarkdownFile } from "./session-markdown-file-io.js";
 
 async function withTempAgentsDir(run: (agentsDir: string) => Promise<void> | void): Promise<void> {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hiboss-history-test-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cliclaw-history-test-"));
   try {
     await run(dir);
   } finally {
@@ -41,7 +41,7 @@ function makeEnvelope(params: {
   };
 }
 
-test("appendEnvelopeCreated appends journal immediately and compacts on session close", async () => {
+test("appendEnvelopeCreated appends JSONL event log immediately and compacts on session close", async () => {
   await withTempAgentsDir(async (agentsDir) => {
     const history = new ConversationHistory({ agentsDir, timezone: "UTC" });
     const envelope = makeEnvelope({
@@ -82,8 +82,8 @@ test("appendEnvelopeCreated appends journal immediately and compacts on session 
     assert.equal(beta?.events[0]?.type, "envelope-created");
     assert.equal(alpha?.endedAtMs, endedAtMs);
     assert.equal(beta?.endedAtMs, endedAtMs);
-    assert.equal(fs.existsSync(getSessionJournalPath(alphaPath!)), false);
-    assert.equal(fs.existsSync(getSessionJournalPath(betaPath!)), false);
+    assert.equal(fs.existsSync(getSessionJournalPath(alphaPath!)), true);
+    assert.equal(fs.existsSync(getSessionJournalPath(betaPath!)), true);
 
     const alphaMd = readSessionMarkdownFile(getSessionMarkdownPath(alphaPath!));
     const betaMd = readSessionMarkdownFile(getSessionMarkdownPath(betaPath!));
@@ -298,7 +298,7 @@ test("session close writes markdown body from buffered events once", async () =>
   });
 });
 
-test("journal survives restart and is compacted on recovered close", async () => {
+test("JSONL event log survives restart and is compacted on recovered close", async () => {
   await withTempAgentsDir(async (agentsDir) => {
     const firstRun = new ConversationHistory({ agentsDir, timezone: "UTC" });
     const envelope = makeEnvelope({
@@ -328,7 +328,7 @@ test("journal survives restart and is compacted on recovered close", async () =>
     assert.ok(compacted);
     assert.equal(compacted?.events.length, 1);
     assert.equal(compacted?.events[0]?.type, "envelope-created");
-    assert.equal(fs.existsSync(getSessionJournalPath(alphaPath!)), false);
+    assert.equal(fs.existsSync(getSessionJournalPath(alphaPath!)), true);
   });
 });
 
@@ -357,6 +357,72 @@ test("active session periodically compacts journal before close", async () => {
     assert.ok(session);
     assert.equal(session?.endedAtMs, null);
     assert.ok((session?.events.length ?? 0) > 0);
-    assert.ok(readSessionJournalEvents(alphaPath!).length < 60);
+    assert.equal(readSessionJournalEvents(alphaPath!).length, 60);
+  });
+});
+
+test("constructor migrates legacy ndjson event logs to jsonl", async () => {
+  await withTempAgentsDir(async (agentsDir) => {
+    const first = makeEnvelope({
+      id: "env-legacy-1",
+      from: "agent:alpha",
+      to: "agent:beta",
+      text: "legacy-event",
+    });
+    const second = makeEnvelope({
+      id: "env-legacy-2",
+      from: "agent:alpha",
+      to: "agent:beta",
+      text: "current-event",
+    });
+
+    const dateStr = "2026-03-06";
+    const chatDir = "chat-legacy";
+    const sessionId = "session-legacy";
+    const sessionBaseDir = path.join(
+      agentsDir,
+      "alpha",
+      "internal_space",
+      "history",
+      dateStr,
+      chatDir,
+    );
+    fs.mkdirSync(sessionBaseDir, { recursive: true });
+
+    const sessionFilePath = path.join(sessionBaseDir, `${sessionId}.json`);
+    const currentJournalPath = getSessionJournalPath(sessionFilePath);
+    const legacyJournalPath = currentJournalPath.replace(/\.events\.jsonl$/, ".events.ndjson");
+
+    const firstEvent = {
+      type: "envelope-created" as const,
+      timestampMs: first.createdAt,
+      origin: "internal" as const,
+      envelope: first,
+    };
+    const secondEvent = {
+      type: "envelope-created" as const,
+      timestampMs: second.createdAt,
+      origin: "internal" as const,
+      envelope: second,
+    };
+    // Duplicate line exists in both files; migration should de-duplicate.
+    fs.writeFileSync(legacyJournalPath, `${JSON.stringify(firstEvent)}\n`, "utf8");
+    fs.writeFileSync(
+      currentJournalPath,
+      `${JSON.stringify(firstEvent)}\n${JSON.stringify(secondEvent)}\n`,
+      "utf8",
+    );
+
+    new ConversationHistory({ agentsDir, timezone: "UTC" });
+
+    assert.equal(fs.existsSync(legacyJournalPath), false);
+    assert.equal(fs.existsSync(currentJournalPath), true);
+
+    const events = readSessionJournalEvents(sessionFilePath);
+    assert.equal(events.length, 2);
+    assert.equal(events[0]?.type, "envelope-created");
+    assert.equal(events[1]?.type, "envelope-created");
+    assert.equal((events[0] as { envelope: { id: string } }).envelope.id, "env-legacy-1");
+    assert.equal((events[1] as { envelope: { id: string } }).envelope.id, "env-legacy-2");
   });
 });

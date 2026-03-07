@@ -23,14 +23,14 @@ const outfit = Outfit({
 });
 
 export const metadata: Metadata = {
-  title: "Hi-Boss | Agent Operations Console",
+  title: "CLIClaw | Agent Operations Console",
   description:
-    "Web dashboard for Hi-Boss — manage agents, teams, and durable messaging.",
+    "Web dashboard for CLIClaw — manage agents, teams, and durable messaging.",
 };
 
 // Inline script that runs before first paint to set the correct theme class,
 // preventing the dark→light (or light→dark) flash on page load.
-const themeInitScript = `(function(){try{var t=localStorage.getItem("hiboss-theme");if(t!=="light"&&t!=="dark"){t=window.matchMedia("(prefers-color-scheme:light)").matches?"light":"dark"}document.documentElement.classList.toggle("dark",t==="dark")}catch(e){}})()`;
+const themeInitScript = `(function(){try{var t=localStorage.getItem("cliclaw-theme");if(t!=="light"&&t!=="dark"){t=window.matchMedia("(prefers-color-scheme:light)").matches?"light":"dark"}document.documentElement.classList.toggle("dark",t==="dark")}catch(e){}})()`;
 
 export default function RootLayout({
   children,

@@ -13,14 +13,24 @@
  */
 
 import type { BrokerManager } from "../daemon/relay/broker-manager.js";
-import type { HiBossDatabase } from "../daemon/db/database.js";
+import type { CliClawDatabase } from "../daemon/db/database.js";
 import { logEvent, errorMessage } from "../shared/daemon-log.js";
 import { buildRelaySessionName } from "../daemon/relay/relay-session-name.js";
 
 export interface RelayExecutorOptions {
   broker: BrokerManager;
-  db: HiBossDatabase;
-  hibossDir: string;
+  db: CliClawDatabase;
+  cliclawDir: string;
+}
+
+interface RelaySessionEntry {
+  relayName: string;
+  spawnedAt: number;
+}
+
+interface RelaySendInputResult {
+  success: boolean;
+  error?: string;
 }
 
 /**
@@ -28,16 +38,16 @@ export interface RelayExecutorOptions {
  */
 export class RelayExecutor {
   private broker: BrokerManager;
-  private db: HiBossDatabase;
-  private hibossDir: string;
+  private db: CliClawDatabase;
+  private cliclawDir: string;
 
   /** Track which agent+chat combos have active relay sessions. */
-  private activeSessions = new Map<string, { relayName: string; spawnedAt: number }>();
+  private activeSessions = new Map<string, RelaySessionEntry>();
 
   constructor(options: RelayExecutorOptions) {
     this.broker = options.broker;
     this.db = options.db;
-    this.hibossDir = options.hibossDir;
+    this.cliclawDir = options.cliclawDir;
   }
 
   /**
@@ -47,11 +57,39 @@ export class RelayExecutor {
     return this.broker.isAvailable();
   }
 
+  private buildSessionKey(agentName: string, chatId: string): string {
+    return `${agentName}:${chatId}`;
+  }
+
+  private isUnknownWorkerError(err: unknown): boolean {
+    const message = errorMessage(err).toLowerCase();
+    return message.includes("unknown worker") || message.includes("agent_not_found");
+  }
+
+  private resolveRelaySpawnConfig(agentName: string, chatId: string): {
+    agentName: string;
+    chatId: string;
+    provider: "claude" | "codex";
+    workspace?: string;
+    model?: string;
+  } | null {
+    const agent = this.db.getAgentByNameCaseInsensitive(agentName);
+    if (!agent) return null;
+    const chatModelSettings = this.db.getChatModelSettings(agent.name, chatId);
+    return {
+      agentName: agent.name,
+      chatId,
+      provider: agent.provider ?? "claude",
+      workspace: agent.workspace,
+      model: chatModelSettings.modelOverride ?? agent.model,
+    };
+  }
+
   /**
    * Check if an agent+chat has an active relay session.
    */
   hasActiveSession(agentName: string, chatId: string): boolean {
-    const key = `${agentName}:${chatId}`;
+    const key = this.buildSessionKey(agentName, chatId);
     return this.activeSessions.has(key);
   }
 
@@ -70,7 +108,7 @@ export class RelayExecutor {
       return { success: false, error: "Relay broker not available" };
     }
 
-    const key = `${params.agentName}:${params.chatId}`;
+    const key = this.buildSessionKey(params.agentName, params.chatId);
     const existing = this.activeSessions.get(key);
 
     if (existing) {
@@ -86,7 +124,7 @@ export class RelayExecutor {
     const result = await this.broker.spawnAgent({
       name: relayName,
       cli: params.provider,
-      cwd: params.workspace ?? this.hibossDir,
+      cwd: params.workspace ?? this.cliclawDir,
       model: params.model,
     });
 
@@ -115,7 +153,7 @@ export class RelayExecutor {
     text: string;
     from?: string;
   }): Promise<{ success: boolean; error?: string }> {
-    const key = `${params.agentName}:${params.chatId}`;
+    const key = this.buildSessionKey(params.agentName, params.chatId);
     const session = this.activeSessions.get(key);
 
     if (!session) {
@@ -138,12 +176,76 @@ export class RelayExecutor {
    * Send raw PTY input to a relay session.
    * Used for interactive terminal keystrokes.
    */
-  async sendInput(agentName: string, chatId: string, data: string): Promise<void> {
-    const key = `${agentName}:${chatId}`;
-    const session = this.activeSessions.get(key);
-    if (!session) return;
+  async sendInput(agentName: string, chatId: string, data: string): Promise<RelaySendInputResult> {
+    const spawnConfig = this.resolveRelaySpawnConfig(agentName, chatId);
+    if (!spawnConfig) {
+      return { success: false, error: `Agent not found: ${agentName}` };
+    }
 
-    await this.broker.sendInput(session.relayName, data);
+    const key = this.buildSessionKey(spawnConfig.agentName, chatId);
+    const relayOn = this.db.getChatRelayState(spawnConfig.agentName, chatId);
+    if (!relayOn) {
+      return { success: false, error: "Relay mode is off for this chat" };
+    }
+
+    let session = this.activeSessions.get(key);
+    if (!session) {
+      const ensureResult = await this.ensureSession(spawnConfig);
+      if (!ensureResult.success) {
+        this.db.setChatRelayState(spawnConfig.agentName, chatId, false);
+        return {
+          success: false,
+          error: ensureResult.error ?? "Failed to start relay session",
+        };
+      }
+      session = this.activeSessions.get(key);
+      if (!session) {
+        this.db.setChatRelayState(spawnConfig.agentName, chatId, false);
+        return { success: false, error: "Relay session unavailable after restore" };
+      }
+    }
+
+    try {
+      await this.broker.sendInput(session.relayName, data);
+      return { success: true };
+    } catch (err) {
+      if (!this.isUnknownWorkerError(err)) {
+        return { success: false, error: errorMessage(err) };
+      }
+
+      // Worker vanished; clear stale cache and rebuild once.
+      this.activeSessions.delete(key);
+      const ensureResult = await this.ensureSession(spawnConfig);
+      if (!ensureResult.success) {
+        this.db.setChatRelayState(spawnConfig.agentName, chatId, false);
+        return {
+          success: false,
+          error: ensureResult.error ?? "Failed to restore relay session",
+        };
+      }
+
+      const restored = this.activeSessions.get(key);
+      if (!restored) {
+        this.db.setChatRelayState(spawnConfig.agentName, chatId, false);
+        return { success: false, error: "Relay session unavailable after retry" };
+      }
+
+      try {
+        await this.broker.sendInput(restored.relayName, data);
+        logEvent("info", "relay-input-recovered", {
+          "agent-name": spawnConfig.agentName,
+          "chat-id": chatId,
+          "relay-name": restored.relayName,
+        });
+        return { success: true };
+      } catch (retryErr) {
+        if (this.isUnknownWorkerError(retryErr)) {
+          this.activeSessions.delete(key);
+          this.db.setChatRelayState(spawnConfig.agentName, chatId, false);
+        }
+        return { success: false, error: errorMessage(retryErr) };
+      }
+    }
   }
 
   /**
@@ -180,7 +282,7 @@ export class RelayExecutor {
    * Release (stop) a relay session for an agent+chat.
    */
   async releaseSession(agentName: string, chatId: string, reason?: string): Promise<void> {
-    const key = `${agentName}:${chatId}`;
+    const key = this.buildSessionKey(agentName, chatId);
     const session = this.activeSessions.get(key);
     if (!session) return;
 
@@ -199,7 +301,7 @@ export class RelayExecutor {
    */
   async releaseAllForAgent(agentName: string): Promise<void> {
     const prefix = `${agentName}:`;
-    const toRelease: Array<[string, { relayName: string }]> = [];
+    const toRelease: Array<[string, RelaySessionEntry]> = [];
 
     for (const [key, session] of this.activeSessions) {
       if (key.startsWith(prefix)) {
@@ -227,7 +329,7 @@ export class RelayExecutor {
    * Interrupt a relay agent (ESC ESC).
    */
   async interruptAgent(agentName: string, chatId: string): Promise<boolean> {
-    const key = `${agentName}:${chatId}`;
+    const key = this.buildSessionKey(agentName, chatId);
     const session = this.activeSessions.get(key);
     if (!session) return false;
 

@@ -82,6 +82,8 @@ export function createSessionChatHandlers(ctx: DaemonContext): RpcMethodRegistry
       }
 
       const chatId = p.chatId.trim();
+      const chatModelSettings = ctx.db.getChatModelSettings(agent.name, chatId);
+      const effectiveModel = chatModelSettings.modelOverride ?? agent.model;
 
       if (p.relayOn) {
         if (!ctx.relayAvailable || !ctx.relayExecutor) {
@@ -92,7 +94,7 @@ export function createSessionChatHandlers(ctx: DaemonContext): RpcMethodRegistry
           chatId,
           provider: agent.provider ?? "claude",
           workspace: agent.workspace,
-          model: agent.model,
+          model: effectiveModel,
         });
         if (!result.success) {
           rpcError(RPC_ERRORS.DELIVERY_FAILED, result.error ?? "Failed to enable relay mode");

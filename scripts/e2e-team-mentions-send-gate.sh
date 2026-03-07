@@ -12,8 +12,8 @@ API_URL="${API_URL:-http://localhost:3889}"
 ADMIN_TOKEN="${ADMIN_TOKEN:-}"
 TEAM_NAME="${TEAM_NAME:-e2e-send-gate}"
 AGENT_NAME="${AGENT_NAME:-nex}"
-HIBOSS_DATA_DIR="${HIBOSS_DATA_DIR:-/Users/EthanLee/hiboss-test}"
-SESSION_NAME="${SESSION_NAME:-hiboss-e2e-send-gate}"
+CLICLAW_DATA_DIR="${CLICLAW_DATA_DIR:-/Users/EthanLee/cliclaw-test}"
+SESSION_NAME="${SESSION_NAME:-cliclaw-e2e-send-gate}"
 
 if [[ -z "$ADMIN_TOKEN" ]]; then
   echo "ADMIN_TOKEN is required" >&2
@@ -72,11 +72,11 @@ process.exit(0);
 echo "=== Setup ==="
 
 echo "Ensuring agent '${AGENT_NAME}' and team '${TEAM_NAME}' exist..."
-mkdir -p "${HIBOSS_DATA_DIR}/agents/${AGENT_NAME}/workspace"
+mkdir -p "${CLICLAW_DATA_DIR}/agents/${AGENT_NAME}/workspace"
 curl -fsS -X POST "${API_URL}/api/agents" \
   -H "Authorization: Bearer ${ADMIN_TOKEN}" \
   -H "Content-Type: application/json" \
-  -d "{\"name\":\"${AGENT_NAME}\",\"description\":\"Send gate e2e\",\"workspace\":\"${HIBOSS_DATA_DIR}/agents/${AGENT_NAME}/workspace\",\"provider\":\"claude\"}" \
+  -d "{\"name\":\"${AGENT_NAME}\",\"description\":\"Send gate e2e\",\"workspace\":\"${CLICLAW_DATA_DIR}/agents/${AGENT_NAME}/workspace\",\"provider\":\"claude\"}" \
   >/dev/null 2>/dev/null || true
 
 curl -fsS -X POST "${API_URL}/api/teams" \

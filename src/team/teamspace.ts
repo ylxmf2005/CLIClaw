@@ -3,21 +3,21 @@ import * as path from "node:path";
 
 import { assertValidTeamName } from "../shared/validation.js";
 
-export function getTeamspacesDir(hibossDir: string): string {
-  return path.join(hibossDir, "teamspaces");
+export function getTeamspacesDir(cliclawDir: string): string {
+  return path.join(cliclawDir, "teamspaces");
 }
 
-export function getTeamspaceDir(teamName: string, hibossDir: string): string {
+export function getTeamspaceDir(teamName: string, cliclawDir: string): string {
   assertValidTeamName(teamName);
-  return path.join(getTeamspacesDir(hibossDir), teamName);
+  return path.join(getTeamspacesDir(cliclawDir), teamName);
 }
 
 export function ensureTeamspaceDir(params: {
-  hibossDir: string;
+  cliclawDir: string;
   teamName: string;
 }): { ok: true; dir: string } | { ok: false; error: string } {
   try {
-    const dir = getTeamspaceDir(params.teamName, params.hibossDir);
+    const dir = getTeamspaceDir(params.teamName, params.cliclawDir);
     fs.mkdirSync(dir, { recursive: true });
     return { ok: true, dir };
   } catch (err) {
@@ -29,11 +29,11 @@ export function ensureTeamspaceDir(params: {
 }
 
 export function removeTeamspaceDir(params: {
-  hibossDir: string;
+  cliclawDir: string;
   teamName: string;
 }): { ok: true } | { ok: false; error: string } {
   try {
-    const dir = getTeamspaceDir(params.teamName, params.hibossDir);
+    const dir = getTeamspaceDir(params.teamName, params.cliclawDir);
     if (fs.existsSync(dir)) {
       fs.rmSync(dir, { recursive: true, force: true });
     }

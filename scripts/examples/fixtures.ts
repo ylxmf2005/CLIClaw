@@ -17,7 +17,7 @@ const REPO_ROOT = path.resolve(__dirname, "../..");
 
 export interface ExampleFixture {
   homeDir: string;
-  hibossDir: string;
+  cliclawDir: string;
   adminToken: string;
   agentToken: string;
   cleanup(): void;
@@ -32,12 +32,12 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-export async function startExamplesDaemon(hibossDir: string): Promise<ExamplesDaemonHandle> {
-  const prev = process.env.HIBOSS_DAEMON_MODE;
-  process.env.HIBOSS_DAEMON_MODE = "examples";
+export async function startExamplesDaemon(cliclawDir: string): Promise<ExamplesDaemonHandle> {
+  const prev = process.env.CLICLAW_DAEMON_MODE;
+  process.env.CLICLAW_DAEMON_MODE = "examples";
 
-  const daemonDir = path.join(hibossDir, ".daemon");
-  const daemon = new Daemon({ dataDir: hibossDir, daemonDir });
+  const daemonDir = path.join(cliclawDir, ".daemon");
+  const daemon = new Daemon({ dataDir: cliclawDir, daemonDir });
   await daemon.start();
 
   const socketPath = path.join(daemonDir, "daemon.sock");
@@ -52,8 +52,8 @@ export async function startExamplesDaemon(hibossDir: string): Promise<ExamplesDa
   }
   if (!ok) {
     await daemon.stop().catch(() => undefined);
-    if (prev === undefined) delete process.env.HIBOSS_DAEMON_MODE;
-    else process.env.HIBOSS_DAEMON_MODE = prev;
+    if (prev === undefined) delete process.env.CLICLAW_DAEMON_MODE;
+    else process.env.CLICLAW_DAEMON_MODE = prev;
     throw new Error("Timed out waiting for daemon socket");
   }
 
@@ -61,26 +61,26 @@ export async function startExamplesDaemon(hibossDir: string): Promise<ExamplesDa
     daemon,
     async stop() {
       await daemon.stop();
-      if (prev === undefined) delete process.env.HIBOSS_DAEMON_MODE;
-      else process.env.HIBOSS_DAEMON_MODE = prev;
+      if (prev === undefined) delete process.env.CLICLAW_DAEMON_MODE;
+      else process.env.CLICLAW_DAEMON_MODE = prev;
     },
   };
 }
 
-export function runHibossCli(params: {
+export function runCliclawCli(params: {
   homeDir: string;
   token: string;
   args: string[];
 }): Promise<{ stdout: string; stderr: string; status: number }> {
   const tsxPath = path.join(REPO_ROOT, "node_modules", ".bin", "tsx");
-  const cliEntry = path.join(REPO_ROOT, "bin", "hiboss.ts");
+  const cliEntry = path.join(REPO_ROOT, "bin", "cliclaw.ts");
 
   return new Promise((resolve) => {
     const child = spawn(tsxPath, [cliEntry, ...params.args], {
       env: {
         ...process.env,
         HOME: params.homeDir,
-        HIBOSS_TOKEN: params.token,
+        CLICLAW_TOKEN: params.token,
       },
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -105,16 +105,16 @@ export function runHibossCli(params: {
 }
 
 export async function createExampleFixture(): Promise<ExampleFixture> {
-  const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), "hiboss-examples-"));
-  const hibossDir = path.join(homeDir, "hiboss");
-  const daemonDir = path.join(hibossDir, ".daemon");
+  const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), "cliclaw-examples-"));
+  const cliclawDir = path.join(homeDir, "cliclaw");
+  const daemonDir = path.join(cliclawDir, ".daemon");
   fs.mkdirSync(daemonDir, { recursive: true });
 
-  const adminToken = "admin_example_token_for_docs";
-  const agentToken = "agt_example_token_for_docs";
+  const adminToken = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  const agentToken = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 
   // Seed an agent home fixture with internal_space memory snapshots.
-  const agentHome = path.join(hibossDir, "agents", "nex");
+  const agentHome = path.join(cliclawDir, "agents", "nex");
   fs.mkdirSync(agentHome, { recursive: true });
   const internalSpaceDir = path.join(agentHome, "internal_space");
   fs.mkdirSync(internalSpaceDir, { recursive: true });
@@ -147,7 +147,7 @@ export async function createExampleFixture(): Promise<ExampleFixture> {
   );
 
   // Seed SQLite
-  const dbPath = path.join(daemonDir, "hiboss.db");
+  const dbPath = path.join(daemonDir, "cliclaw.db");
   const db = new Database(dbPath);
   db.exec(SCHEMA_SQL);
 
@@ -164,6 +164,19 @@ export async function createExampleFixture(): Promise<ExampleFixture> {
   const cfgTime = Date.parse("2026-01-01T00:00:00.000Z");
   upsertConfig.run("setup_completed", "true", cfgTime);
   upsertConfig.run("admin_token_hash", hashToken(adminToken), cfgTime);
+  upsertConfig.run(
+    "user_permission_policy",
+    JSON.stringify({
+      tokens: [
+        {
+          name: "Kevin",
+          token: adminToken,
+          role: "admin",
+        },
+      ],
+    }),
+    cfgTime
+  );
   upsertConfig.run("boss_name", "Kevin", cfgTime);
   upsertConfig.run("boss_timezone", "Asia/Shanghai", cfgTime);
   upsertConfig.run("adapter_boss_ids_telegram", "@kky1024", cfgTime);
@@ -191,7 +204,7 @@ export async function createExampleFixture(): Promise<ExampleFixture> {
 
   insertAgent.run(
     "scheduler",
-    "agt_example_scheduler_token",
+    "cccccccccccccccccccccccccccccccc",
     "Background scheduler",
     null,
     "codex",
@@ -451,7 +464,7 @@ export async function createExampleFixture(): Promise<ExampleFixture> {
 
   return {
     homeDir,
-    hibossDir,
+    cliclawDir,
     adminToken,
     agentToken,
     cleanup() {

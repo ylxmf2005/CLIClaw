@@ -11,7 +11,7 @@ import { executeOneShotPrompt } from "./oneshot-turn.js";
 async function withFakeClaude(
   run: (params: { workspaceDir: string; checkFile: string; binDir: string }) => Promise<void>,
 ): Promise<void> {
-  const workspaceDir = await fs.mkdtemp(path.join(os.tmpdir(), "hiboss-fake-claude-"));
+  const workspaceDir = await fs.mkdtemp(path.join(os.tmpdir(), "cliclaw-fake-claude-"));
   const binDir = path.join(workspaceDir, "bin");
   const checkFile = path.join(workspaceDir, "claude-env-check.txt");
   try {
@@ -20,15 +20,15 @@ async function withFakeClaude(
     const fakeClaudePath = path.join(binDir, "claude");
     const script = `#!/bin/sh
 if [ -n "\${CLAUDECODE:-}" ]; then
-  if [ -n "\${HIBOSS_FAKE_CLAUDE_ENV_CHECK_FILE:-}" ]; then
-    echo "present" > "\$HIBOSS_FAKE_CLAUDE_ENV_CHECK_FILE"
+  if [ -n "\${CLICLAW_FAKE_CLAUDE_ENV_CHECK_FILE:-}" ]; then
+    echo "present" > "\$CLICLAW_FAKE_CLAUDE_ENV_CHECK_FILE"
   fi
   echo "Error: Claude Code cannot be launched inside another Claude Code session." >&2
   exit 42
 fi
 
-if [ -n "\${HIBOSS_FAKE_CLAUDE_ENV_CHECK_FILE:-}" ]; then
-  echo "absent" > "\$HIBOSS_FAKE_CLAUDE_ENV_CHECK_FILE"
+if [ -n "\${CLICLAW_FAKE_CLAUDE_ENV_CHECK_FILE:-}" ]; then
+  echo "absent" > "\$CLICLAW_FAKE_CLAUDE_ENV_CHECK_FILE"
 fi
 
 cat >/dev/null
@@ -83,7 +83,7 @@ test("executeCliTurn clears CLAUDECODE even when host env and overrides set it",
       {
         PATH: mergedPath,
         CLAUDECODE: "1",
-        HIBOSS_FAKE_CLAUDE_ENV_CHECK_FILE: checkFile,
+        CLICLAW_FAKE_CLAUDE_ENV_CHECK_FILE: checkFile,
       },
       async () => {
         const session: AgentSession = {
@@ -96,7 +96,7 @@ test("executeCliTurn clears CLAUDECODE even when host env and overrides set it",
         };
 
         const result = await executeCliTurn(session, "hello", {
-          hibossDir: workspaceDir,
+          cliclawDir: workspaceDir,
           agentName: "nex",
         });
 
@@ -115,7 +115,7 @@ test("executeOneShotPrompt clears CLAUDECODE even when host env and overrides se
       {
         PATH: mergedPath,
         CLAUDECODE: "1",
-        HIBOSS_FAKE_CLAUDE_ENV_CHECK_FILE: checkFile,
+        CLICLAW_FAKE_CLAUDE_ENV_CHECK_FILE: checkFile,
       },
       async () => {
         const result = await executeOneShotPrompt({
