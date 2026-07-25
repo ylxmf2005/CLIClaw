@@ -45,8 +45,8 @@ Longrein 不规定固定阶段。Agent 根据当前真正缺少的能力选择 S
 | --- | --- |
 | [`shape`](skills/shape/SKILL.md) | 方向、边界或关键前提还不足以承诺时，接触现实并形成可信 Context |
 | [`grill`](skills/grill/SKILL.md) | 方向已经成形时，分轮推进决策前沿，直到用户取得共同理解 |
-| [`dev`](skills/dev/SKILL.md) | 从已成立的承诺进入代码，把行为改到根因需要的尺度 |
-| [`test`](skills/test/SKILL.md) | 从真实入口走到系统终态，以可重放证据判断承诺是否成立 |
+| [`dev`](skills/dev/SKILL.md) | 从已确认的承诺进入代码，把行为改到根因需要的尺度 |
+| [`test`](skills/test/SKILL.md) | 从真实入口走到真实结果端，以可重放证据判断承诺是否成立 |
 | [`review`](skills/review/SKILL.md) | 对需求、设计、代码或交付物做独立裁决 |
 | [`walkthrough`](skills/walkthrough/SKILL.md) | 沿承重关系讲清非平凡对象，让用户能够继续判断 |
 | [`evolution`](skills/evolution/SKILL.md) | 从真实轨迹提炼值得改变未来工作的经验 |
@@ -55,9 +55,9 @@ Longrein 不规定固定阶段。Agent 根据当前真正缺少的能力选择 S
 
 ## Context 与产物
 
-需要跨会话交接的任务使用 `context.md` 保存原始请求、现实坐标、Goal、Scope、Non-goals 和 Current Artifacts。专业结论留在拥有它的产物中，`context.md` 只提供当前承诺与入口。
+用户明确只想讨论或查看时，无论是否已有 Task 都只在对话中处理，这一边界优先于其他入口；宿主自动选择 Shape 但尚未启动 Task 时同样不落盘。除此之外，用户显式以 Shape 启动新 Task 会在任务工作区根目录创建 `context.md`；已有 Task 进入 Shape 时先读取同一份 Context，事实变化可以更新 Reality Coordinates，承诺变化只在用户决定后修订，没有受影响内容时不写。
 
-实现、测试、评审和讲解从这些来源进入真实对象。简单且上下文清楚的工作无需为了形式创建任务文件。
+`context.md` 保存 Original Request、Reality Coordinates、Goal、Scope、Non-goals、Acceptance Evidence 和 Current Artifacts。未确认的承诺保持 `unresolved`，专业结论留在拥有它的产物中；Current Artifacts 只列当前有效入口。方向清楚的轻量工作无需先调用 Shape，也不为形式创建任务文件。
 
 ## 安装选择
 

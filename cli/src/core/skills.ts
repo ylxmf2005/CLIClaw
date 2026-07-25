@@ -20,11 +20,11 @@ export interface Skill {
   description: string;
 }
 
-function parseFrontmatter(markdown: string): Record<string, string> {
-  const match = markdown.match(/^---\n([\s\S]*?)\n---/);
+export function parseFrontmatter(markdown: string): Record<string, string> {
+  const match = markdown.match(/^---\r?\n([\s\S]*?)\r?\n---/);
   const out: Record<string, string> = {};
   if (!match) return out;
-  for (const line of match[1].split('\n')) {
+  for (const line of match[1].split(/\r?\n/)) {
     const kv = line.match(/^([A-Za-z_-]+):\s*(.*)$/);
     if (kv) out[kv[1]] = kv[2].trim();
   }

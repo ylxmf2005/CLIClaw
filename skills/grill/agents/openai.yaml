@@ -1,4 +1,4 @@
 interface:
   display_name: "Grill"
   short_description: "分轮推进当前决策前沿，让用户在实现前取得共同理解与判断资格"
-  default_prompt: "使用 $grill 把当前方向展开为决策树，逐轮回答当前前沿，直到我们确认已经形成共同理解。"
+  default_prompt: "使用 $grill 把当前方向展开为决策树，逐轮向我呈现当前决定前沿，直到我们确认已经形成共同理解。"

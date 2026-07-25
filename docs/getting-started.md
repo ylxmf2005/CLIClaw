@@ -62,7 +62,7 @@ longrein doctor
 | --- | --- | --- |
 | `/shape <你的请求>` | `$shape <你的请求>` | `/skill:shape <你的请求>` |
 
-Shape 会在需要交接的任务中建立 `context.md`，保存原始请求、现实坐标、当前承诺和 Current Artifacts。其他 Skills 从这里进入任务；简单且上下文清楚的工作不必为了形式创建文档。
+用户明确只是讨论或查看时，无论是否已有 Task 都只留在对话，这一边界优先于其他入口；宿主自动选择 Shape 但尚未启动 Task 时同样不落盘。除此之外，用户显式以 Shape 启动新 Task 会立即在任务工作区根目录创建 `context.md`；已有 Task 进入 Shape 时先读取同一份 Context，事实变化可以更新 Reality Coordinates，承诺变化只在用户决定后修订，没有受影响内容时不写。Context 保存 Original Request、Reality Coordinates、Goal、Scope、Non-goals、Acceptance Evidence 和 Current Artifacts，未确认的承诺保持 `unresolved`；其他 Skills 从其中当前有效的入口继续，方向清楚的轻量工作无需先调用 Shape。
 
 ## 更新与卸载
 

@@ -1,4 +1,4 @@
 interface:
   display_name: "Dev"
-  short_description: "让契约在真实代码中成立，并把变化收缩到根因真正需要的尺度"
-  default_prompt: "使用 $dev 从 context.md 及其中列出的当前产物进入真实代码，让用户已经同意的结果在系统中成立。"
+  short_description: "把承诺所需的行为落实到真实代码，并把变化收缩到根因需要的尺度"
+  default_prompt: "使用 $dev 从当前任务承诺和真实代码进入，完成用户已经同意的实现，并用聚焦反馈校正结果。"
