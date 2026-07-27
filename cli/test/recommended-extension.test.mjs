@@ -29,6 +29,7 @@ test('extension dry-run prints upstream commands and keeps FastCtx last', () => 
   assert.match(result.stdout, /codegraph upgrade|codegraph\/main\/install/);
   assert.match(result.stdout, /dicklesworthstone\/tap\/cass|coding_agent_session_search\/main\/install/);
   assert.match(result.stdout, /longrein-extension@longrein/);
+  assert.match(result.stdout, /pi install .*longrein-extension/);
   assert.match(result.stdout, /npm install --global fastctx@latest/);
   assert.ok(result.stdout.indexOf('\nfastctx\n') > result.stdout.indexOf('\nplugin\n'));
 });
@@ -53,7 +54,7 @@ test('extension status is read-only and reports all upstream CLIs', () => {
   assert.match(result.stdout, /cass/);
 });
 
-test('extension installs the cass Skill plugin into isolated Codex and Claude homes', (t) => {
+test('extension installs the cass Skill plugin into explicitly selected Codex and Claude homes', (t) => {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'longrein-extension-plugin-'));
   t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
   const home = path.join(temp, 'home');
@@ -61,7 +62,10 @@ test('extension installs the cass Skill plugin into isolated Codex and Claude ho
   fs.mkdirSync(home, { recursive: true });
   fs.mkdirSync(codexHome, { recursive: true });
 
-  const result = run(['extension', 'install', 'cass-skill', '--yes'], 0, { HOME: home, CODEX_HOME: codexHome });
+  const result = run(['extension', 'install', 'cass-skill', '--codex', '--claude', '--yes'], 0, {
+    HOME: home,
+    CODEX_HOME: codexHome,
+  });
   assert.match(result.stdout, /Longrein Extension/);
   const codexList = spawnSync('codex', ['plugin', 'list', '--json'], {
     encoding: 'utf8',
@@ -75,6 +79,12 @@ test('extension installs the cass Skill plugin into isolated Codex and Claude ho
   });
   assert.equal(claudeList.status, 0, claudeList.stderr);
   assert.match(claudeList.stdout, /longrein-extension@longrein/);
+});
+
+test('an explicit Extension host selection does not affect other hosts', () => {
+  const result = run(['extension', 'install', 'cass-skill', '--codex', '--dry-run']);
+  assert.match(result.stdout, /codex plugin add longrein-extension@longrein/);
+  assert.doesNotMatch(result.stdout, /claude plugin install|pi install/);
 });
 
 test('ordinary non-interactive install does not opt into the Extension', (t) => {

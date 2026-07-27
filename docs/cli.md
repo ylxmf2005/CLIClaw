@@ -16,9 +16,9 @@ longrein extension install --dry-run 查看将执行的上游命令
 longrein extension install -y    安装或更新可选 Extension
 ```
 
-安装与维护命令支持 `--codex`、`--claude` 和 `--pi`。`install` 默认复制 Skills；开发 checkout 使用 `--link`。交互安装会选择宿主、Skills 与每个 Extension 组件。`install -y` 默认安装全部 Skills 并跳过 Extension；`--extensions` 选择全部组件，`--extension-components codegraph cass` 只选择指定组件。
+安装与维护命令在未指定宿主时面向 Codex、Claude Code 和 Pi；`--codex`、`--claude` 与 `--pi` 用于缩小范围，也可以组合。`install` 默认复制 Skills；开发 checkout 使用 `--link`。交互安装会选择宿主、Skills 与每个 Extension 组件。`install -y` 默认向三个宿主安装全部 Skills 并跳过 Extension；`--extensions` 选择全部组件，`--extension-components codegraph cass` 只选择指定组件。
 
-Extension 编排 FastCtx、CodeGraph、cass 的官方安装渠道，并安装含 `coding-agent-session-search` 的 `longrein-extension` 插件。直接运行 `longrein extension install` 时可交互选择；脚本中把 `fastctx`、`codegraph`、`cass` 或 `cass-skill` 作为位置参数。它不会自动执行 `codegraph init`，也不会替 cass 下载语义模型。
+Extension 编排 FastCtx、CodeGraph、cass 的官方安装渠道，并安装含 `coding-agent-session-search` 的 `longrein-extension` 插件。直接运行 `longrein extension install` 时可交互选择组件；默认面向三个宿主，也可以用宿主参数缩小范围。FastCtx 没有 Pi 原生 MCP 配置，CodeGraph 没有 Pi 宿主目标，因此这两项会保留 CLI、跳过对应的 Pi 宿主配置；`cass-skill` 会安装到 Pi。脚本中把 `fastctx`、`codegraph`、`cass` 或 `cass-skill` 作为位置参数。它不会自动执行 `codegraph init`，也不会替 cass 下载语义模型。
 
 `uninstall --all` 清理 Longrein 自己拥有的宿主足迹，包括 Pi 的 `~/.pi/agent/AGENTS.md` 规则块和本地插件登记。FastCtx、CodeGraph、cass 及其配置由各自上游拥有，不会被一并删除。
 

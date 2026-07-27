@@ -6,7 +6,7 @@
 
 面向 Codex、Claude Code 和 Pi 的工程 Skills 与安装 CLI。
 
-[快速开始](#快速开始) · [七个-skills](#七个-skills) · [安装选择](#安装选择) · [文档](#文档)
+[快速开始](#快速开始) · [七个 Skills](#七个-skills) · [安装选择](#安装选择) · [文档](#文档)
 
 </div>
 
@@ -27,7 +27,7 @@ longrein install -y
 longrein status
 ```
 
-`longrein install -y` 会把全部 Skills 与 `job`、`soul` 常驻规则安装到 Codex 和 Claude Code，并跳过可选 Extension。安装完成后重新打开宿主，让新能力进入会话。
+`longrein install -y` 会把全部 Skills 与 `job`、`soul` 常驻规则安装到 Codex、Claude Code 和 Pi，并跳过可选 Extension。安装完成后重新打开宿主，让新能力进入会话。
 
 方向、范围或关键关系还不可靠时，可以直接开始：
 
@@ -67,7 +67,7 @@ Longrein 不规定固定阶段。Agent 根据当前真正缺少的能力选择 S
 longrein install
 ```
 
-脚本或自动化环境可以明确选择：
+未指定宿主时，安装、状态、更新、诊断和卸载指定 Skill 都面向三个宿主。脚本或自动化环境可以用宿主参数缩小范围，多个参数可以组合：
 
 ```bash
 longrein install shape dev test -y --codex
@@ -110,6 +110,7 @@ longrein uninstall --all
 | [安装与首次使用](docs/getting-started.md) | 安装、验证、更新与卸载 |
 | [CLI](docs/cli.md) | 命令、宿主与目标选择 |
 | [Codex 推荐 Extension](docs/codex-recommended-extension.md) | 可选的本地检索、代码关系与历史能力 |
+| [研究资料](references/README.md) | 模型、上下文工程、判断与工程方法的按需阅读入口 |
 
 ## 从源码开发
 

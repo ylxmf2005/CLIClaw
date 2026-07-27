@@ -156,7 +156,7 @@ curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/coding_agent_ses
   | bash -s -- --easy-mode --verify
 ```
 
-我们自己的 Skill 由 Longrein 仓库中的 `longrein-extension` 插件维护，并通过宿主插件系统同时安装到 Codex 和 Claude Code：
+我们自己的 Skill 由 Longrein 仓库中的 `longrein-extension` 插件维护，并通过宿主插件系统安装到 Codex、Claude Code 和 Pi：
 
 ```bash
 longrein extension install cass-skill --yes
@@ -205,7 +205,7 @@ cass triage --json
 - FastCtx MCP 握手成功，工具契约检查通过，`AGENTS.md` 标记块无漂移。
 - CodeGraph MCP 暴露 `codegraph_explore`。
 - 已执行 `codegraph init` 的仓库中，`codegraph status` 显示有效索引；未初始化仓库保持未索引状态。
-- Codex 或 Claude Code 已安装 `longrein-extension@longrein`，并能发现其中的 `coding-agent-session-search` Skill。
+- 所选宿主已安装 Longrein Extension，并能发现其中的 `coding-agent-session-search` Skill。
 - `cass triage --json` 能报告索引健康度、搜索可用性和必要的下一条命令。
 
 验证实际收益时，使用同一仓库的同类任务比较工具调用次数、输入 Token、完成时间和结论完整性。不要只根据工具自己的 benchmark 判断是否保留。

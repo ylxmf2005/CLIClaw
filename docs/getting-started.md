@@ -13,7 +13,7 @@ npm install -g longrein
 longrein install -y
 ```
 
-交互运行 `longrein install` 会选择宿主、Skills 和可选 Extension。非交互安装默认面向 Codex 与 Claude Code；安装到单个宿主时显式选择：
+交互运行 `longrein install` 会选择宿主、Skills 和可选 Extension。非交互安装默认面向 Codex、Claude Code 和 Pi；只安装到部分宿主时显式选择，多个宿主参数可以组合：
 
 ```bash
 longrein install -y --codex
@@ -52,7 +52,7 @@ longrein list
 longrein doctor
 ```
 
-`status` 应显示七个 Skills 和两个常驻块在所选宿主中的状态。若要检查单个宿主，传入 `--codex`、`--claude` 或 `--pi`。
+`status` 默认显示七个 Skills 和两个常驻块在三个宿主中的状态。若只检查部分宿主，传入 `--codex`、`--claude` 或 `--pi`。
 
 ## 开始使用
 

@@ -218,6 +218,15 @@ for (const name of expectedSkills) {
   check(readmes.includes(`skills/${name}/SKILL.md`), `README.md does not link the ${name} Skill`);
 }
 
+const referenceIndex = read('references/README.md');
+for (const file of fs.readdirSync(path.join(root, 'references'))) {
+  if (file === 'README.md' || !file.endsWith('.md')) continue;
+  check(referenceIndex.includes(`(${file})`), `references/README.md does not route ${file}`);
+}
+check(readmes.includes('references/README.md'), 'README.md does not link the research reference index');
+const packageFiles = JSON.parse(read('package.json')).files;
+check(packageFiles.includes('references'), 'package.json does not publish the research references');
+
 const shape = read('skills/shape/SKILL.md');
 const artifacts = read('skills/shape/references/artifacts.md');
 const context = read('skills/shape/references/templates/context.demo.md');
@@ -244,7 +253,8 @@ check(!/shape\/shape\.md|studio\/evolution/.test(activeSkills), 'An active Skill
 
 for (const [skill, artifact, demo] of [
   ['dev', 'dev/implementation.md', 'skills/dev/references/templates/implementation.demo.md'],
-  ['test', 'test/test.md', 'skills/test/references/templates/test.demo.md'],
+  ['test', 'test/test-plan.md', 'skills/test/references/templates/test-plan.demo.md'],
+  ['test', 'test/test-report.md', 'skills/test/references/templates/test-report.demo.md'],
   ['review', 'review/review.md', 'skills/review/references/templates/review.demo.md'],
   ['walkthrough', 'walkthrough/walkthrough.md', 'skills/walkthrough/references/templates/walkthrough.demo.md'],
   ['evolution', 'evolution/evolution.md', 'skills/evolution/references/templates/evolution.demo.md'],

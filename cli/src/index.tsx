@@ -31,9 +31,7 @@ interface CommonOpts {
 }
 
 function activeTargets(opts: CommonOpts): Target[] {
-  if (!opts.claude && !opts.codex && !opts.pi) return targets({ claude: true, codex: true });
-  const filter: TargetFilter = { claude: opts.claude, codex: opts.codex, pi: opts.pi };
-  return targets(filter);
+  return targets(opts);
 }
 
 function targetFilter(selected: TargetId[]): TargetFilter {
@@ -138,9 +136,9 @@ program
   .option('--link', 'symlink to this checkout instead of copying (development mode)', false)
   .option('--force', 'replace existing unmanaged dirs/links of the same name', false)
   .option('--no-blocks', 'skip syncing the always-on instruction blocks')
-  .option('--claude', 'only target Claude Code')
-  .option('--codex', 'only target Codex')
-  .option('--pi', 'only target Pi')
+  .option('--claude', 'target Claude Code')
+  .option('--codex', 'target Codex')
+  .option('--pi', 'target Pi')
   .option('-y, --yes', 'non-interactive: install everything requested without the picker', false)
   .option('--extensions', 'also install or update the optional Extension')
   .option('--extension-components <components...>', 'install only selected Extension components')
@@ -249,16 +247,16 @@ program
   .command('uninstall [skills...]')
   .description('remove Longrein-managed skills or every Longrein-owned host integration')
   .option('--all', 'remove all Skills, instruction blocks, plugins, marketplaces, legacy MCP and services', false)
-  .option('--claude', 'only target Claude Code')
-  .option('--codex', 'only target Codex')
-  .option('--pi', 'only target Pi')
+  .option('--claude', 'target Claude Code')
+  .option('--codex', 'target Codex')
+  .option('--pi', 'target Pi')
   .action((names: string[], opts) => {
     if (!opts.all && names.length === 0) {
       console.error(pc.red('specify skill names or --all'));
       process.exit(1);
     }
     const explicitTarget = opts.claude || opts.codex || opts.pi;
-    const active = opts.all && !explicitTarget ? targets() : activeTargets(opts);
+    const active = activeTargets(opts);
     const skills = resolveSkills(opts.all ? [] : names);
     console.log();
     for (const target of active) {
@@ -303,9 +301,9 @@ program
 program
   .command('update')
   .description('refresh stale copies and re-sync the always-on blocks')
-  .option('--claude', 'only target Claude Code')
-  .option('--codex', 'only target Codex')
-  .option('--pi', 'only target Pi')
+  .option('--claude', 'target Claude Code')
+  .option('--codex', 'target Codex')
+  .option('--pi', 'target Pi')
   .action((opts) => {
     const active = activeTargets(opts);
     const skills = listSkills();
@@ -339,9 +337,9 @@ program
 program
   .command('status')
   .description('show install state per skill and target, plus block status')
-  .option('--claude', 'only target Claude Code')
-  .option('--codex', 'only target Codex')
-  .option('--pi', 'only target Pi')
+  .option('--claude', 'target Claude Code')
+  .option('--codex', 'target Codex')
+  .option('--pi', 'target Pi')
   .action((opts) => printStatus(opts));
 
 program
@@ -357,9 +355,9 @@ program
   .command('doctor')
   .description('detect leftovers from old install mechanisms, stale copies and broken markers')
   .option('--fix', 'apply safe fixes automatically', false)
-  .option('--claude', 'only target Claude Code')
-  .option('--codex', 'only target Codex')
-  .option('--pi', 'only target Pi')
+  .option('--claude', 'target Claude Code')
+  .option('--codex', 'target Codex')
+  .option('--pi', 'target Pi')
   .action((opts) => {
     const findings = runDoctor(activeTargets(opts));
     if (findings.length === 0) {

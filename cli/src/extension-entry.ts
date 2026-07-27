@@ -1,5 +1,6 @@
 import { Command } from 'commander';
 import pc from 'picocolors';
+import { targets as hostTargets, TargetFilter } from './core/paths.js';
 import {
   ExtensionComponent,
   ExtensionTarget,
@@ -10,13 +11,8 @@ import {
 
 const program = new Command();
 
-function targets(options: { codex?: boolean; claude?: boolean; pi?: boolean }): ExtensionTarget[] {
-  if (options.codex || options.claude || options.pi) {
-    return [options.codex ? 'codex' : null, options.claude ? 'claude' : null, options.pi ? 'pi' : null].filter(
-      Boolean,
-    ) as ExtensionTarget[];
-  }
-  return ['codex', 'claude'];
+function activeTargets(options: TargetFilter): ExtensionTarget[] {
+  return hostTargets(options).map((target) => target.id);
 }
 
 program.name('longrein extension').description('Install optional agent extensions from official upstream channels.');
@@ -24,9 +20,9 @@ program.name('longrein extension').description('Install optional agent extension
 program
   .command('install [components...]')
   .description('install or update FastCtx, CodeGraph, cass and the coding-agent-session-search Skill')
-  .option('--codex', 'only configure Codex')
-  .option('--claude', 'only configure Claude Code')
-  .option('--pi', 'only configure Pi')
+  .option('--codex', 'target Codex')
+  .option('--claude', 'target Claude Code')
+  .option('--pi', 'target Pi')
   .option('--dry-run', 'print the official commands without executing them', false)
   .option('-y, --yes', 'confirm execution of upstream installers', false)
   .action(async (values: string[], options) => {
@@ -52,7 +48,7 @@ program
       process.exitCode = 1;
       return;
     }
-    installExtension({ components: selected, targets: targets(options), dryRun: options.dryRun });
+    installExtension({ components: selected, targets: activeTargets(options), dryRun: options.dryRun });
     console.log(
       options.dryRun
         ? pc.cyan('\nDry run complete; no installers or host configuration were changed.\n')

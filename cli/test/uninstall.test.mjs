@@ -20,7 +20,7 @@ function run(args, env, expectedStatus = 0) {
   return result;
 }
 
-test('uninstall --all removes every Longrein-owned host integration while preserving user content', (t) => {
+test('default install, update and uninstall cover every host while preserving user content', (t) => {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'longrein-uninstall-'));
   t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
   const home = path.join(temp, 'home');
@@ -51,10 +51,24 @@ test('uninstall --all removes every Longrein-owned host integration while preser
   fs.writeFileSync(path.join(home, '.claude', 'CLAUDE.md'), 'claude user content\n');
   fs.writeFileSync(path.join(home, '.pi', 'agent', 'AGENTS.md'), 'pi user content\n');
 
-  run(['install', '--yes', '--codex', '--claude', '--pi'], env);
+  run(['install', '--yes'], env);
   for (const base of [path.join(codexHome, 'skills'), path.join(home, '.claude', 'skills'), path.join(home, '.pi', 'agent', 'skills')]) {
     for (const skill of skills) assert.equal(fs.existsSync(path.join(base, skill)), true, `${base}/${skill} should be installed`);
   }
+
+  const status = run(['status'], env);
+  assert.match(status.stdout, /Claude Code/);
+  assert.match(status.stdout, /Codex/);
+  assert.match(status.stdout, /Pi/);
+
+  const piShape = path.join(home, '.pi', 'agent', 'skills', 'shape');
+  const changedFile = path.join(piShape, 'local-change.txt');
+  fs.writeFileSync(changedFile, 'make the managed copy stale\n');
+  assert.match(run(['status', '--pi'], env).stdout, /stale/);
+  run(['update'], env);
+  assert.equal(fs.existsSync(changedFile), false);
+  assert.doesNotMatch(run(['status', '--pi'], env).stdout, /stale/);
+
   for (const base of [path.join(codexHome, 'skills'), path.join(home, '.claude', 'skills'), path.join(home, '.pi', 'agent', 'skills')]) {
     fs.symlinkSync(path.join(root, 'skills', 'dev'), path.join(base, 'dev-v2'));
   }
@@ -98,7 +112,28 @@ test('uninstall --all removes every Longrein-owned host integration while preser
   assert.match(commands, /claude mcp remove longrein --scope user/);
 });
 
-test('install prunes retired aliases only when they point to the matching Longrein Skill', (t) => {
+test('default doctor inspects Pi and ignores broken links owned by other systems', (t) => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'longrein-doctor-'));
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const home = path.join(temp, 'home');
+  const codexHome = path.join(home, '.codex');
+  const piSkills = path.join(home, '.pi', 'agent', 'skills');
+  const claudeSkills = path.join(home, '.claude', 'skills');
+  fs.mkdirSync(path.join(piSkills, 'shape'), { recursive: true });
+  fs.writeFileSync(path.join(piSkills, 'shape', 'foreign.txt'), 'not managed by Longrein\n');
+  fs.mkdirSync(claudeSkills, { recursive: true });
+  fs.symlinkSync(path.join(home, 'another-tool', 'missing-skill'), path.join(claudeSkills, 'foreign-broken-link'));
+
+  const result = run(['doctor'], {
+    HOME: home,
+    CODEX_HOME: codexHome,
+    PI_CODING_AGENT_DIR: path.join(home, '.pi', 'agent'),
+  });
+  assert.match(result.stdout, /Pi: "shape" exists .*not managed by longrein/);
+  assert.doesNotMatch(result.stdout, /foreign-broken-link/);
+});
+
+test('explicit Codex install prunes matching aliases without affecting other hosts', (t) => {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'longrein-alias-prune-'));
   t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
   const home = path.join(temp, 'home');
@@ -113,4 +148,6 @@ test('install prunes retired aliases only when they point to the matching Longre
 
   assert.equal(fs.existsSync(path.join(skillsDir, 'dev-v2')), false);
   assert.equal(fs.existsSync(path.join(skillsDir, 'shape-v2', 'keep.txt')), true);
+  assert.equal(fs.existsSync(path.join(home, '.claude', 'skills')), false);
+  assert.equal(fs.existsSync(path.join(home, '.pi', 'agent', 'skills')), false);
 });

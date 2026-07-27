@@ -44,3 +44,9 @@
 | `EV-NONE` | observed | 孤立 typo 没有可复用信号，未创建 Evolution 产物或长期规则 |
 
 Claude Code 重放未取得结果：本机 OAuth session 已过期且刷新失败。本次补强后的 `WT-PATH` 与 `RV-COVERAGE` Codex CLI 重放也因本机 API key 返回 `401 Unauthorized` 未取得模型输出。它们是宿主覆盖缺口，不影响静态与工程验证，也不能写成对应宿主已经验证。
+
+## 2026-07-27 Context Engineering Optimization
+
+本轮根据 Claude 5 上下文工程资料收缩 `shape`、`grill` 与 `test` 的 frontmatter description，并缩短 Shape 的 UI default prompt；正文职责、Context 生命周期和 Test 双产物契约未改变。顶层研究资料新增唯一索引，Skill validator 会拒绝没有进入该索引的新 reference。
+
+七个 Skill 的 quick validation、项目 Skill validator、typecheck、22 项 CLI 测试、双端插件 manifest 校验和打包预检通过。宿主基于 description 的自动发现与选择尚未用当前版本重放，因此当前结论是“已修改且结构验证通过”，不是“触发行为已验证改善”；后续应重放 `SH-AUTO`、方向清楚的直接 Dev 任务，以及只需解释而不应加载重型 Skill 的相邻反例。

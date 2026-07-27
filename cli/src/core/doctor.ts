@@ -63,12 +63,6 @@ export function runDoctor(activeTargets: Target[]): Finding[] {
                 return `removed ${full}`;
               },
             });
-          } else {
-            // Broken links belonging to other systems are reported but never touched.
-            findings.push({
-              severity: 'info',
-              message: `${target.label}: broken symlink ${entry} -> ${linkTarget} (not managed by longrein; remove manually if unwanted)`,
-            });
           }
         }
       }

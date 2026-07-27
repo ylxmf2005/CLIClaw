@@ -56,7 +56,8 @@ export function inspect(target: Target, skill: Skill): Inspection {
   if (lst.isDirectory()) {
     const stamp = readStamp(dest);
     if (!stamp) return { state: 'foreign-dir', dest };
-    const fresh = stamp.hash === hashSkillDir(skill.dir);
+    const sourceHash = hashSkillDir(skill.dir);
+    const fresh = stamp.hash === sourceHash && hashSkillDir(dest) === sourceHash;
     return { state: fresh ? 'copy-fresh' : 'copy-stale', dest, stampVersion: stamp.version };
   }
   return { state: 'foreign-dir', dest };
