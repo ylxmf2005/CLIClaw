@@ -4,10 +4,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 
-const root = path.resolve(import.meta.dirname, '../..');
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const cli = path.join(root, 'cli/dist/index.js');
-const skills = ['shape', 'grill', 'dev', 'walkthrough', 'review', 'evolution'];
+const skills = ['shape', 'grill', 'dev', 'test', 'walkthrough', 'review', 'evolution'];
 
 function run(args, env, expectedStatus = 0) {
   const result = spawnSync(process.execPath, [cli, ...args], {
@@ -51,6 +52,9 @@ test('uninstall --all removes every Longrein-owned host integration while preser
   fs.writeFileSync(path.join(home, '.pi', 'agent', 'AGENTS.md'), 'pi user content\n');
 
   run(['install', '--yes', '--codex', '--claude', '--pi'], env);
+  for (const base of [path.join(codexHome, 'skills'), path.join(home, '.claude', 'skills'), path.join(home, '.pi', 'agent', 'skills')]) {
+    for (const skill of skills) assert.equal(fs.existsSync(path.join(base, skill)), true, `${base}/${skill} should be installed`);
+  }
   for (const base of [path.join(codexHome, 'skills'), path.join(home, '.claude', 'skills'), path.join(home, '.pi', 'agent', 'skills')]) {
     fs.symlinkSync(path.join(root, 'skills', 'dev'), path.join(base, 'dev-v2'));
   }

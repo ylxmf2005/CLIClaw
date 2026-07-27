@@ -1,4 +1,4 @@
 interface:
   display_name: "Shape"
-  short_description: "让任务承诺在现实中成形，并形成可继续判断与交接的专业产物"
-  default_prompt: "使用 $shape 从用户与真实对象中检验方向，在 context.md 中建立当前承诺与产物入口，并按需要形成可交接的专业产物。"
+  short_description: "让任务承诺和系统方向在现实中成形"
+  default_prompt: "使用 $shape 先让真实对象校正方向；明确只讨论或查看时无论有无 Task 都留在对话且不修改 Context，显式新 Task 立即在任务工作区根目录创建 `context.md`，已有 Task 先读同一 Context 并只按事实变化或用户决定修订，没有受影响内容时不写。"

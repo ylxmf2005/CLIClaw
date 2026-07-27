@@ -20,7 +20,8 @@
     "build": "node cli/build.mjs",
     "prepare": "npm run build",
     "typecheck": "tsc -p cli/tsconfig.json --noEmit",
-    "test": "npm run build && node --test cli/test/*.test.mjs"
+    "validate:skills": "node scripts/validate-skills.mjs",
+    "test": "npm run validate:skills && npm run build && node --test cli/test/*.test.mjs"
   },
   "engines": {
     "node": ">=18"
@@ -45,6 +46,8 @@
     "@types/node": "^20.14.0",
     "@types/react": "^18.3.3",
     "esbuild": "^0.23.0",
+    "github-slugger": "^2.0.0",
+    "markdown-it": "^14.3.0",
     "typescript": "^5.5.0"
   }
 }

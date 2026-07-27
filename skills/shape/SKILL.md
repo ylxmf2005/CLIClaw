@@ -1,53 +1,40 @@
 ---
 name: shape
-description: 在方向、任务边界或关键前提还摸不准，用户的预期可能跟真实项目对不上，或新证据推翻了既有方向时使用。先去看真实代码和运行现场，把事实、可能性、代价和用户价值摸清楚。新 Task 由用户在建立可信 Context 前调用 Shape；已有 Active Task 则由 Shape 修订其任务边界。方向清楚的低风险请求，以及仅查看或更新已有任务状态时，不触发本 Skill。
+description: 在方向、任务承诺或关键系统前提尚不可信，用户预期可能与真实对象不符，或新证据推翻现有方向时使用。明确只讨论或查看时，无论是否已有 Task 都只留在对话，且优先于其他入口；宿主自动路由但未启动 Task 时也不落盘。除此之外，用户显式以 Shape 启动新 Task 会在任务根创建 `context.md`；已有 Task 先读取同一 Context，只按事实变化或用户决定修订，没有受影响内容时不写。方向清楚的低风险行动不自动触发 Shape。
 ---
 # shape
 
-## 先看清楚，再下结论
+## 先让领地说话，再决定形状
 
-模拟退火：寻找复杂问题的全局最优解，避免陷入局部最优点。用发散调查和推理给需求和直接退火，避免过早收敛路径。
+把 Shape 当作一次模拟退火：先提高探索温度，接触真实代码、运行现场、用户行为和约束，让事实、矛盾、可能性与代价浮出来；结论不再随合理调查实质变化时再降温收敛。用户描述和已有文档是意图与线索，不能替代真实对象。
 
-接到请求先别急着写方案。用户的描述和当前的上下文只是他的意图和他以为的情况；真实代码、运行现场、真实用户和实际约束才是事情本身。先去接触真实对象，把事实、矛盾、可能性、代价和还没看清的部分都摸出来，再判断问题到底是什么。
+能自行查明的事实先调查。价值、偏好、代价接受、范围和授权由用户裁决；证据推翻原方向时明确说明影响，不替用户悄悄改写承诺。调查可以看宽，执行范围不能随之静默扩大。
 
-能看到多少，结论才算多少。能自己查到的事实自己查；只有价值判断、偏好、代价接受和授权才问用户。给出明确的专业判断，证据跟原方向冲突就直接说，但不替用户作价值决定。
+## 建立可信 Context
 
-## 什么时候算看清楚
+下面的入口契约按数组顺序匹配，首个成立的 case 决定动作。明确只讨论或查看无论有无 Task 都最优先；其余 case 只在前序条件不成立时判断，因此已有 Task 的普通查看不会变成修订。具体路径和内容规则仍由本节与 reference 界定。
 
-继续往下看，结论也不会实质改变了；关键的代价已经摸到了；做成什么样算完、什么不能破坏、拿什么证据验收，也能说清楚了。到这一步，方向就可以定。
-
-方向定了就收敛，具体怎么实现留给后面根据实际情况调整。调查可以超出当前要做的范围；发现更大的机会或问题，不代表就可以顺手做了。
-
-方向不是定死的。新证据推翻了关键前提，就把受影响的决定重新拿出来谈。
-
-## 把结论写进 context.md
-
-当前任务已有 `context.md` 时，读取它。方向定了之后，更新里面的 Goal、Scope、Non-goals 和 Current Artifacts。这些内容必须来自真实项目和用户的决定，不是按最坏情况脑补出来的。
-
-任务涉及代码或分支时，先弄清 `source_ref`、`working_branch`、`target_ref` 的意图。现场状态跟意图对不上、而且这个差异会改变结果时，把事实和代价摆给用户确认，不要从 checkout 反推承诺。
-
-没有 `context.md` 时，Shape 结果留在当前对话里；用户明确启动任务后，只写那个任务的 `context.md`。Shape 不自己创建任务，也不另建状态文件。
-
-用户可以改 scope；Agent 也可以主动提出更诚实的扩大、收缩或改道，但在用户同意前只是提议。事实变了更新 `context.md` 的事实部分；承诺变了先取得用户同意再改 Goal、Scope 或 Non-goals。
-
-## 跨会话的探索
-
-探索横跨多个决定或会话、当前对话放不下可靠状态时，把关键未知和已确认事实写进 `context.md`，下次从那里接着走。
-
-## 产物
-
-当前任务有 `context.md`，且方向比较、代价或关键未知需要交接给下一位时，才保存 Shape 产物：
-
-```text
-<task-workspace>/shape/
-├── shape.md        # 只有方向比较、代价或关键未知需要交接时创建
-└── evidence/       # 只有结论依赖临时验证脚本、运行结果或外部材料时创建
+```json shape-context-lifecycle-v1
+[
+  ["discussion_or_view_only", "conversation_only"],
+  ["host_auto_route_without_task_start", "conversation_only"],
+  ["explicit_shape_new_task", "create_context_at_task_root"],
+  ["shape_for_existing_task", "read_context_and_revise_if_needed"]
+]
 ```
 
-`shape.md` 只记真正改变方向的事实、还有竞争力的路线、推荐及其代价、用户决定和剩下的关键未知；可重放的验证脚本和原始材料进 `evidence/`。
+`create_context_at_task_root` 表示把请求作为新 Task，立即在任务工作区根目录创建 `context.md`；`conversation_only` 不创建也不修改 Context；`read_context_and_revise_if_needed` 表示进入已有 Task 时先读取同一份 Context，再只更新受影响内容。初始 Context 忠实保存 Original Request 与已查明的 Reality Coordinates；未确认的 Goal、Scope、Non-goals 和 Acceptance Evidence 写 `unresolved`。
 
-落盘后更新 `context.md` 的 Current Artifacts，写明下一位该读什么。没有 `context.md` 时在对话中交付，或只写用户指定的路径。
+进入已有 Task 时，先读取同一份 `context.md` 和 Current Artifacts。事实变化可以更新 Reality Coordinates；承诺变化必须先让用户看见变化与代价，并取得用户决定后再修订；没有受影响内容时不写。目的地或责任范围已经成为另一项工作时新建 Task，不覆盖原 Task；同一目的下由新证据推动的修正继续更新当前 Task。
+
+Context 生命周期、Current Artifacts 权限和可选产物见 [产物与权威来源](references/artifacts.md)，固定结构见 [Context Demo](references/templates/context.demo.md)。创建其他持久产物前，按该 reference 选择并读取对应 Demo。
+
+## 收敛到下游不用猜
+
+方向成立时，关键事实和代价已经清楚，目标、边界、不能破坏的关系与验收证据足以让下一位继续。具体实现路径仍可由执行者根据现场调整；新证据推翻关键前提时，重新 Shape 受影响的承诺和专业产物。
+
+Shape 不停在一句建议上。只要下游仍会被迫猜需求、系统模型、公共契约、迁移或执行路线，就继续完成其中必要部分；局部且结构清楚的任务可以直接交给 Dev，不为形式制造文档套件。
 
 ## 边界
 
-Shape 只负责把方向摸清楚、配得上承诺，不做详细设计、实现、评审或测试，也不借调查之名扩大执行范围。
+Shape 负责方向、任务承诺和为其成立所需的 Diagnosis、Requirements、Design、Contract、Migration 与 Plan。它不实现代码，不承担完整 Test，也不把自己的论证当作独立 Review；调查中的复现和验证只用于让当前判断有事实基础。

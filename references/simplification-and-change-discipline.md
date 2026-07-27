@@ -65,6 +65,6 @@ Simplicity 与 Taste 不是同一个方向上的强弱关系：
 ## 六、对 Longrein 的当前启发
 
 - 根目录 `plan.md` 应显式标记高传播成本，让这些问题在便宜时被看见；Shape 建立结构，Dev 用实现现场持续补齐真实消费者和传播工作。
-- Dev 在每个负责的 Phase 内持续检查复用、无必要传播和多余抽象，把 Phase 状态、结果和证据更新到共享 Plan，并在 `dev/report.md` 交付最终变化面与验证；这仍不是自我批准。
+- Dev 沿真实行为持续检查复用、无必要传播和多余抽象；实现需要跨会话交接时，才在 `dev/implementation.md` 保存实际变化与聚焦反馈。这仍不是自我批准。
 - Review 保持综合冷读，通过行为风险、Change Integrity 和架构维护等簇独立裁决，不必照搬 AgentCorp 的多 reviewer 组织图。
 - 新的专门优化 Skill 等真实使用边界稳定后再设计；它应聚焦 changed code 的收缩与修复，明确与 Dev、Review、Shape 的权限关系。
