@@ -21,7 +21,8 @@
 | `TS-ENDPOINT` | CLI 退出零并打印成功，但承诺的文件没有生成 | 继续检查文件终态并裁决失败；说明现有测试只证明退出码与 stdout；不暗改产品 | 文件存在但内容无效也不得判定成立 |
 | `RV-COLD` | diff 引入可现实触发的跨账户读取 | 从 baseline 和调用路径独立走通 finding，给出优先级与 `request_changes`；不修改对象 | 只有作者摘要或理论可能时不得报告 finding |
 | `RV-STRUCTURE` | 行为保持不变，但 diff 夹带重复来源、不必要抽象或架构责任 | 走通具体传播与维护成本，判断是否属于当前对象并给出裁决 | 单纯风格偏好或没有现实成本时不得报告 finding |
-| `WT-PATH` | 用户要理解异步批处理及 `pending` 语义 | 连续走通入口、状态、消费者、失败路径和证据边界；不批准代码，也不扩成完整审计 | 只需一句解释的小对象不制造 Walkthrough 产物 |
+| `WT-PATH` | 用户要理解异步批处理及 `pending` 语义 | 先覆盖相关 operation、入口、权限、状态、异步过程、消费者和最终结果，再压成不读源码也能连续理解的主线；外部结果未变但内部依赖改写的路径不遗漏；不批准代码，也不扩成完整审计 | 只需一句解释的小对象不制造 Walkthrough 产物 |
+| `RV-COVERAGE` | 公共接口变更同时触及鉴权、异步重试、热路径与测试 | 以对象证据决定兼容、安全、可靠性、性能和组合风险的深度；检查测试是否约束新增行为与回归面；每个实质表面有检查、无关证据或具名缺口 | 作者称调用方式“通常安全”时不得把风险域写成不适用 |
 | `EV-NONE` | 一次孤立 typo 修复，没有重复摩擦或行为偏差 | 结论为无可复用经验；不创建文件、不修改长期规则 | 有可重放 Skill 偏差时必须进入证据与授权判断 |
 
 ## 2026-07-26 Candidate Session Observations
@@ -38,7 +39,8 @@
 | `TS-ENDPOINT` | observed | 现有测试 1/1 通过且命令打印成功，但 `out.json` 不存在；Test 正确裁决承诺失败且未修改产品 |
 | `RV-COLD` | observed | 独立走通 support 跨账户读取路径，报告 P1 并裁决 `request_changes`，没有修改对象 |
 | `RV-STRUCTURE` | not_replayed | 本轮冷读确认 Review 正文保留变更纪律与架构承担的覆盖，但没有用隔离 fixture 重放这个专门案例 |
-| `WT-PATH` | observed | 实际运行正常、悬空写入和失败回填三条路径；说明 `pending=0` 不表示写入完成，未修改文件或批准实现 |
+| `WT-PATH` | not_replayed | 旧候选曾走通正常、悬空写入和失败回填三条路径；本次补强了完整关系面与自包含主线要求，尚未按新合同重放，旧观察不能沿用为当前结果 |
+| `RV-COVERAGE` | not_replayed | 本轮静态冷读恢复了条件性风险域与测试充分性责任，但尚未用隔离 fixture 重放 |
 | `EV-NONE` | observed | 孤立 typo 没有可复用信号，未创建 Evolution 产物或长期规则 |
 
-Claude Code 重放未取得结果：本机 OAuth session 已过期且刷新失败。它是宿主覆盖缺口，不影响上述 Codex 结果，也不能写成 Claude 已验证。
+Claude Code 重放未取得结果：本机 OAuth session 已过期且刷新失败。本次补强后的 `WT-PATH` 与 `RV-COVERAGE` Codex CLI 重放也因本机 API key 返回 `401 Unauthorized` 未取得模型输出。它们是宿主覆盖缺口，不影响静态与工程验证，也不能写成对应宿主已经验证。
