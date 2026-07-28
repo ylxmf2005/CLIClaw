@@ -14,12 +14,14 @@
 - 路径与后果：<实际经过，以及最终错误、破坏的承诺或长期成本>
 - 证据：<代码、命令、请求、日志、规则或运行结果>
 - 独立复核：<主动寻找了哪些门、保证、契约或反证，结论怎样变化>
-- 当前关系与处理：<本次引入、放大，或会改变当前裁决的既有事实；修复、后续任务或责任人决定落在哪里>
+- 当前关系：<本次引入、放大，或会改变当前裁决的既有事实>
+- 处理标签：fix-now | needs-owner-decision | follow-up
+- 下一步：<当前 Dev、责任人决定或独立任务需要做什么；由谁承担>
 - 证据边界：<仍未确认的部分>
 
 ## 裁决
 
-- 结论：approve | request_changes | needs_more_evidence | blocked
+- 结论：approve | request_changes | needs_owner_decision | needs_more_evidence | blocked
 - 对象：<准确版本、分支、diff、提交或产物>
 - Baseline：<实际比较基线或不适用原因>
 - 核心理由：<什么证据决定当前对象能否前进>
