@@ -65,9 +65,18 @@ test('default install, update and uninstall cover every host while preserving us
   const changedFile = path.join(piShape, 'local-change.txt');
   fs.writeFileSync(changedFile, 'make the managed copy stale\n');
   assert.match(run(['status', '--pi'], env).stdout, /stale/);
-  run(['update'], env);
+  const doctor = run(['doctor', '--pi'], env);
+  assert.match(doctor.stdout, /warn\s+Pi: skill "shape" copy is stale/);
+  assert.match(doctor.stdout, /can be fixed automatically/);
+  run(['doctor', '--fix', '--pi'], env);
   assert.equal(fs.existsSync(changedFile), false);
   assert.doesNotMatch(run(['status', '--pi'], env).stdout, /stale/);
+
+  const codexDev = path.join(codexHome, 'skills', 'dev');
+  const updateChangedFile = path.join(codexDev, 'local-change.txt');
+  fs.writeFileSync(updateChangedFile, 'make another managed copy stale\n');
+  run(['update', '--codex'], env);
+  assert.equal(fs.existsSync(updateChangedFile), false);
 
   for (const base of [path.join(codexHome, 'skills'), path.join(home, '.claude', 'skills'), path.join(home, '.pi', 'agent', 'skills')]) {
     fs.symlinkSync(path.join(root, 'skills', 'dev'), path.join(base, 'dev-v2'));

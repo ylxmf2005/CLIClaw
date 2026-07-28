@@ -94,9 +94,12 @@ Longrein 调用这些项目的官方安装渠道，不维护上游 fork，也不
 ```bash
 longrein update
 longrein doctor
+longrein doctor --fix
 longrein uninstall shape dev
 longrein uninstall --all
 ```
+
+`doctor` 会把 Longrein 管理的过期 Skill 副本报告为警告；`doctor --fix` 可安全刷新这些副本并修复可自动处理的常驻指令问题，不会覆盖不属于 Longrein 的同名目录。
 
 不带 `--all` 时只移除指定 Skills。`uninstall --all` 清理 Longrein 拥有的 Skills、规则块、插件、marketplace、旧 MCP 注册与旧服务；它保留独立安装的 FastCtx、CodeGraph、cass，也保留项目中的 `context.md`、专业产物和旧任务数据。
 
