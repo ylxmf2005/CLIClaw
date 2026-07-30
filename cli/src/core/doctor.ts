@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { packageRoot, Target } from './paths.js';
 import { Block, blockStatus, listBlocks, upsertBlocks } from './blocks.js';
-import { inspect, retiredOwnAliases } from './installer.js';
+import { inspect, installSkill, retiredOwnAliases } from './installer.js';
 import { listSkills } from './skills.js';
 
 /** Hub paths of retired distribution mechanisms; leftovers get pruned by --fix. */
@@ -84,8 +84,12 @@ export function runDoctor(activeTargets: Target[]): Finding[] {
       const found = inspect(target, skill);
       if (found.state === 'copy-stale') {
         findings.push({
-          severity: 'info',
-          message: `${target.label}: skill "${skill.name}" copy is stale (run \`longrein update\`)`,
+          severity: 'warn',
+          message: `${target.label}: skill "${skill.name}" copy is stale (run \`longrein update\` or \`longrein doctor --fix\`)`,
+          fix: () => {
+            const result = installSkill(target, skill, { link: false, force: false });
+            return `${skill.name}: ${result.detail}`;
+          },
         });
       } else if (found.state === 'foreign-dir' || found.state === 'foreign-link') {
         findings.push({
