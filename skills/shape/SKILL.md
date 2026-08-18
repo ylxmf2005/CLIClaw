@@ -14,20 +14,13 @@ description: 在方向、任务承诺或关键系统前提尚不可信，用户�
 
 ## 建立可信 Context
 
-下面的入口契约按数组顺序匹配，首个成立的 case 决定动作。明确只讨论或查看无论有无 Task 都最优先；其余 case 只在前序条件不成立时判断，因此已有 Task 的普通查看不会变成修订。具体路径和内容规则仍由本节与 reference 界定。
+处理 Context 前先判断这次请求是否真正启动或继续 Task：
 
-```json shape-context-lifecycle-v1
-[
-  ["discussion_or_view_only", "conversation_only"],
-  ["host_auto_route_without_task_start", "conversation_only"],
-  ["explicit_shape_new_task", "create_context_at_task_root"],
-  ["shape_for_existing_task", "read_context_and_revise_if_needed"]
-]
-```
+- 明确只讨论或查看时，无论是否已有 Task，都不创建也不修改 Context。宿主自动路由到 Shape、但尚未启动 Task 时同样只在对话中处理。
+- 用户显式用 Shape 启动新 Task 时，立即在任务工作区根目录创建 `context.md`。初始 Context 忠实保存 Original Request 与已查明的 Reality Coordinates；未确认的 Goal、Scope、Non-goals 和 Acceptance Evidence 写 `unresolved`。
+- 对已有 Task 使用 Shape 时，先读取同一份 `context.md` 和 Current Artifacts，再只更新受影响内容。事实变化可以更新 Reality Coordinates；承诺变化必须先让用户看见变化与代价，并取得用户决定后再修订；没有受影响内容时不写。
 
-`create_context_at_task_root` 表示把请求作为新 Task，立即在任务工作区根目录创建 `context.md`；`conversation_only` 不创建也不修改 Context；`read_context_and_revise_if_needed` 表示进入已有 Task 时先读取同一份 Context，再只更新受影响内容。初始 Context 忠实保存 Original Request 与已查明的 Reality Coordinates；未确认的 Goal、Scope、Non-goals 和 Acceptance Evidence 写 `unresolved`。
-
-进入已有 Task 时，先读取同一份 `context.md` 和 Current Artifacts。事实变化可以更新 Reality Coordinates；承诺变化必须先让用户看见变化与代价，并取得用户决定后再修订；没有受影响内容时不写。目的地或责任范围已经成为另一项工作时新建 Task，不覆盖原 Task；同一目的下由新证据推动的修正继续更新当前 Task。
+目的地或责任范围已经成为另一项工作时新建 Task，不覆盖原 Task；同一目的下由新证据推动的修正继续更新当前 Task。
 
 Context 生命周期、Current Artifacts 权限和可选产物见 [产物与权威来源](references/artifacts.md)，固定结构见 [Context Demo](references/templates/context.demo.md)。创建其他持久产物前，按该 reference 选择并读取对应 Demo。
 

@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const cli = path.join(root, 'cli/dist/index.js');
-const skills = ['shape', 'grill', 'dev', 'test', 'walkthrough', 'review', 'evolution'];
+const skills = ['shape', 'grill', 'dev', 'test', 'walkthrough', 'review', 'evolution', 'frontend-design'];
 
 function run(args, env, expectedStatus = 0) {
   const result = spawnSync(process.execPath, [cli, ...args], {
@@ -55,6 +55,19 @@ test('default install, update and uninstall cover every host while preserving us
   for (const base of [path.join(codexHome, 'skills'), path.join(home, '.claude', 'skills'), path.join(home, '.pi', 'agent', 'skills')]) {
     for (const skill of skills) assert.equal(fs.existsSync(path.join(base, skill)), true, `${base}/${skill} should be installed`);
   }
+
+  const codexInstructions = fs.readFileSync(path.join(codexHome, 'AGENTS.md'), 'utf8');
+  const soulBlockIndex = codexInstructions.indexOf('LONGREIN BLOCK: soul');
+  const jobBlockIndex = codexInstructions.indexOf('LONGREIN BLOCK: job');
+  const userContentIndex = codexInstructions.indexOf('codex user content');
+  assert.notEqual(soulBlockIndex, -1);
+  assert.notEqual(jobBlockIndex, -1);
+  assert.notEqual(userContentIndex, -1);
+  assert.match(codexInstructions, /^<!-- >>> LONGREIN BLOCK: soul >>> -->/);
+  assert.ok(
+    soulBlockIndex < jobBlockIndex && jobBlockIndex < userContentIndex,
+    'judgment principles and workflow should be injected before user-owned instructions',
+  );
 
   const status = run(['status'], env);
   assert.match(status.stdout, /Claude Code/);

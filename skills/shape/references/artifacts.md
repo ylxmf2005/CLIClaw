@@ -6,11 +6,11 @@ Shape 让任务承诺在 `context.md` 中成立，并把下游需要独立引用
 
 任务工作区根目录优先使用用户为当前 Task 指定的目录；没有指定时，使用宿主提供的当前 workspace root，宿主没有 workspace 概念时使用当前工作目录。嵌套代码仓库不会自动成为新的任务根；位置仍有歧义或不可写时，先把冲突交给用户，不静默分散 Context。
 
-四种入口与动作的映射只由 [Shape Skill](../SKILL.md) 中的 `shape-context-lifecycle-v1` 合同定义；这里不复述 case 判定，只展开动作的文件语义。
+Context 是否创建或修订由 [Shape Skill](../SKILL.md) 的入口规则决定；这里展开对应的文件语义。
 
-- `create_context_at_task_root`：为新 Task 按 [Context Demo](templates/context.demo.md) 创建根目录 `context.md`，忠实记录 Original Request 和已查明的 Reality Coordinates；尚未取得用户决定的 Goal、Scope、Non-goals 与 Acceptance Evidence 保持 `unresolved`。
-- `conversation_only`：不创建也不修改 Context；以后启动 Task 时重新按合同判断，先前对话不会自动变成任务授权。
-- `read_context_and_revise_if_needed`：进入已有 Task 时先读取同一份 Context；事实变化可以更新 Reality Coordinates，承诺变化先取得用户决定，没有受影响内容时不写。实现结果、专业产物和对话摘要都不能反向创造授权。
+- 新 Task：按 [Context Demo](templates/context.demo.md) 创建根目录 `context.md`，忠实记录 Original Request 和已查明的 Reality Coordinates；尚未取得用户决定的 Goal、Scope、Non-goals 与 Acceptance Evidence 保持 `unresolved`。
+- 未启动 Task 或明确只讨论、查看：不创建也不修改 Context；以后启动 Task 时重新判断，先前对话不会自动变成任务授权。
+- 已有 Task：先读取同一份 Context；事实变化可以更新 Reality Coordinates，承诺变化先取得用户决定，没有受影响内容时不写。实现结果、专业产物和对话摘要都不能反向创造授权。
 
 同一目的下的新证据继续修订当前 Task；目的地或责任范围已经独立时，建立新 Task 和新的根 `context.md`，不覆盖原任务。
 
