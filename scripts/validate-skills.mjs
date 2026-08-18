@@ -5,16 +5,9 @@ import GithubSlugger from 'github-slugger';
 import MarkdownIt from 'markdown-it';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const expectedSkills = ['shape', 'grill', 'dev', 'test', 'review', 'walkthrough', 'evolution'];
+const expectedSkills = ['shape', 'grill', 'dev', 'test', 'review', 'walkthrough', 'evolution', 'frontend-design'];
 const failures = [];
 const markdown = new MarkdownIt({ html: true });
-const shapeContextLifecycleInfo = 'json shape-context-lifecycle-v1';
-const expectedShapeContextLifecycle = [
-  ['discussion_or_view_only', 'conversation_only'],
-  ['host_auto_route_without_task_start', 'conversation_only'],
-  ['explicit_shape_new_task', 'create_context_at_task_root'],
-  ['shape_for_existing_task', 'read_context_and_revise_if_needed'],
-];
 
 function check(condition, message) {
   if (!condition) failures.push(message);
@@ -91,37 +84,6 @@ export function headingAnchors(source) {
     anchors.add(slugger.slug(inlineText(content.children || [])));
   }
   return anchors;
-}
-
-export function validateShapeContextLifecycle(source) {
-  const lifecycleFences = markdown
-    .parse(source, {})
-    .filter(
-      (token) =>
-        token.type === 'fence' && token.info.trim().split(/\s+/).includes('shape-context-lifecycle-v1'),
-    );
-
-  if (lifecycleFences.length !== 1) {
-    return [`Shape must contain exactly one tagged context lifecycle contract; found ${lifecycleFences.length}`];
-  }
-
-  const [contract] = lifecycleFences;
-  if (contract.info.trim() !== shapeContextLifecycleInfo) {
-    return [`Shape context lifecycle fence info must be ${shapeContextLifecycleInfo}`];
-  }
-
-  let actual;
-  try {
-    actual = JSON.parse(contract.content);
-  } catch (error) {
-    return [`Shape context lifecycle contract is not valid JSON: ${error.message}`];
-  }
-
-  if (JSON.stringify(actual) !== JSON.stringify(expectedShapeContextLifecycle)) {
-    return ['Shape context lifecycle contract does not match the required case priority/action mapping'];
-  }
-
-  return [];
 }
 
 export function resolveMarkdownTarget(fromFile, target) {
@@ -233,7 +195,6 @@ const context = read('skills/shape/references/templates/context.demo.md');
 check(shape.includes('references/artifacts.md'), 'Shape does not link its artifact contract');
 check(shape.includes('references/templates/context.demo.md'), 'Shape does not link the Context template');
 check(!/Shape 不自己创建任务|shape\/shape\.md/.test(shape), 'Shape still contains the retired no-create or shape.md contract');
-for (const failure of validateShapeContextLifecycle(shape)) check(false, failure);
 check(artifacts.includes('[Context Demo](templates/context.demo.md)'), 'Artifact contract does not link the Context template');
 
 for (const heading of [

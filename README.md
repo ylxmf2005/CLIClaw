@@ -6,13 +6,13 @@
 
 面向 Codex、Claude Code 和 Pi 的工程 Skills 与安装 CLI。
 
-[快速开始](#快速开始) · [七个 Skills](#七个-skills) · [安装选择](#安装选择) · [文档](#文档)
+[快速开始](#快速开始) · [Skills](#skills) · [安装选择](#安装选择) · [文档](#文档)
 
 </div>
 
 ```text
 longrein install
-├── 7 个工程 Skills
+├── 8 个 Skills
 ├── job + soul
 └── Codex · Claude Code · Pi
 ```
@@ -37,9 +37,11 @@ longrein status
 
 宿主也可以根据每个 Skill 的 `description` 自动选择能力。
 
-## 七个 Skills
+## Skills
 
 Longrein 不规定固定阶段。Agent 根据当前真正缺少的能力选择 Skill，并从真实对象与可检查证据继续工作。
+
+### 工程协作
 
 | Skill | 负责什么 |
 | --- | --- |
@@ -50,6 +52,12 @@ Longrein 不规定固定阶段。Agent 根据当前真正缺少的能力选择 S
 | [`review`](skills/review/SKILL.md) | 对需求、设计、代码或交付物做独立裁决 |
 | [`walkthrough`](skills/walkthrough/SKILL.md) | 沿承重关系讲清非平凡对象，让用户能够继续判断 |
 | [`evolution`](skills/evolution/SKILL.md) | 从真实轨迹提炼值得改变未来工作的经验 |
+
+### 实用能力
+
+| Skill | 负责什么 |
+| --- | --- |
+| [`frontend-design`](skills/frontend-design/SKILL.md) | 从真实产品与设计上下文形成明确方向，落实可用界面并用浏览器反馈校正 |
 
 `job` 负责长期协作、权威来源与交接纪律；`soul` 保存面向现实、克制复杂度并尊重用户决定的工程人格。
 

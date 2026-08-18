@@ -13,7 +13,7 @@ Longrein 自身的安装与 Skills 使用见 [安装与首次使用](getting-sta
 | 代码结构 | CodeGraph | 为已选择的仓库建立本地符号图，查询源码、调用链和影响面 |
 | 历史记忆 | `coding-agent-session-search` 与 `cass` | 检索 Codex、Claude Code、Cursor 等工具留下的本地历史会话 |
 
-验证环境：Codex CLI `0.144.3`、FastCtx `0.1.1`、CodeGraph `1.5.0`、cass `0.6.22`，验证日期为 2026-07-22。版本变化后应先检查命令帮助和 `codex doctor`，不要把本文中的版本敏感字段视为永久契约。
+验证环境：Codex CLI `0.144.3`、FastCtx `0.2.5`、CodeGraph `1.5.0`、cass `0.6.24`，验证日期为 2026-08-17。版本变化后应先检查命令帮助和 `codex doctor`，不要把本文中的版本敏感字段视为永久契约。
 
 ## 安装原则
 
@@ -118,7 +118,7 @@ codegraph status
 
 ### 4. 安装 FastCtx
 
-FastCtx 是第三方 MCP，提供 `read`、`grep`、`glob`、`replace`、前后台 Bash 和持久任务输出。标准档位会管理 Codex 的单次工具输出保留上限，并把 FastCtx 自身的单次预算控制在更低范围。`tool_output_token_limit` 属于 FastCtx 档位的配套设置，不作为独立的通用 Codex 推荐项手写。
+FastCtx 是第三方 MCP，提供 `inspect_local_file`、`grep`、`glob`、`replace`、前后台 Bash 和持久任务输出。`inspect_local_file` 读取本机路径，不是 MCP resource；升级至 0.2.5 后应执行一次 `fastctx apply`，以刷新 `AGENTS.md` 中的工具引导。标准档位会管理 Codex 的单次工具输出保留上限，并把 FastCtx 自身的单次预算控制在更低范围。`tool_output_token_limit` 属于 FastCtx 档位的配套设置，不作为独立的通用 Codex 推荐项手写。
 
 ```bash
 npm install --global fastctx --registry=https://registry.npmjs.org/
@@ -180,6 +180,16 @@ cass index --json --no-progress-events
 cass search "authentication redirect timeout" \
   --robot --robot-meta --limit 10 --fields summary --max-tokens 4000
 ```
+
+已知工作区时，先定位最近会话，再按返回的 `source_path` 与 `line_number` 查看上下文：
+
+```bash
+cass sessions --current --json
+cass view /path/to/session.jsonl -n 42 --json
+cass expand /path/to/session.jsonl -n 42 -C 5 --json
+```
+
+`cass export-html` 会写入文件，只有用户明确要求导出时才使用；先用 `--dry-run --json` 确认目标，并指定 `--output-dir`，不要依赖当前目录默认值。
 
 `cass` 默认可以使用本地词法索引。语义模型需要用户明确同意后单独下载；缺少语义模型时，词法回退仍是有效结果，不应阻塞历史检索。
 

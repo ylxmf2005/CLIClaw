@@ -52,7 +52,7 @@ longrein list
 longrein doctor
 ```
 
-`status` 默认显示七个 Skills 和两个常驻块在三个宿主中的状态。若只检查部分宿主，传入 `--codex`、`--claude` 或 `--pi`。
+`status` 默认显示全部 Longrein Skills 和两个常驻块在三个宿主中的状态。若只检查部分宿主，传入 `--codex`、`--claude` 或 `--pi`。
 
 ## 开始使用
 

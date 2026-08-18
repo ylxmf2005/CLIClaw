@@ -15,6 +15,8 @@ description: Use the local `cass` / coding-agent-search CLI to search, inspect, 
 - Keep outputs bounded with `--limit`, `--fields`, `--max-content-length`, or `--max-tokens`.
 - Treat stdout as data and stderr as diagnostics. Parse JSON instead of scraping human text.
 - Check `health`, `freshness`, `privacy`, and `warnings` before pasting evidence into another prompt or answer.
+- Hybrid search is preferred by default; when semantic assets are absent or rebuilding, accept the reported lexical fallback instead of downloading models or blocking the task.
+- Run `cass export-html` only when the user explicitly requests an export. First use `--dry-run --json`, then specify `--output-dir`; never rely on its current-directory default.
 
 ## Core Workflow
 
@@ -38,7 +40,14 @@ cass search "authentication redirect timeout" --robot --robot-meta --limit 10 --
 
 Use `--fields minimal` for wide scans. Use `--fields summary` when titles and scores help triage. Add `--workspace "$(pwd)"`, `--agent`, or date filters when the user provides that scope.
 
-3. Drill into promising hits:
+3. For a known workspace, locate its most recent session before searching or drilling down:
+
+```bash
+cass sessions --current --json
+cass sessions --workspace "$(pwd)" --json --limit 5
+```
+
+4. Drill into promising hits:
 
 ```bash
 cass view /path/to/session.jsonl -n 42 --json
@@ -47,7 +56,7 @@ cass expand /path/to/session.jsonl -n 42 -C 5 --json
 
 Use `source_path` and `line_number` from search hits. Prefer `expand` when surrounding dialogue changes the meaning.
 
-4. Package bounded evidence for another agent or later step:
+5. Package bounded evidence for another agent or later step:
 
 ```bash
 cass pack "checkout timeout root cause" --robot --max-tokens 8000 --limit 30
@@ -61,5 +70,6 @@ cass pack "checkout timeout root cause" --robot --max-tokens 8000 --limit 30
 - Search results normally expose `hits[]`; request only the fields needed for the current decision.
 - With `--robot-meta`, use `_meta.next_cursor` for bounded pagination.
 - Hybrid search may legitimately fall back to lexical while semantic assets are absent or rebuilding.
+- `export-html` is a write operation: use `--dry-run --json` to inspect its plan, and export only to a user-approved directory.
 - Branch on `error.kind` in structured error envelopes, not on human message text.
 - Do not download semantic models, delete indexes, or run broad repair commands without task-specific authority.

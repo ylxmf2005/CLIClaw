@@ -18,6 +18,12 @@ const ANY_BLOCK_RE =
 const LEGACY_BLOCK_RE =
   /<!-- >>> GEMBA BLOCK: (.+?) >>> -->\n[\s\S]*?<!-- <<< GEMBA BLOCK: \1 <<< -->\n?/g;
 
+// Stable judgment principles should shape the operational workflow that follows.
+const BLOCK_PRIORITY = new Map([
+  ['soul', 0],
+  ['job', 1],
+]);
+
 /** Package-owned global blocks. */
 export function listBlocks(): Block[] {
   const root = globalRoot();
@@ -25,7 +31,14 @@ export function listBlocks(): Block[] {
     ? fs
         .readdirSync(root)
         .filter((f) => f.endsWith('.md'))
-        .sort()
+        .sort((a, b) => {
+          const aOwner = path.basename(a, '.md');
+          const bOwner = path.basename(b, '.md');
+          const priority =
+            (BLOCK_PRIORITY.get(aOwner) ?? Number.MAX_SAFE_INTEGER) -
+            (BLOCK_PRIORITY.get(bOwner) ?? Number.MAX_SAFE_INTEGER);
+          return priority || a.localeCompare(b);
+        })
         .map((f) => ({
           owner: path.basename(f, '.md'),
           content: fs.readFileSync(path.join(root, f), 'utf8').trim(),
@@ -49,13 +62,12 @@ function stripManagedBlocks(text: string): string {
   return text.replace(ANY_BLOCK_RE, '').replace(LEGACY_BLOCK_RE, '').replace(/\n{3,}/g, '\n\n');
 }
 
-/** Idempotently (re)write all longrein blocks; user content outside markers is untouched. */
+/** Idempotently place all longrein blocks before user-owned instructions. */
 export function upsertBlocks(file: string, blocks: Block[]): { changed: boolean } {
   const original = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
-  let next = stripManagedBlocks(original).trimEnd();
-  for (const block of blocks) {
-    next = next ? `${next}\n\n${renderBlock(block)}` : renderBlock(block);
-  }
+  const userContent = stripManagedBlocks(original).replace(/^\n+/, '').trimEnd();
+  const managedContent = blocks.map(renderBlock).join('\n\n');
+  let next = managedContent && userContent ? `${managedContent}\n\n${userContent}` : managedContent || userContent;
   next += '\n';
   if (next !== original) {
     fs.mkdirSync(path.dirname(file), { recursive: true });
