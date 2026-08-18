@@ -29,6 +29,7 @@
 | --- | --- |
 | Skill 体系如何形成证据、制衡与可恢复交付循环 | [AgentCorp 控制循环](agentcorp-philosophy-as-control-loop.md) |
 | 为什么规则更多不一定更稳，Skill 应怎样切分 | [Fable 之后的 Skill Carving](gstack-skill-carving-after-fable.md) |
+| 前端设计 Skill 的来源、具体质量基线与没有引入的上游机制 | [Frontend Design 来源综合](frontend-design-sources.md) |
 | 如何从控制论理解误差反馈、必要多样性与内部模型 | [从控制论看 Skill](cybernetics-error-feedback-and-model.md) |
 | 多 Agent 扩展前应先减少哪些人类协调瓶颈 | [扩展 AI 开发](scaling-parallel-ai-development.md) |
 | 如何控制变化传播、抽象成本与长期项目责任 | [变更收缩与项目长期成本](simplification-and-change-discipline.md) |

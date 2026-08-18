@@ -5,7 +5,7 @@ import GithubSlugger from 'github-slugger';
 import MarkdownIt from 'markdown-it';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const expectedSkills = ['shape', 'grill', 'dev', 'test', 'review', 'walkthrough', 'evolution'];
+const expectedSkills = ['shape', 'grill', 'dev', 'test', 'review', 'walkthrough', 'evolution', 'frontend-design'];
 const failures = [];
 const markdown = new MarkdownIt({ html: true });
 const shapeContextLifecycleInfo = 'json shape-context-lifecycle-v1';

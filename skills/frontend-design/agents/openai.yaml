@@ -1,0 +1,4 @@
+interface:
+  display_name: "Frontend Design"
+  short_description: "让产品语境、设计系统与浏览器证据共同塑造可用前端界面"
+  default_prompt: "使用 $frontend-design 从真实产品与现有设计上下文出发，形成明确视觉方向，实现并在浏览器中校正这个前端界面。"
