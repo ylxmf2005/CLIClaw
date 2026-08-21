@@ -1,4 +1,4 @@
 interface:
   display_name: "Shape"
   short_description: "让任务承诺和系统方向在现实中成形"
-  default_prompt: "使用 $shape 接触真实对象并校正方向；只讨论时留在对话，显式启动新 Task 时建立 `context.md`，已有 Task 按事实变化或用户决定修订。"
+  default_prompt: "使用 $shape 接触真实对象并校正方向；不传参数时保持单路 Shape，传入 `--ponytail` 或 `--bold` 增加对应候选视角，传入 `--contrast` 运行两路隔离探索。只讨论时留在对话，显式启动新 Task 时建立 `context.md`，已有 Task 按事实变化或用户决定修订。"

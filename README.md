@@ -37,6 +37,17 @@ longrein status
 
 宿主也可以根据每个 Skill 的 `description` 自动选择能力。
 
+Shape 默认由主 Agent 单路调查和收敛。可以在请求前加入一个互斥的候选探索参数：
+
+| 参数 | 行为 |
+| --- | --- |
+| 不传 | 普通单路 Shape |
+| `--ponytail` | 增加最小充分路线 |
+| `--bold` | 增加有证据的扩展路线 |
+| `--contrast` | 隔离运行 Ponytail 与 Bold，再综合两条路线 |
+
+例如：`$shape --contrast <你的请求>`。这些参数不会让候选子代理替用户决定范围、代价或授权。
+
 ## Skills
 
 Longrein 不规定固定阶段。Agent 根据当前真正缺少的能力选择 Skill，并从真实对象与可检查证据继续工作。
